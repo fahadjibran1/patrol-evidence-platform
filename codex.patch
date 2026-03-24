@@ -1,0 +1,2713 @@
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
+diff --git a/patrol-evidence-platform/.env.example b/patrol-evidence-platform/.env.example
+new file mode 100644
+index 0000000000000000000000000000000000000000..0ddb3c8d31146e1a7363d4c5ac8705a459b42f5e
+--- /dev/null
++++ b/patrol-evidence-platform/.env.example
+@@ -0,0 +1,8 @@
++NODE_ENV=development
++PORT=3000
++DB_HOST=localhost
++DB_PORT=5432
++DB_USER=postgres
++DB_PASSWORD=postgres
++DB_NAME=patrol_evidence
++STORAGE_ROOT_PATH=D:/Security_Patrols
+diff --git a/patrol-evidence-platform/README.md b/patrol-evidence-platform/README.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..88b5bc317868ddcedd6fb87cc312ccfab1f6a251
+--- /dev/null
++++ b/patrol-evidence-platform/README.md
+@@ -0,0 +1,90 @@
++# Patrol Evidence Platform (MVP Foundation)
++
++This repository now contains **Phase 1 + Phase 2 (backend)** for a production-style patrol evidence and compliance platform.
++
++## Assumptions
++
++1. UTC is used for backend slot generation in this MVP; production timezone support should be added per-site later.
++2. WhatsApp direct transport integration remains an adapter boundary (Phase 3), while Phase 2 focuses on compliance automation.
++3. PostgreSQL is the source of truth for schedules, slots, evidence metadata, and alerts.
++4. Local filesystem remains the active evidence storage provider via `STORAGE_ROOT_PATH`.
++
++## Phase Status
++
++1. ✅ **Phase 1:** scaffold app, env config, entities, migration, storage service, seed data, CRUD for sites/groups/schedules.
++2. ✅ **Phase 2:** patrol slot generation engine, on-time/late/duplicate logic, missing patrol cron + alerts, unit tests.
++3. ⏳ **Phase 3:** collector ingestion pipeline and manual ingest/storage pipeline hardening.
++4. ⏳ **Phase 4:** dashboard/report endpoints and admin UI.
++5. ⏳ **Phase 5:** deployment docs and guard-app integration technical notes.
++
++## Key Modules (Current)
++
++- `sites`
++- `patrol-groups`
++- `patrol-schedules`
++- `patrol-images`
++- `patrol-slots`
++- `patrol-alerts`
++- `compliance`
++- `storage`
++
++## Environment
++
++Copy `.env.example` to `.env` and configure values.
++
++## Run
++
++```bash
++npm install
++npm run migration:run
++npm run seed
++npm run start:dev
++```
++
++## Implemented API (Phase 1 + 2 backend)
++
++- `GET /health`
++- CRUD:
++  - `/sites`
++  - `/patrol-groups`
++  - `/patrol-schedules`
++- Patrol image ingest (backend testing path):
++  - `POST /patrol-images`
++  - `POST /patrol-images/manual-ingest` (multipart: `siteCode`, `timestamp`, `senderName`, `file`)
++- Patrol slots query:
++  - `GET /patrol-slots?siteCode=OXF01&date=YYYY-MM-DD`
++- Compliance operations:
++  - `POST /compliance/generate-slots` with `{ "date": "YYYY-MM-DD" }`
++  - `POST /compliance/generate-today` -> `{ "slotsCreated": number, "sitesProcessed": number }`
++
++## Compliance Rules in Phase 2
++
++- Slot generation uses active site + active schedule + active day matching.
++- Slot status transitions:
++  - `PENDING`
++  - `RECEIVED_ON_TIME`
++  - `RECEIVED_LATE`
++  - `MISSING`
++  - `DUPLICATE`
++- First valid image resolves a slot and links `imageId`.
++- Next image for the same slot is marked `DUPLICATE`.
++- Cron job runs every 5 minutes, marks stale unresolved slots as `MISSING`, and raises `MISSING_PATROL` alerts.
++
++## Storage
++
++`StorageService` saves files as:
++
++```text
++{STORAGE_ROOT_PATH}/{siteCode}/{YYYY-MM-DD}/{siteCode}_{YYYY-MM-DD}_{HH-MM-SS}.jpg
++```
++
++All path segments are sanitized and directories are auto-created.
++
++
++## Ingestion Test Script
++
++Run a 5-upload manual ingest simulation for one site:
++
++```bash
++./scripts/simulate-5-uploads.sh http://localhost:3000 OXF01 ./sample.jpg ManualTester
++```
+diff --git a/patrol-evidence-platform/jest.config.ts b/patrol-evidence-platform/jest.config.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..54ee25800af699834e764bb13081abc847bfde85
+--- /dev/null
++++ b/patrol-evidence-platform/jest.config.ts
+@@ -0,0 +1,16 @@
++import type { Config } from 'jest';
++
++const config: Config = {
++  moduleFileExtensions: ['js', 'json', 'ts'],
++  rootDir: 'src',
++  testRegex: '.*\\.spec\\.ts$',
++  transform: {
++    '^.+\\.(t|j)s$': ['ts-jest', { tsconfig: '../tsconfig.json' }],
++  },
++  moduleNameMapper: {
++    '^@/(.*)$': '<rootDir>/$1',
++  },
++  testEnvironment: 'node',
++};
++
++export default config;
+diff --git a/patrol-evidence-platform/nest-cli.json b/patrol-evidence-platform/nest-cli.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..56167b36a14c2c69eb0db57302e2c44a1128b006
+--- /dev/null
++++ b/patrol-evidence-platform/nest-cli.json
+@@ -0,0 +1,4 @@
++{
++  "collection": "@nestjs/schematics",
++  "sourceRoot": "src"
++}
+diff --git a/patrol-evidence-platform/package.json b/patrol-evidence-platform/package.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..b163b4cb99e5f1088c6082e8e7d880a48c2528bc
+--- /dev/null
++++ b/patrol-evidence-platform/package.json
+@@ -0,0 +1,49 @@
++{
++  "name": "patrol-evidence-platform",
++  "version": "0.1.0",
++  "private": true,
++  "description": "Security patrol evidence and compliance platform MVP",
++  "scripts": {
++    "build": "nest build",
++    "start": "nest start",
++    "start:dev": "nest start --watch",
++    "lint": "eslint \"{src,test}/**/*.ts\" --fix",
++    "test": "jest",
++    "test:watch": "jest --watch",
++    "typeorm": "typeorm-ts-node-commonjs",
++    "migration:run": "npm run typeorm -- migration:run -d src/database/data-source.ts",
++    "migration:revert": "npm run typeorm -- migration:revert -d src/database/data-source.ts",
++    "seed": "ts-node -r tsconfig-paths/register src/database/seeds/seed.ts"
++  },
++  "dependencies": {
++    "@nestjs/common": "^10.4.2",
++    "@nestjs/config": "^3.2.3",
++    "@nestjs/core": "^10.4.2",
++    "@nestjs/platform-express": "^10.4.2",
++    "@nestjs/typeorm": "^10.0.2",
++    "class-transformer": "^0.5.1",
++    "class-validator": "^0.14.1",
++    "pg": "^8.11.6",
++    "reflect-metadata": "^0.2.2",
++    "rxjs": "^7.8.1",
++    "typeorm": "^0.3.20",
++    "@nestjs/mapped-types": "^2.0.5",
++    "@nestjs/schedule": "^4.1.2"
++  },
++  "devDependencies": {
++    "@nestjs/cli": "^10.4.5",
++    "@nestjs/schematics": "^10.1.4",
++    "@nestjs/testing": "^10.4.2",
++    "@types/express": "^4.17.21",
++    "@types/jest": "^29.5.12",
++    "@types/node": "^20.14.12",
++    "eslint": "^8.57.0",
++    "jest": "^29.7.0",
++    "prettier": "^3.3.3",
++    "supertest": "^7.0.0",
++    "ts-jest": "^29.2.3",
++    "ts-node": "^10.9.2",
++    "tsconfig-paths": "^4.2.0",
++    "typescript": "^5.5.4"
++  }
++}
+diff --git a/patrol-evidence-platform/scripts/simulate-5-uploads.sh b/patrol-evidence-platform/scripts/simulate-5-uploads.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..b1f1f40d0ca8b11016fe5c083318d3ecbbf9fb8b
+--- /dev/null
++++ b/patrol-evidence-platform/scripts/simulate-5-uploads.sh
+@@ -0,0 +1,24 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++BASE_URL="${1:-http://localhost:3000}"
++SITE_CODE="${2:-OXF01}"
++FILE_PATH="${3:-./sample.jpg}"
++SENDER="${4:-ManualTester}"
++
++if [[ ! -f "$FILE_PATH" ]]; then
++  echo "File not found: $FILE_PATH"
++  exit 1
++fi
++
++for i in {0..4}; do
++  ts=$(date -u -d "+${i} hour" +"%Y-%m-%dT%H:%M:%SZ")
++  echo "Uploading patrol $((i+1)) at $ts"
++  curl -sS -X POST "$BASE_URL/patrol-images/manual-ingest" \
++    -F "siteCode=$SITE_CODE" \
++    -F "timestamp=$ts" \
++    -F "senderName=$SENDER" \
++    -F "file=@$FILE_PATH" 
++  echo
++  sleep 1
++done
+diff --git a/patrol-evidence-platform/src/app.module.ts b/patrol-evidence-platform/src/app.module.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..3934a84afaf33d0425a9423a13fa28e6a902d54a
+--- /dev/null
++++ b/patrol-evidence-platform/src/app.module.ts
+@@ -0,0 +1,50 @@
++import { Module } from '@nestjs/common';
++import { ConfigModule } from '@nestjs/config';
++import { TypeOrmModule } from '@nestjs/typeorm';
++import { ScheduleModule } from '@nestjs/schedule';
++import { appConfig } from './config/app.config';
++import { databaseConfig } from './config/database.config';
++import { validateEnv } from './config/validate-env';
++import { HealthModule } from './health/health.module';
++import { StorageModule } from './storage/storage.module';
++import { SitesModule } from './sites/sites.module';
++import { PatrolGroupsModule } from './patrol-groups/patrol-groups.module';
++import { PatrolSchedulesModule } from './patrol-schedules/patrol-schedules.module';
++import { AuthModule } from './auth/auth.module';
++import { UsersModule } from './users/users.module';
++import { PatrolAlertsModule } from './patrol-alerts/patrol-alerts.module';
++import { PatrolImagesModule } from './patrol-images/patrol-images.module';
++import { PatrolSlotsModule } from './patrol-slots/patrol-slots.module';
++import { CollectorsModule } from './collectors/collectors.module';
++import { ComplianceModule } from './compliance/compliance.module';
++import { DashboardModule } from './dashboard/dashboard.module';
++
++@Module({
++  imports: [
++    ConfigModule.forRoot({
++      isGlobal: true,
++      load: [appConfig, databaseConfig],
++      validate: validateEnv,
++    }),
++    TypeOrmModule.forRootAsync({
++      useFactory: () => ({
++        ...databaseConfig(),
++      }),
++    }),
++    ScheduleModule.forRoot(),
++    AuthModule,
++    UsersModule,
++    HealthModule,
++    StorageModule,
++    SitesModule,
++    PatrolGroupsModule,
++    PatrolSchedulesModule,
++    PatrolImagesModule,
++    PatrolSlotsModule,
++    PatrolAlertsModule,
++    CollectorsModule,
++    ComplianceModule,
++    DashboardModule,
++  ],
++})
++export class AppModule {}
+diff --git a/patrol-evidence-platform/src/auth/auth.module.ts b/patrol-evidence-platform/src/auth/auth.module.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..7459c06439b74f9b4b23081119b43fc3897336c3
+--- /dev/null
++++ b/patrol-evidence-platform/src/auth/auth.module.ts
+@@ -0,0 +1,4 @@
++import { Module } from '@nestjs/common';
++
++@Module({})
++export class AuthModule {}
+diff --git a/patrol-evidence-platform/src/collectors/adapters/guard-app-collector.adapter.ts b/patrol-evidence-platform/src/collectors/adapters/guard-app-collector.adapter.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..9d14f4ecd93aa3861b23e5fa8ddf531eb520c90d
+--- /dev/null
++++ b/patrol-evidence-platform/src/collectors/adapters/guard-app-collector.adapter.ts
+@@ -0,0 +1,24 @@
++import { Injectable } from '@nestjs/common';
++import {
++  CollectorAdapter,
++  NormalizedCollectorEvent,
++} from '@/collectors/interfaces/collector-adapter.interface';
++
++@Injectable()
++export class GuardAppCollectorAdapter implements CollectorAdapter<Record<string, unknown>> {
++  async ingestIncomingMedia(): Promise<void> {
++    throw new Error('Guard app ingestion will be implemented in a future phase.');
++  }
++
++  async normalizeIncomingEvent(): Promise<NormalizedCollectorEvent> {
++    throw new Error('Guard app event normalization will be implemented in a future phase.');
++  }
++
++  async downloadMedia(): Promise<Buffer> {
++    throw new Error('Guard app media download will be implemented in a future phase.');
++  }
++
++  async mapSourceToSite(): Promise<string> {
++    throw new Error('Guard app source-site mapping will be implemented in a future phase.');
++  }
++}
+diff --git a/patrol-evidence-platform/src/collectors/adapters/whatsapp-collector.adapter.ts b/patrol-evidence-platform/src/collectors/adapters/whatsapp-collector.adapter.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..65c44886bb64a447c4c6ef0cfd3c21496f521d7d
+--- /dev/null
++++ b/patrol-evidence-platform/src/collectors/adapters/whatsapp-collector.adapter.ts
+@@ -0,0 +1,48 @@
++import { Injectable, Logger } from '@nestjs/common';
++import {
++  CollectorAdapter,
++  NormalizedCollectorEvent,
++} from '@/collectors/interfaces/collector-adapter.interface';
++
++export interface WhatsAppIncomingEvent {
++  groupId?: string;
++  senderName?: string;
++  senderNumber?: string;
++  sentAt: string;
++  messageId?: string;
++  mediaUrl?: string;
++  mimeType?: string;
++  fileName?: string;
++}
++
++@Injectable()
++export class WhatsAppCollectorAdapter implements CollectorAdapter<WhatsAppIncomingEvent> {
++  private readonly logger = new Logger(WhatsAppCollectorAdapter.name);
++
++  async ingestIncomingMedia(event: WhatsAppIncomingEvent): Promise<void> {
++    const normalized = await this.normalizeIncomingEvent(event);
++    this.logger.log(`Received WhatsApp media event ${normalized.messageExternalId ?? 'unknown'}`);
++  }
++
++  async normalizeIncomingEvent(event: WhatsAppIncomingEvent): Promise<NormalizedCollectorEvent> {
++    return {
++      collectorType: 'WHATSAPP',
++      externalGroupId: event.groupId,
++      senderName: event.senderName,
++      senderNumber: event.senderNumber,
++      sentAt: new Date(event.sentAt),
++      messageExternalId: event.messageId,
++      mediaUrl: event.mediaUrl,
++      mimeType: event.mimeType,
++      originalFileName: event.fileName,
++    };
++  }
++
++  async downloadMedia(): Promise<Buffer> {
++    throw new Error('WhatsApp media download integration is intentionally deferred to Phase 3 adapter boundary.');
++  }
++
++  async mapSourceToSite(): Promise<string> {
++    throw new Error('WhatsApp site mapping integration is intentionally deferred to Phase 3 adapter boundary.');
++  }
++}
+diff --git a/patrol-evidence-platform/src/collectors/collectors.module.ts b/patrol-evidence-platform/src/collectors/collectors.module.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..54670f3853d5b0eac87817bd7e33128f82f5c256
+--- /dev/null
++++ b/patrol-evidence-platform/src/collectors/collectors.module.ts
+@@ -0,0 +1,4 @@
++import { Module } from '@nestjs/common';
++
++@Module({})
++export class CollectorsModule {}
+diff --git a/patrol-evidence-platform/src/collectors/interfaces/collector-adapter.interface.ts b/patrol-evidence-platform/src/collectors/interfaces/collector-adapter.interface.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..60338e044671d4b061edc5a316b1b2e1a998b67f
+--- /dev/null
++++ b/patrol-evidence-platform/src/collectors/interfaces/collector-adapter.interface.ts
+@@ -0,0 +1,18 @@
++export interface NormalizedCollectorEvent {
++  collectorType: 'WHATSAPP' | 'GUARD_APP' | 'MANUAL';
++  externalGroupId?: string;
++  senderName?: string;
++  senderNumber?: string;
++  sentAt: Date;
++  messageExternalId?: string;
++  mediaUrl?: string;
++  mimeType?: string;
++  originalFileName?: string;
++}
++
++export interface CollectorAdapter<TIncomingEvent = unknown> {
++  ingestIncomingMedia(event: TIncomingEvent): Promise<void>;
++  normalizeIncomingEvent(event: TIncomingEvent): Promise<NormalizedCollectorEvent>;
++  downloadMedia(event: NormalizedCollectorEvent): Promise<Buffer>;
++  mapSourceToSite(event: NormalizedCollectorEvent): Promise<string>;
++}
+diff --git a/patrol-evidence-platform/src/common/enums/collector-type.enum.ts b/patrol-evidence-platform/src/common/enums/collector-type.enum.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..df266d7c3e52e02614d5c77e314a533dce072c69
+--- /dev/null
++++ b/patrol-evidence-platform/src/common/enums/collector-type.enum.ts
+@@ -0,0 +1,5 @@
++export enum CollectorType {
++  WHATSAPP = 'WHATSAPP',
++  GUARD_APP = 'GUARD_APP',
++  MANUAL = 'MANUAL',
++}
+diff --git a/patrol-evidence-platform/src/common/enums/patrol-slot-status.enum.ts b/patrol-evidence-platform/src/common/enums/patrol-slot-status.enum.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..9f4aa01a12487cd1c007421a8b0ab8569c0327f2
+--- /dev/null
++++ b/patrol-evidence-platform/src/common/enums/patrol-slot-status.enum.ts
+@@ -0,0 +1,8 @@
++export enum PatrolSlotStatus {
++  PENDING = 'PENDING',
++  RECEIVED_ON_TIME = 'RECEIVED_ON_TIME',
++  RECEIVED_LATE = 'RECEIVED_LATE',
++  MISSING = 'MISSING',
++  DUPLICATE = 'DUPLICATE',
++  INVALID_IMAGE = 'INVALID_IMAGE',
++}
+diff --git a/patrol-evidence-platform/src/compliance/compliance.controller.ts b/patrol-evidence-platform/src/compliance/compliance.controller.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..a492da9a5d68766a28b10b2ea706e913ec7f0fa7
+--- /dev/null
++++ b/patrol-evidence-platform/src/compliance/compliance.controller.ts
+@@ -0,0 +1,17 @@
++import { Body, Controller, Post } from '@nestjs/common';
++import { ComplianceService, GenerateSlotsResult } from './compliance.service';
++
++@Controller('compliance')
++export class ComplianceController {
++  constructor(private readonly complianceService: ComplianceService) {}
++
++  @Post('generate-slots')
++  generateSlots(@Body('date') date: string): Promise<GenerateSlotsResult> {
++    return this.complianceService.generateSlotsForDate(date);
++  }
++
++  @Post('generate-today')
++  generateToday(): Promise<GenerateSlotsResult> {
++    return this.complianceService.generateToday();
++  }
++}
+diff --git a/patrol-evidence-platform/src/compliance/compliance.module.ts b/patrol-evidence-platform/src/compliance/compliance.module.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..75f8c4e44d36049921f9dd1709023efb0eef8091
+--- /dev/null
++++ b/patrol-evidence-platform/src/compliance/compliance.module.ts
+@@ -0,0 +1,20 @@
++import { Module } from '@nestjs/common';
++import { TypeOrmModule } from '@nestjs/typeorm';
++import { Site } from '@/sites/entities/site.entity';
++import { PatrolSchedule } from '@/patrol-schedules/entities/patrol-schedule.entity';
++import { PatrolSlotsModule } from '@/patrol-slots/patrol-slots.module';
++import { PatrolAlertsModule } from '@/patrol-alerts/patrol-alerts.module';
++import { ComplianceService } from './compliance.service';
++import { ComplianceController } from './compliance.controller';
++
++@Module({
++  imports: [
++    TypeOrmModule.forFeature([Site, PatrolSchedule]),
++    PatrolSlotsModule,
++    PatrolAlertsModule,
++  ],
++  providers: [ComplianceService],
++  controllers: [ComplianceController],
++  exports: [ComplianceService],
++})
++export class ComplianceModule {}
+diff --git a/patrol-evidence-platform/src/compliance/compliance.service.spec.ts b/patrol-evidence-platform/src/compliance/compliance.service.spec.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..b89ac387800cc848ce3dceb8822d0b663fde7078
+--- /dev/null
++++ b/patrol-evidence-platform/src/compliance/compliance.service.spec.ts
+@@ -0,0 +1,110 @@
++import { ComplianceService } from './compliance.service';
++import { PatrolSlotStatus } from '@/common/enums/patrol-slot-status.enum';
++import { PatrolSlot } from '@/patrol-slots/entities/patrol-slot.entity';
++import { PatrolImage } from '@/patrol-images/entities/patrol-image.entity';
++
++describe('ComplianceService', () => {
++  const siteRepo = {
++    find: jest.fn(),
++  };
++
++  const schedulesRepo = {
++    findOne: jest.fn(),
++  };
++
++  const patrolSlotsService = {
++    findBySiteAndDate: jest.fn(),
++    createMany: jest.fn(),
++    findSlotForTimestamp: jest.fn(),
++    updateSlotStatus: jest.fn(),
++    findPendingPastCutoff: jest.fn(),
++  };
++
++  const alertsService = {
++    createMissingAlert: jest.fn(),
++  };
++
++  let service: ComplianceService;
++
++  beforeEach(() => {
++    jest.clearAllMocks();
++    service = new ComplianceService(
++      siteRepo as never,
++      schedulesRepo as never,
++      patrolSlotsService as never,
++      alertsService as never,
++    );
++  });
++
++  it('generates hourly slots and returns slotsCreated + sitesProcessed', async () => {
++    siteRepo.find.mockResolvedValue([{ id: 'site-1', active: true }]);
++    schedulesRepo.findOne.mockResolvedValue({
++      siteId: 'site-1',
++      active: true,
++      activeDays: [2],
++      startHour: 8,
++      endHour: 10,
++      frequencyMinutes: 60,
++      graceMinutes: 15,
++    });
++    patrolSlotsService.findBySiteAndDate.mockResolvedValue([]);
++
++    const result = await service.generateSlotsForDate('2026-03-18');
++
++    expect(result).toEqual({ slotsCreated: 3, sitesProcessed: 1 });
++  });
++
++  it('updateSlotStatusFromImage marks ON_TIME, LATE, and DUPLICATE', async () => {
++    const baseSlot = {
++      id: 'slot-1',
++      siteId: 'site-1',
++      expectedAt: new Date('2026-03-18T09:00:00.000Z'),
++      slotEnd: new Date('2026-03-18T10:00:00.000Z'),
++      imageId: null,
++    } as PatrolSlot;
++
++    schedulesRepo.findOne.mockResolvedValue({ graceMinutes: 15, siteId: 'site-1', active: true });
++
++    const onTimeImage = {
++      id: 'img-1',
++      siteId: 'site-1',
++      sentAt: new Date('2026-03-18T09:10:00.000Z'),
++    } as PatrolImage;
++
++    patrolSlotsService.findSlotForTimestamp.mockResolvedValue(baseSlot);
++    let status = await service.updateSlotStatusFromImage(onTimeImage);
++    expect(status).toBe(PatrolSlotStatus.RECEIVED_ON_TIME);
++
++    const lateImage = {
++      id: 'img-2',
++      siteId: 'site-1',
++      sentAt: new Date('2026-03-18T09:40:00.000Z'),
++    } as PatrolImage;
++    patrolSlotsService.findSlotForTimestamp.mockResolvedValue({ ...baseSlot, id: 'slot-2' });
++    status = await service.updateSlotStatusFromImage(lateImage);
++    expect(status).toBe(PatrolSlotStatus.RECEIVED_LATE);
++
++    patrolSlotsService.findSlotForTimestamp.mockResolvedValue({ ...baseSlot, imageId: 'img-existing' });
++    status = await service.updateSlotStatusFromImage(onTimeImage);
++    expect(status).toBe(PatrolSlotStatus.DUPLICATE);
++  });
++
++  it('markMissingSlots marks overdue pending slots and creates alerts', async () => {
++    const now = new Date('2026-03-18T12:00:00.000Z');
++    patrolSlotsService.findPendingPastCutoff.mockResolvedValue([
++      {
++        id: 'slot-1',
++        siteId: 'site-1',
++        slotEnd: new Date('2026-03-18T10:00:00.000Z'),
++        expectedAt: new Date('2026-03-18T09:00:00.000Z'),
++      },
++    ]);
++    schedulesRepo.findOne.mockResolvedValue({ graceMinutes: 15, siteId: 'site-1', active: true });
++
++    const marked = await service.markMissingSlots(now);
++
++    expect(marked).toBe(1);
++    expect(patrolSlotsService.updateSlotStatus).toHaveBeenCalledWith('slot-1', PatrolSlotStatus.MISSING);
++    expect(alertsService.createMissingAlert).toHaveBeenCalledTimes(1);
++  });
++});
+diff --git a/patrol-evidence-platform/src/compliance/compliance.service.ts b/patrol-evidence-platform/src/compliance/compliance.service.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..413a415a2b96fdecd398699f0e9d0513e699d903
+--- /dev/null
++++ b/patrol-evidence-platform/src/compliance/compliance.service.ts
+@@ -0,0 +1,155 @@
++import { Injectable, Logger } from '@nestjs/common';
++import { Cron } from '@nestjs/schedule';
++import { InjectRepository } from '@nestjs/typeorm';
++import { Repository } from 'typeorm';
++import { Site } from '@/sites/entities/site.entity';
++import { PatrolSchedule } from '@/patrol-schedules/entities/patrol-schedule.entity';
++import { PatrolSlotsService } from '@/patrol-slots/patrol-slots.service';
++import { PatrolSlotStatus } from '@/common/enums/patrol-slot-status.enum';
++import { PatrolSlot } from '@/patrol-slots/entities/patrol-slot.entity';
++import { PatrolAlertsService } from '@/patrol-alerts/patrol-alerts.service';
++import { PatrolImage } from '@/patrol-images/entities/patrol-image.entity';
++
++export interface GenerateSlotsResult {
++  slotsCreated: number;
++  sitesProcessed: number;
++}
++
++@Injectable()
++export class ComplianceService {
++  private readonly logger = new Logger(ComplianceService.name);
++
++  constructor(
++    @InjectRepository(Site)
++    private readonly siteRepo: Repository<Site>,
++    @InjectRepository(PatrolSchedule)
++    private readonly schedulesRepo: Repository<PatrolSchedule>,
++    private readonly patrolSlotsService: PatrolSlotsService,
++    private readonly patrolAlertsService: PatrolAlertsService,
++  ) {}
++
++  async generateSlotsForDate(date: string): Promise<GenerateSlotsResult> {
++    const dayStart = new Date(`${date}T00:00:00.000Z`);
++    const dayEnd = new Date(`${date}T23:59:59.999Z`);
++
++    const activeSites = await this.siteRepo.find({ where: { active: true } });
++    let slotsCreated = 0;
++    let sitesProcessed = 0;
++
++    for (const site of activeSites) {
++      const schedule = await this.schedulesRepo.findOne({
++        where: { siteId: site.id, active: true },
++        order: { createdAt: 'DESC' },
++      });
++
++      if (!schedule || !schedule.activeDays.includes(dayStart.getUTCDay())) {
++        continue;
++      }
++
++      sitesProcessed += 1;
++
++      const existing = await this.patrolSlotsService.findBySiteAndDate(site.id, dayStart, dayEnd);
++      const existingExpectedTimes = new Set(existing.map((slot) => slot.expectedAt.toISOString()));
++
++      const slots: Partial<PatrolSlot>[] = [];
++      const frequency = schedule.frequencyMinutes;
++
++      for (let hour = schedule.startHour; hour <= schedule.endHour; hour += 1) {
++        const slotStart = new Date(Date.UTC(dayStart.getUTCFullYear(), dayStart.getUTCMonth(), dayStart.getUTCDate(), hour, 0, 0));
++
++        for (let minute = 0; minute < 60; minute += frequency) {
++          const expectedAt = new Date(slotStart.getTime() + minute * 60 * 1000);
++          const slotEnd = new Date(expectedAt.getTime() + frequency * 60 * 1000);
++
++          if (expectedAt > dayEnd) {
++            continue;
++          }
++
++          if (existingExpectedTimes.has(expectedAt.toISOString())) {
++            continue;
++          }
++
++          slots.push({
++            siteId: site.id,
++            expectedAt,
++            slotStart: expectedAt,
++            slotEnd,
++            status: PatrolSlotStatus.PENDING,
++          });
++        }
++      }
++
++      if (slots.length > 0) {
++        await this.patrolSlotsService.createMany(slots);
++        slotsCreated += slots.length;
++      }
++    }
++
++    return { slotsCreated, sitesProcessed };
++  }
++
++  async generateToday(): Promise<GenerateSlotsResult> {
++    const date = new Date().toISOString().slice(0, 10);
++    return this.generateSlotsForDate(date);
++  }
++
++  async updateSlotStatusFromImage(image: PatrolImage): Promise<PatrolSlotStatus> {
++    const slot = await this.patrolSlotsService.findSlotForTimestamp(image.siteId, image.sentAt);
++    if (!slot) {
++      return PatrolSlotStatus.MISSING;
++    }
++
++    if (slot.imageId) {
++      return PatrolSlotStatus.DUPLICATE;
++    }
++
++    const schedule = await this.schedulesRepo.findOne({
++      where: { siteId: image.siteId, active: true },
++      order: { createdAt: 'DESC' },
++    });
++
++    const graceMinutes = schedule?.graceMinutes ?? 15;
++    const graceCutoff = new Date(slot.expectedAt.getTime() + graceMinutes * 60 * 1000);
++    const status = image.sentAt <= graceCutoff ? PatrolSlotStatus.RECEIVED_ON_TIME : PatrolSlotStatus.RECEIVED_LATE;
++
++    await this.patrolSlotsService.updateSlotStatus(slot.id, status, image.id);
++    return status;
++  }
++
++  async markMissingSlots(now: Date = new Date()): Promise<number> {
++    const stalePending = await this.patrolSlotsService.findPendingPastCutoff(now);
++    let missingCount = 0;
++
++    for (const slot of stalePending) {
++      const schedule = await this.schedulesRepo.findOne({
++        where: { siteId: slot.siteId, active: true },
++        order: { createdAt: 'DESC' },
++      });
++      const graceMinutes = schedule?.graceMinutes ?? 15;
++      const missingCutoff = new Date(slot.slotEnd.getTime() + graceMinutes * 60 * 1000);
++
++      if (now <= missingCutoff) {
++        continue;
++      }
++
++      await this.patrolSlotsService.updateSlotStatus(slot.id, PatrolSlotStatus.MISSING);
++      await this.patrolAlertsService.createMissingAlert({
++        siteId: slot.siteId,
++        slotId: slot.id,
++        alertTime: now,
++        alertMessage: `Missing patrol evidence for expected slot ${slot.expectedAt.toISOString()}`,
++      });
++      missingCount += 1;
++    }
++
++    return missingCount;
++  }
++
++  @Cron('*/5 * * * *')
++  async checkMissingPatrols(): Promise<void> {
++    const marked = await this.markMissingSlots();
++    if (marked > 0) {
++      this.logger.warn(`Marked ${marked} slot(s) as missing.`);
++    }
++  }
++}
+diff --git a/patrol-evidence-platform/src/config/app.config.ts b/patrol-evidence-platform/src/config/app.config.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..1a207bd5e77c22ad93a32be04960d82f5a3f2c1b
+--- /dev/null
++++ b/patrol-evidence-platform/src/config/app.config.ts
+@@ -0,0 +1,5 @@
++export const appConfig = () => ({
++  nodeEnv: process.env.NODE_ENV ?? 'development',
++  port: Number(process.env.PORT ?? 3000),
++  storageRootPath: process.env.STORAGE_ROOT_PATH ?? 'D:/Security_Patrols',
++});
+diff --git a/patrol-evidence-platform/src/config/database.config.ts b/patrol-evidence-platform/src/config/database.config.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..0724b546073f40593360d104fd031d4e468ffc2c
+--- /dev/null
++++ b/patrol-evidence-platform/src/config/database.config.ts
+@@ -0,0 +1,20 @@
++import { DataSourceOptions } from 'typeorm';
++import { Site } from '@/sites/entities/site.entity';
++import { PatrolGroup } from '@/patrol-groups/entities/patrol-group.entity';
++import { PatrolSchedule } from '@/patrol-schedules/entities/patrol-schedule.entity';
++import { PatrolImage } from '@/patrol-images/entities/patrol-image.entity';
++import { PatrolSlot } from '@/patrol-slots/entities/patrol-slot.entity';
++import { PatrolAlert } from '@/patrol-alerts/entities/patrol-alert.entity';
++
++export const databaseConfig = (): DataSourceOptions => ({
++  type: 'postgres',
++  host: process.env.DB_HOST ?? 'localhost',
++  port: Number(process.env.DB_PORT ?? 5432),
++  username: process.env.DB_USER ?? 'postgres',
++  password: process.env.DB_PASSWORD ?? 'postgres',
++  database: process.env.DB_NAME ?? 'patrol_evidence',
++  entities: [Site, PatrolGroup, PatrolSchedule, PatrolImage, PatrolSlot, PatrolAlert],
++  migrations: ['dist/database/migrations/*.js'],
++  synchronize: false,
++  logging: false,
++});
+diff --git a/patrol-evidence-platform/src/config/validate-env.ts b/patrol-evidence-platform/src/config/validate-env.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..bee58a42a76d1d179c4c141315a2eaaa1fe612da
+--- /dev/null
++++ b/patrol-evidence-platform/src/config/validate-env.ts
+@@ -0,0 +1,45 @@
++import { plainToInstance } from 'class-transformer';
++import { IsInt, IsOptional, IsString, Max, Min, validateSync } from 'class-validator';
++
++class EnvVars {
++  @IsOptional()
++  @IsString()
++  NODE_ENV?: string;
++
++  @IsOptional()
++  @IsInt()
++  @Min(1)
++  @Max(65535)
++  PORT?: number;
++
++  @IsString()
++  DB_HOST!: string;
++
++  @IsInt()
++  @Min(1)
++  @Max(65535)
++  DB_PORT!: number;
++
++  @IsString()
++  DB_USER!: string;
++
++  @IsString()
++  DB_PASSWORD!: string;
++
++  @IsString()
++  DB_NAME!: string;
++
++  @IsString()
++  STORAGE_ROOT_PATH!: string;
++}
++
++export function validateEnv(config: Record<string, unknown>): EnvVars {
++  const validated = plainToInstance(EnvVars, config, { enableImplicitConversion: true });
++  const errors = validateSync(validated, { skipMissingProperties: false });
++
++  if (errors.length) {
++    throw new Error(errors.toString());
++  }
++
++  return validated;
++}
+diff --git a/patrol-evidence-platform/src/dashboard/dashboard.module.ts b/patrol-evidence-platform/src/dashboard/dashboard.module.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..8a339efa2c7e44a5788b8071999c2ff5a2545bb4
+--- /dev/null
++++ b/patrol-evidence-platform/src/dashboard/dashboard.module.ts
+@@ -0,0 +1,4 @@
++import { Module } from '@nestjs/common';
++
++@Module({})
++export class DashboardModule {}
+diff --git a/patrol-evidence-platform/src/database/data-source.ts b/patrol-evidence-platform/src/database/data-source.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..2f34e49f7bc8f0e59bf1281111c7abf4312d105e
+--- /dev/null
++++ b/patrol-evidence-platform/src/database/data-source.ts
+@@ -0,0 +1,9 @@
++import 'dotenv/config';
++import { DataSource } from 'typeorm';
++import { databaseConfig } from '@/config/database.config';
++
++export default new DataSource({
++  ...databaseConfig(),
++  entities: ['src/**/*.entity.ts'],
++  migrations: ['src/database/migrations/*.ts'],
++});
+diff --git a/patrol-evidence-platform/src/database/migrations/1710000000000-InitialSchema.ts b/patrol-evidence-platform/src/database/migrations/1710000000000-InitialSchema.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..70179599b9df9ec0553622e852b9d32210afd768
+--- /dev/null
++++ b/patrol-evidence-platform/src/database/migrations/1710000000000-InitialSchema.ts
+@@ -0,0 +1,144 @@
++import { MigrationInterface, QueryRunner } from 'typeorm';
++
++export class InitialSchema1710000000000 implements MigrationInterface {
++  name = 'InitialSchema1710000000000';
++
++  public async up(queryRunner: QueryRunner): Promise<void> {
++    await queryRunner.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"');
++    await queryRunner.query(`CREATE TYPE \"public\".\"patrol_images_collectortype_enum\" AS ENUM('WHATSAPP', 'GUARD_APP', 'MANUAL')`);
++    await queryRunner.query(`CREATE TYPE \"public\".\"patrol_images_status_enum\" AS ENUM('PENDING', 'RECEIVED_ON_TIME', 'RECEIVED_LATE', 'MISSING', 'DUPLICATE', 'INVALID_IMAGE')`);
++    await queryRunner.query(`CREATE TYPE \"public\".\"patrol_slots_status_enum\" AS ENUM('PENDING', 'RECEIVED_ON_TIME', 'RECEIVED_LATE', 'MISSING', 'DUPLICATE', 'INVALID_IMAGE')`);
++
++    await queryRunner.query(`
++      CREATE TABLE \"sites\" (
++        \"id\" uuid NOT NULL DEFAULT uuid_generate_v4(),
++        \"siteCode\" character varying(20) NOT NULL,
++        \"siteName\" character varying(120) NOT NULL,
++        \"clientName\" character varying(120),
++        \"active\" boolean NOT NULL DEFAULT true,
++        \"createdAt\" TIMESTAMP NOT NULL DEFAULT now(),
++        \"updatedAt\" TIMESTAMP NOT NULL DEFAULT now(),
++        CONSTRAINT \"PK_sites_id\" PRIMARY KEY (\"id\"),
++        CONSTRAINT \"UQ_sites_siteCode\" UNIQUE (\"siteCode\")
++      )
++    `);
++
++    await queryRunner.query(`
++      CREATE TABLE \"patrol_groups\" (
++        \"id\" uuid NOT NULL DEFAULT uuid_generate_v4(),
++        \"siteId\" uuid NOT NULL,
++        \"groupName\" character varying(150) NOT NULL,
++        \"externalGroupId\" character varying(120),
++        \"active\" boolean NOT NULL DEFAULT true,
++        \"createdAt\" TIMESTAMP NOT NULL DEFAULT now(),
++        \"updatedAt\" TIMESTAMP NOT NULL DEFAULT now(),
++        CONSTRAINT \"PK_patrol_groups_id\" PRIMARY KEY (\"id\")
++      )
++    `);
++
++    await queryRunner.query(`
++      CREATE TABLE \"patrol_schedules\" (
++        \"id\" uuid NOT NULL DEFAULT uuid_generate_v4(),
++        \"siteId\" uuid NOT NULL,
++        \"frequencyMinutes\" integer NOT NULL,
++        \"startHour\" integer NOT NULL,
++        \"endHour\" integer NOT NULL,
++        \"graceMinutes\" integer NOT NULL DEFAULT 15,
++        \"activeDays\" jsonb NOT NULL,
++        \"active\" boolean NOT NULL DEFAULT true,
++        \"createdAt\" TIMESTAMP NOT NULL DEFAULT now(),
++        \"updatedAt\" TIMESTAMP NOT NULL DEFAULT now(),
++        CONSTRAINT \"PK_patrol_schedules_id\" PRIMARY KEY (\"id\")
++      )
++    `);
++
++    await queryRunner.query(`
++      CREATE TABLE \"patrol_images\" (
++        \"id\" uuid NOT NULL DEFAULT uuid_generate_v4(),
++        \"siteId\" uuid NOT NULL,
++        \"groupId\" uuid,
++        \"collectorType\" \"public\".\"patrol_images_collectortype_enum\" NOT NULL,
++        \"senderName\" character varying(120),
++        \"senderNumber\" character varying(30),
++        \"messageExternalId\" character varying(120),
++        \"sentAt\" TIMESTAMP WITH TIME ZONE NOT NULL,
++        \"receivedAt\" TIMESTAMP WITH TIME ZONE NOT NULL,
++        \"patrolDate\" date NOT NULL,
++        \"patrolHour\" integer NOT NULL,
++        \"originalFileName\" character varying(255),
++        \"storedFileName\" character varying(255) NOT NULL,
++        \"filePath\" character varying(600) NOT NULL,
++        \"fileSize\" bigint NOT NULL,
++        \"mimeType\" character varying(100) NOT NULL,
++        \"status\" \"public\".\"patrol_images_status_enum\" NOT NULL,
++        \"notes\" text,
++        \"createdAt\" TIMESTAMP NOT NULL DEFAULT now(),
++        \"updatedAt\" TIMESTAMP NOT NULL DEFAULT now(),
++        CONSTRAINT \"PK_patrol_images_id\" PRIMARY KEY (\"id\")
++      )
++    `);
++
++    await queryRunner.query(`
++      CREATE TABLE \"patrol_slots\" (
++        \"id\" uuid NOT NULL DEFAULT uuid_generate_v4(),
++        \"siteId\" uuid NOT NULL,
++        \"slotStart\" TIMESTAMP WITH TIME ZONE NOT NULL,
++        \"slotEnd\" TIMESTAMP WITH TIME ZONE NOT NULL,
++        \"expectedAt\" TIMESTAMP WITH TIME ZONE NOT NULL,
++        \"status\" \"public\".\"patrol_slots_status_enum\" NOT NULL DEFAULT 'PENDING',
++        \"imageId\" uuid,
++        \"resolvedAt\" TIMESTAMP WITH TIME ZONE,
++        \"createdAt\" TIMESTAMP NOT NULL DEFAULT now(),
++        \"updatedAt\" TIMESTAMP NOT NULL DEFAULT now(),
++        CONSTRAINT \"PK_patrol_slots_id\" PRIMARY KEY (\"id\")
++      )
++    `);
++
++    await queryRunner.query(`
++      CREATE TABLE \"patrol_alerts\" (
++        \"id\" uuid NOT NULL DEFAULT uuid_generate_v4(),
++        \"siteId\" uuid NOT NULL,
++        \"slotId\" uuid NOT NULL,
++        \"alertType\" character varying(60) NOT NULL,
++        \"alertMessage\" character varying(255) NOT NULL,
++        \"alertTime\" TIMESTAMP WITH TIME ZONE NOT NULL,
++        \"isResolved\" boolean NOT NULL DEFAULT false,
++        \"resolvedAt\" TIMESTAMP WITH TIME ZONE,
++        \"createdAt\" TIMESTAMP NOT NULL DEFAULT now(),
++        \"updatedAt\" TIMESTAMP NOT NULL DEFAULT now(),
++        CONSTRAINT \"PK_patrol_alerts_id\" PRIMARY KEY (\"id\")
++      )
++    `);
++
++    await queryRunner.query(`ALTER TABLE \"patrol_groups\" ADD CONSTRAINT \"FK_patrol_groups_site\" FOREIGN KEY (\"siteId\") REFERENCES \"sites\"(\"id\") ON DELETE CASCADE`);
++    await queryRunner.query(`ALTER TABLE \"patrol_schedules\" ADD CONSTRAINT \"FK_patrol_schedules_site\" FOREIGN KEY (\"siteId\") REFERENCES \"sites\"(\"id\") ON DELETE CASCADE`);
++    await queryRunner.query(`ALTER TABLE \"patrol_images\" ADD CONSTRAINT \"FK_patrol_images_site\" FOREIGN KEY (\"siteId\") REFERENCES \"sites\"(\"id\") ON DELETE CASCADE`);
++    await queryRunner.query(`ALTER TABLE \"patrol_images\" ADD CONSTRAINT \"FK_patrol_images_group\" FOREIGN KEY (\"groupId\") REFERENCES \"patrol_groups\"(\"id\") ON DELETE SET NULL`);
++    await queryRunner.query(`ALTER TABLE \"patrol_slots\" ADD CONSTRAINT \"FK_patrol_slots_site\" FOREIGN KEY (\"siteId\") REFERENCES \"sites\"(\"id\") ON DELETE CASCADE`);
++    await queryRunner.query(`ALTER TABLE \"patrol_slots\" ADD CONSTRAINT \"FK_patrol_slots_image\" FOREIGN KEY (\"imageId\") REFERENCES \"patrol_images\"(\"id\") ON DELETE SET NULL`);
++    await queryRunner.query(`ALTER TABLE \"patrol_alerts\" ADD CONSTRAINT \"FK_patrol_alerts_site\" FOREIGN KEY (\"siteId\") REFERENCES \"sites\"(\"id\") ON DELETE CASCADE`);
++    await queryRunner.query(`ALTER TABLE \"patrol_alerts\" ADD CONSTRAINT \"FK_patrol_alerts_slot\" FOREIGN KEY (\"slotId\") REFERENCES \"patrol_slots\"(\"id\") ON DELETE CASCADE`);
++  }
++
++  public async down(queryRunner: QueryRunner): Promise<void> {
++    await queryRunner.query('ALTER TABLE "patrol_alerts" DROP CONSTRAINT "FK_patrol_alerts_slot"');
++    await queryRunner.query('ALTER TABLE "patrol_alerts" DROP CONSTRAINT "FK_patrol_alerts_site"');
++    await queryRunner.query('ALTER TABLE "patrol_slots" DROP CONSTRAINT "FK_patrol_slots_image"');
++    await queryRunner.query('ALTER TABLE "patrol_slots" DROP CONSTRAINT "FK_patrol_slots_site"');
++    await queryRunner.query('ALTER TABLE "patrol_images" DROP CONSTRAINT "FK_patrol_images_group"');
++    await queryRunner.query('ALTER TABLE "patrol_images" DROP CONSTRAINT "FK_patrol_images_site"');
++    await queryRunner.query('ALTER TABLE "patrol_schedules" DROP CONSTRAINT "FK_patrol_schedules_site"');
++    await queryRunner.query('ALTER TABLE "patrol_groups" DROP CONSTRAINT "FK_patrol_groups_site"');
++
++    await queryRunner.query('DROP TABLE "patrol_alerts"');
++    await queryRunner.query('DROP TABLE "patrol_slots"');
++    await queryRunner.query('DROP TABLE "patrol_images"');
++    await queryRunner.query('DROP TABLE "patrol_schedules"');
++    await queryRunner.query('DROP TABLE "patrol_groups"');
++    await queryRunner.query('DROP TABLE "sites"');
++
++    await queryRunner.query('DROP TYPE "public"."patrol_slots_status_enum"');
++    await queryRunner.query('DROP TYPE "public"."patrol_images_status_enum"');
++    await queryRunner.query('DROP TYPE "public"."patrol_images_collectortype_enum"');
++  }
++}
+diff --git a/patrol-evidence-platform/src/database/seeds/seed.ts b/patrol-evidence-platform/src/database/seeds/seed.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..0de01b89b70c70804f20582f347eb48acabaabfe
+--- /dev/null
++++ b/patrol-evidence-platform/src/database/seeds/seed.ts
+@@ -0,0 +1,93 @@
++import 'dotenv/config';
++import dataSource from '@/database/data-source';
++import { Site } from '@/sites/entities/site.entity';
++import { PatrolGroup } from '@/patrol-groups/entities/patrol-group.entity';
++import { PatrolSchedule } from '@/patrol-schedules/entities/patrol-schedule.entity';
++import { PatrolSlot } from '@/patrol-slots/entities/patrol-slot.entity';
++import { PatrolSlotStatus } from '@/common/enums/patrol-slot-status.enum';
++
++const SITE_CODES = [
++  'OXF01',
++  'NYC02',
++  'DAL03',
++  'SFO04',
++  'SEA05',
++  'MIA06',
++  'ATL07',
++  'PHX08',
++  'CHI09',
++  'DEN10',
++];
++
++async function seed(): Promise<void> {
++  await dataSource.initialize();
++
++  const siteRepo = dataSource.getRepository(Site);
++  const groupRepo = dataSource.getRepository(PatrolGroup);
++  const scheduleRepo = dataSource.getRepository(PatrolSchedule);
++  const slotRepo = dataSource.getRepository(PatrolSlot);
++
++  await groupRepo.delete({});
++  await scheduleRepo.delete({});
++  await slotRepo.delete({});
++  await siteRepo.delete({});
++
++  const today = new Date();
++  const dayStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), 0, 0, 0));
++
++  for (const [index, siteCode] of SITE_CODES.entries()) {
++    const site = await siteRepo.save(
++      siteRepo.create({
++        siteCode,
++        siteName: `Security Site ${index + 1}`,
++        clientName: `Client ${index + 1}`,
++        active: true,
++      }),
++    );
++
++    await groupRepo.save(
++      groupRepo.create({
++        siteId: site.id,
++        groupName: `${siteCode} Patrol Group`,
++        externalGroupId: `wa-group-${siteCode.toLowerCase()}`,
++        active: true,
++      }),
++    );
++
++    await scheduleRepo.save(
++      scheduleRepo.create({
++        siteId: site.id,
++        frequencyMinutes: 60,
++        startHour: 0,
++        endHour: 23,
++        graceMinutes: 15,
++        activeDays: [0, 1, 2, 3, 4, 5, 6],
++        active: true,
++      }),
++    );
++
++    const slots: PatrolSlot[] = [];
++    for (let hour = 0; hour < 24; hour += 1) {
++      const expectedAt = new Date(dayStart.getTime() + hour * 60 * 60 * 1000);
++      const slotEnd = new Date(expectedAt.getTime() + 60 * 60 * 1000);
++
++      slots.push(
++        slotRepo.create({
++          siteId: site.id,
++          slotStart: expectedAt,
++          expectedAt,
++          slotEnd,
++          status: PatrolSlotStatus.PENDING,
++        }),
++      );
++    }
++
++    await slotRepo.save(slots);
++  }
++
++  await dataSource.destroy();
++  // eslint-disable-next-line no-console
++  console.log('Seed completed for 10 demo sites with hourly schedules and today slots.');
++}
++
++void seed();
+diff --git a/patrol-evidence-platform/src/health/health.controller.ts b/patrol-evidence-platform/src/health/health.controller.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..f5042eac1617f4864f75c41f3a727b09f726ae56
+--- /dev/null
++++ b/patrol-evidence-platform/src/health/health.controller.ts
+@@ -0,0 +1,12 @@
++import { Controller, Get } from '@nestjs/common';
++
++@Controller('health')
++export class HealthController {
++  @Get()
++  check(): { status: string; timestamp: string } {
++    return {
++      status: 'ok',
++      timestamp: new Date().toISOString(),
++    };
++  }
++}
+diff --git a/patrol-evidence-platform/src/health/health.module.ts b/patrol-evidence-platform/src/health/health.module.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..7476abedd42363fc5cccdc9ebfddc0592e4e6e6d
+--- /dev/null
++++ b/patrol-evidence-platform/src/health/health.module.ts
+@@ -0,0 +1,7 @@
++import { Module } from '@nestjs/common';
++import { HealthController } from './health.controller';
++
++@Module({
++  controllers: [HealthController],
++})
++export class HealthModule {}
+diff --git a/patrol-evidence-platform/src/main.ts b/patrol-evidence-platform/src/main.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..c18926f961baa66374a218641a63c3b01b1b85d7
+--- /dev/null
++++ b/patrol-evidence-platform/src/main.ts
+@@ -0,0 +1,19 @@
++import { ValidationPipe } from '@nestjs/common';
++import { NestFactory } from '@nestjs/core';
++import { AppModule } from './app.module';
++
++async function bootstrap(): Promise<void> {
++  const app = await NestFactory.create(AppModule);
++
++  app.useGlobalPipes(
++    new ValidationPipe({
++      whitelist: true,
++      transform: true,
++      forbidNonWhitelisted: true,
++    }),
++  );
++
++  await app.listen(process.env.PORT ?? 3000);
++}
++
++void bootstrap();
+diff --git a/patrol-evidence-platform/src/patrol-alerts/entities/patrol-alert.entity.ts b/patrol-evidence-platform/src/patrol-alerts/entities/patrol-alert.entity.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..e0e3379003f76252835498f53576081ec33e9383
+--- /dev/null
++++ b/patrol-evidence-platform/src/patrol-alerts/entities/patrol-alert.entity.ts
+@@ -0,0 +1,49 @@
++import {
++  Column,
++  CreateDateColumn,
++  Entity,
++  ManyToOne,
++  PrimaryGeneratedColumn,
++  UpdateDateColumn,
++} from 'typeorm';
++import { Site } from '@/sites/entities/site.entity';
++import { PatrolSlot } from '@/patrol-slots/entities/patrol-slot.entity';
++
++@Entity('patrol_alerts')
++export class PatrolAlert {
++  @PrimaryGeneratedColumn('uuid')
++  id!: string;
++
++  @Column('uuid')
++  siteId!: string;
++
++  @ManyToOne(() => Site, (site) => site.alerts, { onDelete: 'CASCADE' })
++  site!: Site;
++
++  @Column('uuid')
++  slotId!: string;
++
++  @ManyToOne(() => PatrolSlot, { onDelete: 'CASCADE' })
++  slot!: PatrolSlot;
++
++  @Column({ length: 60 })
++  alertType!: string;
++
++  @Column({ length: 255 })
++  alertMessage!: string;
++
++  @Column({ type: 'timestamptz' })
++  alertTime!: Date;
++
++  @Column({ default: false })
++  isResolved!: boolean;
++
++  @Column({ type: 'timestamptz', nullable: true })
++  resolvedAt!: Date | null;
++
++  @CreateDateColumn()
++  createdAt!: Date;
++
++  @UpdateDateColumn()
++  updatedAt!: Date;
++}
+diff --git a/patrol-evidence-platform/src/patrol-alerts/patrol-alerts.module.ts b/patrol-evidence-platform/src/patrol-alerts/patrol-alerts.module.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..42892aab54b711ea076b8269bef38b528af570ae
+--- /dev/null
++++ b/patrol-evidence-platform/src/patrol-alerts/patrol-alerts.module.ts
+@@ -0,0 +1,11 @@
++import { Module } from '@nestjs/common';
++import { TypeOrmModule } from '@nestjs/typeorm';
++import { PatrolAlert } from './entities/patrol-alert.entity';
++import { PatrolAlertsService } from './patrol-alerts.service';
++
++@Module({
++  imports: [TypeOrmModule.forFeature([PatrolAlert])],
++  providers: [PatrolAlertsService],
++  exports: [PatrolAlertsService, TypeOrmModule],
++})
++export class PatrolAlertsModule {}
+diff --git a/patrol-evidence-platform/src/patrol-alerts/patrol-alerts.service.ts b/patrol-evidence-platform/src/patrol-alerts/patrol-alerts.service.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..61bc9c066e009110f88dd612e18082210104c2f3
+--- /dev/null
++++ b/patrol-evidence-platform/src/patrol-alerts/patrol-alerts.service.ts
+@@ -0,0 +1,42 @@
++import { Injectable } from '@nestjs/common';
++import { InjectRepository } from '@nestjs/typeorm';
++import { Repository } from 'typeorm';
++import { PatrolAlert } from './entities/patrol-alert.entity';
++
++@Injectable()
++export class PatrolAlertsService {
++  constructor(
++    @InjectRepository(PatrolAlert)
++    private readonly alertsRepo: Repository<PatrolAlert>,
++  ) {}
++
++  async createMissingAlert(params: {
++    siteId: string;
++    slotId: string;
++    alertTime: Date;
++    alertMessage: string;
++  }): Promise<PatrolAlert> {
++    const existing = await this.alertsRepo.findOne({
++      where: {
++        siteId: params.siteId,
++        slotId: params.slotId,
++        alertType: 'MISSING_PATROL',
++      },
++    });
++
++    if (existing) {
++      return existing;
++    }
++
++    return this.alertsRepo.save(
++      this.alertsRepo.create({
++        siteId: params.siteId,
++        slotId: params.slotId,
++        alertType: 'MISSING_PATROL',
++        alertTime: params.alertTime,
++        alertMessage: params.alertMessage,
++        isResolved: false,
++      }),
++    );
++  }
++}
+diff --git a/patrol-evidence-platform/src/patrol-groups/dto/create-patrol-group.dto.ts b/patrol-evidence-platform/src/patrol-groups/dto/create-patrol-group.dto.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..6387579eaddf98ab47882b5dadea509014a91697
+--- /dev/null
++++ b/patrol-evidence-platform/src/patrol-groups/dto/create-patrol-group.dto.ts
+@@ -0,0 +1,19 @@
++import { IsBoolean, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
++
++export class CreatePatrolGroupDto {
++  @IsUUID()
++  siteId!: string;
++
++  @IsString()
++  @MaxLength(150)
++  groupName!: string;
++
++  @IsOptional()
++  @IsString()
++  @MaxLength(120)
++  externalGroupId?: string;
++
++  @IsOptional()
++  @IsBoolean()
++  active?: boolean;
++}
+diff --git a/patrol-evidence-platform/src/patrol-groups/dto/update-patrol-group.dto.ts b/patrol-evidence-platform/src/patrol-groups/dto/update-patrol-group.dto.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..752f877d26db5c0589f08ab4d3230722b8ef6beb
+--- /dev/null
++++ b/patrol-evidence-platform/src/patrol-groups/dto/update-patrol-group.dto.ts
+@@ -0,0 +1,4 @@
++import { PartialType } from '@nestjs/mapped-types';
++import { CreatePatrolGroupDto } from './create-patrol-group.dto';
++
++export class UpdatePatrolGroupDto extends PartialType(CreatePatrolGroupDto) {}
+diff --git a/patrol-evidence-platform/src/patrol-groups/entities/patrol-group.entity.ts b/patrol-evidence-platform/src/patrol-groups/entities/patrol-group.entity.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..034efbcbc5988deb393e5367c1fa9151b749aa40
+--- /dev/null
++++ b/patrol-evidence-platform/src/patrol-groups/entities/patrol-group.entity.ts
+@@ -0,0 +1,41 @@
++import {
++  Column,
++  CreateDateColumn,
++  Entity,
++  ManyToOne,
++  OneToMany,
++  PrimaryGeneratedColumn,
++  UpdateDateColumn,
++} from 'typeorm';
++import { Site } from '@/sites/entities/site.entity';
++import { PatrolImage } from '@/patrol-images/entities/patrol-image.entity';
++
++@Entity('patrol_groups')
++export class PatrolGroup {
++  @PrimaryGeneratedColumn('uuid')
++  id!: string;
++
++  @Column('uuid')
++  siteId!: string;
++
++  @ManyToOne(() => Site, (site) => site.groups, { onDelete: 'CASCADE' })
++  site!: Site;
++
++  @Column({ length: 150 })
++  groupName!: string;
++
++  @Column({ nullable: true, length: 120 })
++  externalGroupId!: string | null;
++
++  @Column({ default: true })
++  active!: boolean;
++
++  @CreateDateColumn()
++  createdAt!: Date;
++
++  @UpdateDateColumn()
++  updatedAt!: Date;
++
++  @OneToMany(() => PatrolImage, (image) => image.group)
++  images!: PatrolImage[];
++}
+diff --git a/patrol-evidence-platform/src/patrol-groups/patrol-groups.controller.ts b/patrol-evidence-platform/src/patrol-groups/patrol-groups.controller.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..459568a839c4cab0daf4aa4073f12596d7e04609
+--- /dev/null
++++ b/patrol-evidence-platform/src/patrol-groups/patrol-groups.controller.ts
+@@ -0,0 +1,35 @@
++import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
++import { PatrolGroupsService } from './patrol-groups.service';
++import { CreatePatrolGroupDto } from './dto/create-patrol-group.dto';
++import { UpdatePatrolGroupDto } from './dto/update-patrol-group.dto';
++import { PatrolGroup } from './entities/patrol-group.entity';
++
++@Controller('patrol-groups')
++export class PatrolGroupsController {
++  constructor(private readonly groupsService: PatrolGroupsService) {}
++
++  @Post()
++  create(@Body() dto: CreatePatrolGroupDto): Promise<PatrolGroup> {
++    return this.groupsService.create(dto);
++  }
++
++  @Get()
++  findAll(): Promise<PatrolGroup[]> {
++    return this.groupsService.findAll();
++  }
++
++  @Get(':id')
++  findOne(@Param('id') id: string): Promise<PatrolGroup> {
++    return this.groupsService.findOne(id);
++  }
++
++  @Patch(':id')
++  update(@Param('id') id: string, @Body() dto: UpdatePatrolGroupDto): Promise<PatrolGroup> {
++    return this.groupsService.update(id, dto);
++  }
++
++  @Delete(':id')
++  remove(@Param('id') id: string): Promise<void> {
++    return this.groupsService.remove(id);
++  }
++}
+diff --git a/patrol-evidence-platform/src/patrol-groups/patrol-groups.module.ts b/patrol-evidence-platform/src/patrol-groups/patrol-groups.module.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..7385f140714e5565251ad958b14e11a28812ce3a
+--- /dev/null
++++ b/patrol-evidence-platform/src/patrol-groups/patrol-groups.module.ts
+@@ -0,0 +1,14 @@
++import { Module } from '@nestjs/common';
++import { TypeOrmModule } from '@nestjs/typeorm';
++import { PatrolGroup } from './entities/patrol-group.entity';
++import { PatrolGroupsService } from './patrol-groups.service';
++import { PatrolGroupsController } from './patrol-groups.controller';
++import { SitesModule } from '@/sites/sites.module';
++
++@Module({
++  imports: [TypeOrmModule.forFeature([PatrolGroup]), SitesModule],
++  providers: [PatrolGroupsService],
++  controllers: [PatrolGroupsController],
++  exports: [PatrolGroupsService, TypeOrmModule],
++})
++export class PatrolGroupsModule {}
+diff --git a/patrol-evidence-platform/src/patrol-groups/patrol-groups.service.ts b/patrol-evidence-platform/src/patrol-groups/patrol-groups.service.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..4e42e531d10050982913b97ded9f5cd4f4207927
+--- /dev/null
++++ b/patrol-evidence-platform/src/patrol-groups/patrol-groups.service.ts
+@@ -0,0 +1,45 @@
++import { Injectable, NotFoundException } from '@nestjs/common';
++import { InjectRepository } from '@nestjs/typeorm';
++import { Repository } from 'typeorm';
++import { PatrolGroup } from './entities/patrol-group.entity';
++import { CreatePatrolGroupDto } from './dto/create-patrol-group.dto';
++import { UpdatePatrolGroupDto } from './dto/update-patrol-group.dto';
++import { SitesService } from '@/sites/sites.service';
++
++@Injectable()
++export class PatrolGroupsService {
++  constructor(
++    @InjectRepository(PatrolGroup) private readonly groupsRepo: Repository<PatrolGroup>,
++    private readonly sitesService: SitesService,
++  ) {}
++
++  async create(dto: CreatePatrolGroupDto): Promise<PatrolGroup> {
++    await this.sitesService.findOne(dto.siteId);
++    return this.groupsRepo.save(this.groupsRepo.create(dto));
++  }
++
++  findAll(): Promise<PatrolGroup[]> {
++    return this.groupsRepo.find({ relations: ['site'], order: { createdAt: 'DESC' } });
++  }
++
++  async findOne(id: string): Promise<PatrolGroup> {
++    const group = await this.groupsRepo.findOne({ where: { id }, relations: ['site'] });
++    if (!group) {
++      throw new NotFoundException(`Patrol group ${id} not found`);
++    }
++    return group;
++  }
++
++  async update(id: string, dto: UpdatePatrolGroupDto): Promise<PatrolGroup> {
++    if (dto.siteId) {
++      await this.sitesService.findOne(dto.siteId);
++    }
++    const group = await this.findOne(id);
++    return this.groupsRepo.save({ ...group, ...dto });
++  }
++
++  async remove(id: string): Promise<void> {
++    const group = await this.findOne(id);
++    await this.groupsRepo.remove(group);
++  }
++}
+diff --git a/patrol-evidence-platform/src/patrol-images/dto/create-patrol-image.dto.ts b/patrol-evidence-platform/src/patrol-images/dto/create-patrol-image.dto.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..6742ae030739c6d58534b1f44d24c37a88ec9196
+--- /dev/null
++++ b/patrol-evidence-platform/src/patrol-images/dto/create-patrol-image.dto.ts
+@@ -0,0 +1,61 @@
++import { IsDateString, IsEnum, IsInt, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
++import { CollectorType } from '@/common/enums/collector-type.enum';
++
++export class CreatePatrolImageDto {
++  @IsUUID()
++  siteId!: string;
++
++  @IsOptional()
++  @IsUUID()
++  groupId?: string;
++
++  @IsEnum(CollectorType)
++  collectorType!: CollectorType;
++
++  @IsOptional()
++  @IsString()
++  @MaxLength(120)
++  senderName?: string;
++
++  @IsOptional()
++  @IsString()
++  @MaxLength(30)
++  senderNumber?: string;
++
++  @IsOptional()
++  @IsString()
++  @MaxLength(120)
++  messageExternalId?: string;
++
++  @IsDateString()
++  sentAt!: string;
++
++  @IsDateString()
++  receivedAt!: string;
++
++  @IsString()
++  patrolDate!: string;
++
++  @IsInt()
++  patrolHour!: number;
++
++  @IsOptional()
++  @IsString()
++  originalFileName?: string;
++
++  @IsString()
++  storedFileName!: string;
++
++  @IsString()
++  filePath!: string;
++
++  @IsString()
++  fileSize!: string;
++
++  @IsString()
++  mimeType!: string;
++
++  @IsOptional()
++  @IsString()
++  notes?: string;
++}
+diff --git a/patrol-evidence-platform/src/patrol-images/dto/manual-ingest.dto.ts b/patrol-evidence-platform/src/patrol-images/dto/manual-ingest.dto.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..576e6178fe3ebf861df04a3688c9e0ee79be8efe
+--- /dev/null
++++ b/patrol-evidence-platform/src/patrol-images/dto/manual-ingest.dto.ts
+@@ -0,0 +1,15 @@
++import { IsDateString, IsOptional, IsString, MaxLength } from 'class-validator';
++
++export class ManualIngestDto {
++  @IsString()
++  @MaxLength(20)
++  siteCode!: string;
++
++  @IsDateString()
++  timestamp!: string;
++
++  @IsOptional()
++  @IsString()
++  @MaxLength(120)
++  senderName?: string;
++}
+diff --git a/patrol-evidence-platform/src/patrol-images/entities/patrol-image.entity.ts b/patrol-evidence-platform/src/patrol-images/entities/patrol-image.entity.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..0d335c6b692ae8662d3bb3868521a28b798da719
+--- /dev/null
++++ b/patrol-evidence-platform/src/patrol-images/entities/patrol-image.entity.ts
+@@ -0,0 +1,81 @@
++import {
++  Column,
++  CreateDateColumn,
++  Entity,
++  ManyToOne,
++  PrimaryGeneratedColumn,
++  UpdateDateColumn,
++} from 'typeorm';
++import { Site } from '@/sites/entities/site.entity';
++import { PatrolGroup } from '@/patrol-groups/entities/patrol-group.entity';
++import { CollectorType } from '@/common/enums/collector-type.enum';
++import { PatrolSlotStatus } from '@/common/enums/patrol-slot-status.enum';
++
++@Entity('patrol_images')
++export class PatrolImage {
++  @PrimaryGeneratedColumn('uuid')
++  id!: string;
++
++  @Column('uuid')
++  siteId!: string;
++
++  @ManyToOne(() => Site, (site) => site.images, { onDelete: 'CASCADE' })
++  site!: Site;
++
++  @Column('uuid', { nullable: true })
++  groupId!: string | null;
++
++  @ManyToOne(() => PatrolGroup, (group) => group.images, { nullable: true, onDelete: 'SET NULL' })
++  group!: PatrolGroup | null;
++
++  @Column({ type: 'enum', enum: CollectorType })
++  collectorType!: CollectorType;
++
++  @Column({ nullable: true, length: 120 })
++  senderName!: string | null;
++
++  @Column({ nullable: true, length: 30 })
++  senderNumber!: string | null;
++
++  @Column({ nullable: true, length: 120 })
++  messageExternalId!: string | null;
++
++  @Column({ type: 'timestamptz' })
++  sentAt!: Date;
++
++  @Column({ type: 'timestamptz' })
++  receivedAt!: Date;
++
++  @Column({ type: 'date' })
++  patrolDate!: string;
++
++  @Column('int')
++  patrolHour!: number;
++
++  @Column({ nullable: true, length: 255 })
++  originalFileName!: string | null;
++
++  @Column({ length: 255 })
++  storedFileName!: string;
++
++  @Column({ length: 600 })
++  filePath!: string;
++
++  @Column('bigint')
++  fileSize!: string;
++
++  @Column({ length: 100 })
++  mimeType!: string;
++
++  @Column({ type: 'enum', enum: PatrolSlotStatus })
++  status!: PatrolSlotStatus;
++
++  @Column({ nullable: true, type: 'text' })
++  notes!: string | null;
++
++  @CreateDateColumn()
++  createdAt!: Date;
++
++  @UpdateDateColumn()
++  updatedAt!: Date;
++}
+diff --git a/patrol-evidence-platform/src/patrol-images/patrol-image-ingestion.service.spec.ts b/patrol-evidence-platform/src/patrol-images/patrol-image-ingestion.service.spec.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..c1ad1ca7c56be1e71dd5e8eaaba6b93f09712729
+--- /dev/null
++++ b/patrol-evidence-platform/src/patrol-images/patrol-image-ingestion.service.spec.ts
+@@ -0,0 +1,56 @@
++import { PatrolImageIngestionService } from './patrol-image-ingestion.service';
++import { CollectorType } from '@/common/enums/collector-type.enum';
++import { PatrolSlotStatus } from '@/common/enums/patrol-slot-status.enum';
++
++describe('PatrolImageIngestionService', () => {
++  const siteRepo = { findOne: jest.fn() };
++  const imageRepo = {
++    create: jest.fn((payload) => payload),
++    save: jest.fn(),
++  };
++  const storageService = { savePatrolEvidence: jest.fn() };
++  const complianceService = { updateSlotStatusFromImage: jest.fn() };
++
++  let service: PatrolImageIngestionService;
++
++  beforeEach(() => {
++    jest.clearAllMocks();
++    service = new PatrolImageIngestionService(
++      siteRepo as never,
++      imageRepo as never,
++      storageService as never,
++      complianceService as never,
++    );
++  });
++
++  it('ingests manual event and updates slot status', async () => {
++    siteRepo.findOne.mockResolvedValue({ id: 'site-1', siteCode: 'OXF01', active: true });
++    storageService.savePatrolEvidence.mockResolvedValue({
++      storedFileName: 'OXF01_2026-03-19_09-00-00.jpg',
++      filePath: '/tmp/OXF01_2026-03-19_09-00-00.jpg',
++      fileSize: 100,
++      mimeType: 'image/jpeg',
++    });
++
++    imageRepo.save
++      .mockResolvedValueOnce({ id: 'img-1', siteId: 'site-1', sentAt: new Date('2026-03-19T09:00:00.000Z') })
++      .mockResolvedValueOnce({ id: 'img-1', status: PatrolSlotStatus.RECEIVED_ON_TIME });
++
++    complianceService.updateSlotStatusFromImage.mockResolvedValue(PatrolSlotStatus.RECEIVED_ON_TIME);
++
++    const result = await service.ingestPatrolImage({
++      collectorType: CollectorType.MANUAL,
++      siteCode: 'OXF01',
++      timestamp: '2026-03-19T09:00:00.000Z',
++      senderName: 'Ali',
++      originalFileName: 'proof.jpg',
++      mimeType: 'image/jpeg',
++      fileSize: 100,
++      fileBuffer: Buffer.from('abc'),
++    });
++
++    expect(storageService.savePatrolEvidence).toHaveBeenCalled();
++    expect(complianceService.updateSlotStatusFromImage).toHaveBeenCalled();
++    expect(result.status).toBe(PatrolSlotStatus.RECEIVED_ON_TIME);
++  });
++});
+diff --git a/patrol-evidence-platform/src/patrol-images/patrol-image-ingestion.service.ts b/patrol-evidence-platform/src/patrol-images/patrol-image-ingestion.service.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..965c406b58ccd07c59c27735513fbbbfe176c1db
+--- /dev/null
++++ b/patrol-evidence-platform/src/patrol-images/patrol-image-ingestion.service.ts
+@@ -0,0 +1,88 @@
++import { Injectable, NotFoundException } from '@nestjs/common';
++import { InjectRepository } from '@nestjs/typeorm';
++import { Repository } from 'typeorm';
++import { CollectorType } from '@/common/enums/collector-type.enum';
++import { PatrolSlotStatus } from '@/common/enums/patrol-slot-status.enum';
++import { Site } from '@/sites/entities/site.entity';
++import { PatrolImage } from './entities/patrol-image.entity';
++import { StorageService } from '@/storage/storage.service';
++import { ComplianceService } from '@/compliance/compliance.service';
++
++export interface IngestPatrolImageEvent {
++  collectorType: CollectorType;
++  siteCode: string;
++  timestamp: string;
++  senderName?: string;
++  originalFileName?: string;
++  mimeType: string;
++  fileSize: number;
++  fileBuffer: Buffer;
++}
++
++@Injectable()
++export class PatrolImageIngestionService {
++  constructor(
++    @InjectRepository(Site)
++    private readonly siteRepo: Repository<Site>,
++    @InjectRepository(PatrolImage)
++    private readonly imageRepo: Repository<PatrolImage>,
++    private readonly storageService: StorageService,
++    private readonly complianceService: ComplianceService,
++  ) {}
++
++  async ingestPatrolImage(event: IngestPatrolImageEvent): Promise<PatrolImage> {
++    const normalized = this.normalizeIncomingEvent(event);
++    const site = await this.mapSourceToSite(normalized.siteCode);
++
++    const stored = await this.storageService.savePatrolEvidence({
++      siteCode: site.siteCode,
++      timestamp: normalized.timestamp,
++      buffer: normalized.fileBuffer,
++      mimeType: normalized.mimeType,
++    });
++
++    const patrolDate = normalized.timestamp.toISOString().slice(0, 10);
++
++    const image = await this.imageRepo.save(
++      this.imageRepo.create({
++        siteId: site.id,
++        collectorType: normalized.collectorType,
++        senderName: normalized.senderName ?? null,
++        senderNumber: null,
++        messageExternalId: null,
++        sentAt: normalized.timestamp,
++        receivedAt: new Date(),
++        patrolDate,
++        patrolHour: normalized.timestamp.getUTCHours(),
++        originalFileName: normalized.originalFileName ?? null,
++        storedFileName: stored.storedFileName,
++        filePath: stored.filePath,
++        fileSize: String(stored.fileSize),
++        mimeType: stored.mimeType,
++        status: PatrolSlotStatus.PENDING,
++        notes: null,
++      }),
++    );
++
++    const slotStatus = await this.complianceService.updateSlotStatusFromImage(image);
++    image.status = slotStatus;
++    return this.imageRepo.save(image);
++  }
++
++  private normalizeIncomingEvent(event: IngestPatrolImageEvent): IngestPatrolImageEvent & { timestamp: Date } {
++    return {
++      ...event,
++      collectorType: event.collectorType ?? CollectorType.MANUAL,
++      timestamp: new Date(event.timestamp),
++      senderName: event.senderName?.trim() || 'manual',
++    };
++  }
++
++  private async mapSourceToSite(siteCode: string): Promise<Site> {
++    const site = await this.siteRepo.findOne({ where: { siteCode, active: true } });
++    if (!site) {
++      throw new NotFoundException(`Active site with code ${siteCode} not found`);
++    }
++    return site;
++  }
++}
+diff --git a/patrol-evidence-platform/src/patrol-images/patrol-images.controller.ts b/patrol-evidence-platform/src/patrol-images/patrol-images.controller.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..31114aae6ac047d93c9018044e3121ab13048948
+--- /dev/null
++++ b/patrol-evidence-platform/src/patrol-images/patrol-images.controller.ts
+@@ -0,0 +1,63 @@
++import {
++  BadRequestException,
++  Body,
++  Controller,
++  ParseFilePipe,
++  Post,
++  UploadedFile,
++  UseInterceptors,
++  MaxFileSizeValidator,
++  FileTypeValidator,
++} from '@nestjs/common';
++import { FileInterceptor } from '@nestjs/platform-express';
++import { PatrolImagesService } from './patrol-images.service';
++import { CreatePatrolImageDto } from './dto/create-patrol-image.dto';
++import { PatrolImage } from './entities/patrol-image.entity';
++import { ManualIngestDto } from './dto/manual-ingest.dto';
++import { PatrolImageIngestionService } from './patrol-image-ingestion.service';
++import { CollectorType } from '@/common/enums/collector-type.enum';
++
++@Controller('patrol-images')
++export class PatrolImagesController {
++  constructor(
++    private readonly patrolImagesService: PatrolImagesService,
++    private readonly patrolImageIngestionService: PatrolImageIngestionService,
++  ) {}
++
++  @Post()
++  create(@Body() dto: CreatePatrolImageDto): Promise<PatrolImage> {
++    return this.patrolImagesService.create(dto);
++  }
++
++  @Post('manual-ingest')
++  @UseInterceptors(FileInterceptor('file'))
++  async manualIngest(
++    @Body() dto: ManualIngestDto,
++    @UploadedFile(
++      new ParseFilePipe({
++        validators: [
++          new MaxFileSizeValidator({ maxSize: 10 * 1024 * 1024 }),
++          new FileTypeValidator({ fileType: /image\/(jpeg|png)/i }),
++        ],
++      }),
++    )
++    file: Express.Multer.File,
++  ): Promise<PatrolImage> {
++
++    const ext = (file.originalname.split('.').pop() || '').toLowerCase();
++    if (!['jpg', 'jpeg', 'png'].includes(ext)) {
++      throw new BadRequestException('Only jpg, jpeg, and png files are allowed');
++    }
++
++    return this.patrolImageIngestionService.ingestPatrolImage({
++      collectorType: CollectorType.MANUAL,
++      siteCode: dto.siteCode,
++      timestamp: dto.timestamp,
++      senderName: dto.senderName,
++      originalFileName: file.originalname,
++      mimeType: file.mimetype,
++      fileSize: file.size,
++      fileBuffer: file.buffer,
++    });
++  }
++}
+diff --git a/patrol-evidence-platform/src/patrol-images/patrol-images.module.ts b/patrol-evidence-platform/src/patrol-images/patrol-images.module.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..d008137d2019d909a7ad908abed5355ea03e89bf
+--- /dev/null
++++ b/patrol-evidence-platform/src/patrol-images/patrol-images.module.ts
+@@ -0,0 +1,17 @@
++import { Module } from '@nestjs/common';
++import { TypeOrmModule } from '@nestjs/typeorm';
++import { PatrolImage } from './entities/patrol-image.entity';
++import { PatrolImagesService } from './patrol-images.service';
++import { PatrolImagesController } from './patrol-images.controller';
++import { ComplianceModule } from '@/compliance/compliance.module';
++import { PatrolImageIngestionService } from './patrol-image-ingestion.service';
++import { Site } from '@/sites/entities/site.entity';
++import { StorageModule } from '@/storage/storage.module';
++
++@Module({
++  imports: [TypeOrmModule.forFeature([PatrolImage, Site]), ComplianceModule, StorageModule],
++  providers: [PatrolImagesService, PatrolImageIngestionService],
++  controllers: [PatrolImagesController],
++  exports: [PatrolImagesService, PatrolImageIngestionService, TypeOrmModule],
++})
++export class PatrolImagesModule {}
+diff --git a/patrol-evidence-platform/src/patrol-images/patrol-images.service.ts b/patrol-evidence-platform/src/patrol-images/patrol-images.service.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..6056a08f70aa698b36d37cdcbe41637b0412471f
+--- /dev/null
++++ b/patrol-evidence-platform/src/patrol-images/patrol-images.service.ts
+@@ -0,0 +1,32 @@
++import { Injectable } from '@nestjs/common';
++import { InjectRepository } from '@nestjs/typeorm';
++import { Repository } from 'typeorm';
++import { PatrolImage } from './entities/patrol-image.entity';
++import { CreatePatrolImageDto } from './dto/create-patrol-image.dto';
++import { ComplianceService } from '@/compliance/compliance.service';
++import { PatrolSlotStatus } from '@/common/enums/patrol-slot-status.enum';
++
++@Injectable()
++export class PatrolImagesService {
++  constructor(
++    @InjectRepository(PatrolImage)
++    private readonly imageRepo: Repository<PatrolImage>,
++    private readonly complianceService: ComplianceService,
++  ) {}
++
++  async create(dto: CreatePatrolImageDto): Promise<PatrolImage> {
++    const image = await this.imageRepo.save(
++      this.imageRepo.create({
++        ...dto,
++        sentAt: new Date(dto.sentAt),
++        receivedAt: new Date(dto.receivedAt),
++        status: PatrolSlotStatus.PENDING,
++      }),
++    );
++
++    const status = await this.complianceService.updateSlotStatusFromImage(image);
++
++    image.status = status;
++    return this.imageRepo.save(image);
++  }
++}
+diff --git a/patrol-evidence-platform/src/patrol-schedules/dto/create-patrol-schedule.dto.ts b/patrol-evidence-platform/src/patrol-schedules/dto/create-patrol-schedule.dto.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..e216a3b98db264346bb19c62db3f8ff75ecb8554
+--- /dev/null
++++ b/patrol-evidence-platform/src/patrol-schedules/dto/create-patrol-schedule.dto.ts
+@@ -0,0 +1,48 @@
++import { Type } from 'class-transformer';
++import {
++  ArrayNotEmpty,
++  IsArray,
++  IsBoolean,
++  IsInt,
++  IsOptional,
++  IsUUID,
++  Max,
++  Min,
++} from 'class-validator';
++
++export class CreatePatrolScheduleDto {
++  @IsUUID()
++  siteId!: string;
++
++  @IsInt()
++  @Min(5)
++  @Max(1440)
++  frequencyMinutes!: number;
++
++  @IsInt()
++  @Min(0)
++  @Max(23)
++  startHour!: number;
++
++  @IsInt()
++  @Min(0)
++  @Max(23)
++  endHour!: number;
++
++  @IsInt()
++  @Min(0)
++  @Max(120)
++  graceMinutes!: number;
++
++  @IsArray()
++  @ArrayNotEmpty()
++  @Type(() => Number)
++  @IsInt({ each: true })
++  @Min(0, { each: true })
++  @Max(6, { each: true })
++  activeDays!: number[];
++
++  @IsOptional()
++  @IsBoolean()
++  active?: boolean;
++}
+diff --git a/patrol-evidence-platform/src/patrol-schedules/dto/update-patrol-schedule.dto.ts b/patrol-evidence-platform/src/patrol-schedules/dto/update-patrol-schedule.dto.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..e9a3d12767e93c6596bb8b6cf3e33e647d296d20
+--- /dev/null
++++ b/patrol-evidence-platform/src/patrol-schedules/dto/update-patrol-schedule.dto.ts
+@@ -0,0 +1,4 @@
++import { PartialType } from '@nestjs/mapped-types';
++import { CreatePatrolScheduleDto } from './create-patrol-schedule.dto';
++
++export class UpdatePatrolScheduleDto extends PartialType(CreatePatrolScheduleDto) {}
+diff --git a/patrol-evidence-platform/src/patrol-schedules/entities/patrol-schedule.entity.ts b/patrol-evidence-platform/src/patrol-schedules/entities/patrol-schedule.entity.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..273dac4692d7b251e07942589175c8180c903341
+--- /dev/null
++++ b/patrol-evidence-platform/src/patrol-schedules/entities/patrol-schedule.entity.ts
+@@ -0,0 +1,45 @@
++import {
++  Column,
++  CreateDateColumn,
++  Entity,
++  ManyToOne,
++  PrimaryGeneratedColumn,
++  UpdateDateColumn,
++} from 'typeorm';
++import { Site } from '@/sites/entities/site.entity';
++
++@Entity('patrol_schedules')
++export class PatrolSchedule {
++  @PrimaryGeneratedColumn('uuid')
++  id!: string;
++
++  @Column('uuid')
++  siteId!: string;
++
++  @ManyToOne(() => Site, (site) => site.schedules, { onDelete: 'CASCADE' })
++  site!: Site;
++
++  @Column('int')
++  frequencyMinutes!: number;
++
++  @Column('int')
++  startHour!: number;
++
++  @Column('int')
++  endHour!: number;
++
++  @Column('int', { default: 15 })
++  graceMinutes!: number;
++
++  @Column('jsonb')
++  activeDays!: number[];
++
++  @Column({ default: true })
++  active!: boolean;
++
++  @CreateDateColumn()
++  createdAt!: Date;
++
++  @UpdateDateColumn()
++  updatedAt!: Date;
++}
+diff --git a/patrol-evidence-platform/src/patrol-schedules/patrol-schedules.controller.ts b/patrol-evidence-platform/src/patrol-schedules/patrol-schedules.controller.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..49cc31a7e1f36c7e862a6bacb49addaf0c99e537
+--- /dev/null
++++ b/patrol-evidence-platform/src/patrol-schedules/patrol-schedules.controller.ts
+@@ -0,0 +1,35 @@
++import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
++import { PatrolSchedulesService } from './patrol-schedules.service';
++import { CreatePatrolScheduleDto } from './dto/create-patrol-schedule.dto';
++import { UpdatePatrolScheduleDto } from './dto/update-patrol-schedule.dto';
++import { PatrolSchedule } from './entities/patrol-schedule.entity';
++
++@Controller('patrol-schedules')
++export class PatrolSchedulesController {
++  constructor(private readonly schedulesService: PatrolSchedulesService) {}
++
++  @Post()
++  create(@Body() dto: CreatePatrolScheduleDto): Promise<PatrolSchedule> {
++    return this.schedulesService.create(dto);
++  }
++
++  @Get()
++  findAll(): Promise<PatrolSchedule[]> {
++    return this.schedulesService.findAll();
++  }
++
++  @Get(':id')
++  findOne(@Param('id') id: string): Promise<PatrolSchedule> {
++    return this.schedulesService.findOne(id);
++  }
++
++  @Patch(':id')
++  update(@Param('id') id: string, @Body() dto: UpdatePatrolScheduleDto): Promise<PatrolSchedule> {
++    return this.schedulesService.update(id, dto);
++  }
++
++  @Delete(':id')
++  remove(@Param('id') id: string): Promise<void> {
++    return this.schedulesService.remove(id);
++  }
++}
+diff --git a/patrol-evidence-platform/src/patrol-schedules/patrol-schedules.module.ts b/patrol-evidence-platform/src/patrol-schedules/patrol-schedules.module.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..f0287ccffeeb79c3a95bd0c4b7ca715209792f36
+--- /dev/null
++++ b/patrol-evidence-platform/src/patrol-schedules/patrol-schedules.module.ts
+@@ -0,0 +1,14 @@
++import { Module } from '@nestjs/common';
++import { TypeOrmModule } from '@nestjs/typeorm';
++import { PatrolSchedule } from './entities/patrol-schedule.entity';
++import { PatrolSchedulesService } from './patrol-schedules.service';
++import { PatrolSchedulesController } from './patrol-schedules.controller';
++import { SitesModule } from '@/sites/sites.module';
++
++@Module({
++  imports: [TypeOrmModule.forFeature([PatrolSchedule]), SitesModule],
++  providers: [PatrolSchedulesService],
++  controllers: [PatrolSchedulesController],
++  exports: [PatrolSchedulesService, TypeOrmModule],
++})
++export class PatrolSchedulesModule {}
+diff --git a/patrol-evidence-platform/src/patrol-schedules/patrol-schedules.service.ts b/patrol-evidence-platform/src/patrol-schedules/patrol-schedules.service.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..f74245a8b4d05ceafeff43635fc9682718bb5904
+--- /dev/null
++++ b/patrol-evidence-platform/src/patrol-schedules/patrol-schedules.service.ts
+@@ -0,0 +1,53 @@
++import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
++import { InjectRepository } from '@nestjs/typeorm';
++import { Repository } from 'typeorm';
++import { PatrolSchedule } from './entities/patrol-schedule.entity';
++import { CreatePatrolScheduleDto } from './dto/create-patrol-schedule.dto';
++import { UpdatePatrolScheduleDto } from './dto/update-patrol-schedule.dto';
++import { SitesService } from '@/sites/sites.service';
++
++@Injectable()
++export class PatrolSchedulesService {
++  constructor(
++    @InjectRepository(PatrolSchedule) private readonly schedulesRepo: Repository<PatrolSchedule>,
++    private readonly sitesService: SitesService,
++  ) {}
++
++  async create(dto: CreatePatrolScheduleDto): Promise<PatrolSchedule> {
++    this.validateHours(dto.startHour, dto.endHour);
++    await this.sitesService.findOne(dto.siteId);
++    return this.schedulesRepo.save(this.schedulesRepo.create(dto));
++  }
++
++  findAll(): Promise<PatrolSchedule[]> {
++    return this.schedulesRepo.find({ relations: ['site'], order: { createdAt: 'DESC' } });
++  }
++
++  async findOne(id: string): Promise<PatrolSchedule> {
++    const schedule = await this.schedulesRepo.findOne({ where: { id }, relations: ['site'] });
++    if (!schedule) {
++      throw new NotFoundException(`Patrol schedule ${id} not found`);
++    }
++    return schedule;
++  }
++
++  async update(id: string, dto: UpdatePatrolScheduleDto): Promise<PatrolSchedule> {
++    const schedule = await this.findOne(id);
++    if (dto.siteId) {
++      await this.sitesService.findOne(dto.siteId);
++    }
++    this.validateHours(dto.startHour ?? schedule.startHour, dto.endHour ?? schedule.endHour);
++    return this.schedulesRepo.save({ ...schedule, ...dto });
++  }
++
++  async remove(id: string): Promise<void> {
++    const schedule = await this.findOne(id);
++    await this.schedulesRepo.remove(schedule);
++  }
++
++  private validateHours(startHour: number, endHour: number): void {
++    if (endHour < startHour) {
++      throw new BadRequestException('endHour must be greater than or equal to startHour');
++    }
++  }
++}
+diff --git a/patrol-evidence-platform/src/patrol-slots/entities/patrol-slot.entity.ts b/patrol-evidence-platform/src/patrol-slots/entities/patrol-slot.entity.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..f37d4ab95fe52a517a0fe271d60fb363dfcf74c8
+--- /dev/null
++++ b/patrol-evidence-platform/src/patrol-slots/entities/patrol-slot.entity.ts
+@@ -0,0 +1,53 @@
++import {
++  Column,
++  CreateDateColumn,
++  Entity,
++  ManyToOne,
++  OneToOne,
++  JoinColumn,
++  PrimaryGeneratedColumn,
++  UpdateDateColumn,
++} from 'typeorm';
++import { Site } from '@/sites/entities/site.entity';
++import { PatrolSlotStatus } from '@/common/enums/patrol-slot-status.enum';
++import { PatrolImage } from '@/patrol-images/entities/patrol-image.entity';
++
++@Entity('patrol_slots')
++export class PatrolSlot {
++  @PrimaryGeneratedColumn('uuid')
++  id!: string;
++
++  @Column('uuid')
++  siteId!: string;
++
++  @ManyToOne(() => Site, (site) => site.slots, { onDelete: 'CASCADE' })
++  site!: Site;
++
++  @Column({ type: 'timestamptz' })
++  slotStart!: Date;
++
++  @Column({ type: 'timestamptz' })
++  slotEnd!: Date;
++
++  @Column({ type: 'timestamptz' })
++  expectedAt!: Date;
++
++  @Column({ type: 'enum', enum: PatrolSlotStatus, default: PatrolSlotStatus.PENDING })
++  status!: PatrolSlotStatus;
++
++  @Column('uuid', { nullable: true })
++  imageId!: string | null;
++
++  @OneToOne(() => PatrolImage, { nullable: true, onDelete: 'SET NULL' })
++  @JoinColumn({ name: 'imageId' })
++  image!: PatrolImage | null;
++
++  @Column({ type: 'timestamptz', nullable: true })
++  resolvedAt!: Date | null;
++
++  @CreateDateColumn()
++  createdAt!: Date;
++
++  @UpdateDateColumn()
++  updatedAt!: Date;
++}
+diff --git a/patrol-evidence-platform/src/patrol-slots/patrol-slots.controller.ts b/patrol-evidence-platform/src/patrol-slots/patrol-slots.controller.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..a965a8869c8f52bf5a6d78739297eb9227ec2b9a
+--- /dev/null
++++ b/patrol-evidence-platform/src/patrol-slots/patrol-slots.controller.ts
+@@ -0,0 +1,22 @@
++import { BadRequestException, Controller, Get, Query } from '@nestjs/common';
++import { PatrolSlotsService } from './patrol-slots.service';
++import { PatrolSlot } from './entities/patrol-slot.entity';
++
++@Controller('patrol-slots')
++export class PatrolSlotsController {
++  constructor(private readonly patrolSlotsService: PatrolSlotsService) {}
++
++  @Get()
++  async findBySiteAndDate(
++    @Query('siteCode') siteCode: string,
++    @Query('date') date: string,
++  ): Promise<PatrolSlot[]> {
++    if (!siteCode || !date) {
++      throw new BadRequestException('siteCode and date query params are required');
++    }
++
++    const dayStart = new Date(`${date}T00:00:00.000Z`);
++    const dayEnd = new Date(`${date}T23:59:59.999Z`);
++    return this.patrolSlotsService.findBySiteCodeAndDate(siteCode, dayStart, dayEnd);
++  }
++}
+diff --git a/patrol-evidence-platform/src/patrol-slots/patrol-slots.module.ts b/patrol-evidence-platform/src/patrol-slots/patrol-slots.module.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..f0a08820039363195210be5d8cdb857c8cdfdfc5
+--- /dev/null
++++ b/patrol-evidence-platform/src/patrol-slots/patrol-slots.module.ts
+@@ -0,0 +1,13 @@
++import { Module } from '@nestjs/common';
++import { TypeOrmModule } from '@nestjs/typeorm';
++import { PatrolSlot } from './entities/patrol-slot.entity';
++import { PatrolSlotsService } from './patrol-slots.service';
++import { PatrolSlotsController } from './patrol-slots.controller';
++
++@Module({
++  imports: [TypeOrmModule.forFeature([PatrolSlot])],
++  providers: [PatrolSlotsService],
++  controllers: [PatrolSlotsController],
++  exports: [PatrolSlotsService, TypeOrmModule],
++})
++export class PatrolSlotsModule {}
+diff --git a/patrol-evidence-platform/src/patrol-slots/patrol-slots.service.ts b/patrol-evidence-platform/src/patrol-slots/patrol-slots.service.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..4beb0ed63ec3a951af6a76bf457b227c8d4ea987
+--- /dev/null
++++ b/patrol-evidence-platform/src/patrol-slots/patrol-slots.service.ts
+@@ -0,0 +1,71 @@
++import { Injectable, NotFoundException } from '@nestjs/common';
++import { InjectRepository } from '@nestjs/typeorm';
++import { Between, Repository } from 'typeorm';
++import { PatrolSlot } from './entities/patrol-slot.entity';
++import { PatrolSlotStatus } from '@/common/enums/patrol-slot-status.enum';
++
++@Injectable()
++export class PatrolSlotsService {
++  constructor(
++    @InjectRepository(PatrolSlot)
++    private readonly slotsRepo: Repository<PatrolSlot>,
++  ) {}
++
++  createMany(slots: Partial<PatrolSlot>[]): Promise<PatrolSlot[]> {
++    return this.slotsRepo.save(this.slotsRepo.create(slots));
++  }
++
++  findBySiteAndDate(siteId: string, dayStart: Date, dayEnd: Date): Promise<PatrolSlot[]> {
++    return this.slotsRepo.find({
++      where: {
++        siteId,
++        expectedAt: Between(dayStart, dayEnd),
++      },
++      order: { expectedAt: 'ASC' },
++    });
++  }
++
++  async findBySiteCodeAndDate(siteCode: string, dayStart: Date, dayEnd: Date): Promise<PatrolSlot[]> {
++    return this.slotsRepo
++      .createQueryBuilder('slot')
++      .innerJoinAndSelect('slot.site', 'site')
++      .where('site.siteCode = :siteCode', { siteCode })
++      .andWhere('slot.expectedAt BETWEEN :dayStart AND :dayEnd', { dayStart, dayEnd })
++      .orderBy('slot.expectedAt', 'ASC')
++      .getMany();
++  }
++
++  async findSlotForTimestamp(siteId: string, timestamp: Date): Promise<PatrolSlot | null> {
++    return this.slotsRepo
++      .createQueryBuilder('slot')
++      .where('slot.siteId = :siteId', { siteId })
++      .andWhere(':timestamp >= slot.slotStart', { timestamp })
++      .andWhere(':timestamp < slot.slotEnd', { timestamp })
++      .orderBy('slot.slotStart', 'DESC')
++      .getOne();
++  }
++
++  async updateSlotStatus(slotId: string, status: PatrolSlotStatus, imageId?: string): Promise<PatrolSlot> {
++    const slot = await this.slotsRepo.findOne({ where: { id: slotId } });
++    if (!slot) {
++      throw new NotFoundException(`Slot ${slotId} not found`);
++    }
++
++    slot.status = status;
++    slot.imageId = imageId ?? null;
++    slot.resolvedAt = new Date();
++    return this.slotsRepo.save(slot);
++  }
++
++  async save(slot: PatrolSlot): Promise<PatrolSlot> {
++    return this.slotsRepo.save(slot);
++  }
++
++  async findPendingPastCutoff(now: Date): Promise<PatrolSlot[]> {
++    return this.slotsRepo
++      .createQueryBuilder('slot')
++      .where('slot.status = :status', { status: PatrolSlotStatus.PENDING })
++      .andWhere('slot.slotEnd < :now', { now })
++      .getMany();
++  }
++}
+diff --git a/patrol-evidence-platform/src/sites/dto/create-site.dto.ts b/patrol-evidence-platform/src/sites/dto/create-site.dto.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..acebce56605a3196fda2637ce758016f2a74faed
+--- /dev/null
++++ b/patrol-evidence-platform/src/sites/dto/create-site.dto.ts
+@@ -0,0 +1,20 @@
++import { IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator';
++
++export class CreateSiteDto {
++  @IsString()
++  @MaxLength(20)
++  siteCode!: string;
++
++  @IsString()
++  @MaxLength(120)
++  siteName!: string;
++
++  @IsOptional()
++  @IsString()
++  @MaxLength(120)
++  clientName?: string;
++
++  @IsOptional()
++  @IsBoolean()
++  active?: boolean;
++}
+diff --git a/patrol-evidence-platform/src/sites/dto/update-site.dto.ts b/patrol-evidence-platform/src/sites/dto/update-site.dto.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..d3963264d9f5c7d7100427d2a5a1054c3c756797
+--- /dev/null
++++ b/patrol-evidence-platform/src/sites/dto/update-site.dto.ts
+@@ -0,0 +1,4 @@
++import { PartialType } from '@nestjs/mapped-types';
++import { CreateSiteDto } from './create-site.dto';
++
++export class UpdateSiteDto extends PartialType(CreateSiteDto) {}
+diff --git a/patrol-evidence-platform/src/sites/entities/site.entity.ts b/patrol-evidence-platform/src/sites/entities/site.entity.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..ab688e2153dfef31fb20aee52b3850d957c1ced4
+--- /dev/null
++++ b/patrol-evidence-platform/src/sites/entities/site.entity.ts
+@@ -0,0 +1,54 @@
++import {
++  Column,
++  CreateDateColumn,
++  Entity,
++  Index,
++  OneToMany,
++  PrimaryGeneratedColumn,
++  UpdateDateColumn,
++} from 'typeorm';
++import { PatrolGroup } from '@/patrol-groups/entities/patrol-group.entity';
++import { PatrolSchedule } from '@/patrol-schedules/entities/patrol-schedule.entity';
++import { PatrolImage } from '@/patrol-images/entities/patrol-image.entity';
++import { PatrolSlot } from '@/patrol-slots/entities/patrol-slot.entity';
++import { PatrolAlert } from '@/patrol-alerts/entities/patrol-alert.entity';
++
++@Entity('sites')
++export class Site {
++  @PrimaryGeneratedColumn('uuid')
++  id!: string;
++
++  @Index({ unique: true })
++  @Column({ length: 20 })
++  siteCode!: string;
++
++  @Column({ length: 120 })
++  siteName!: string;
++
++  @Column({ length: 120, nullable: true })
++  clientName!: string | null;
++
++  @Column({ default: true })
++  active!: boolean;
++
++  @CreateDateColumn()
++  createdAt!: Date;
++
++  @UpdateDateColumn()
++  updatedAt!: Date;
++
++  @OneToMany(() => PatrolGroup, (group) => group.site)
++  groups!: PatrolGroup[];
++
++  @OneToMany(() => PatrolSchedule, (schedule) => schedule.site)
++  schedules!: PatrolSchedule[];
++
++  @OneToMany(() => PatrolImage, (image) => image.site)
++  images!: PatrolImage[];
++
++  @OneToMany(() => PatrolSlot, (slot) => slot.site)
++  slots!: PatrolSlot[];
++
++  @OneToMany(() => PatrolAlert, (alert) => alert.site)
++  alerts!: PatrolAlert[];
++}
+diff --git a/patrol-evidence-platform/src/sites/sites.controller.ts b/patrol-evidence-platform/src/sites/sites.controller.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..1b0ed866b28b5257cbd8dffc5e683061cc92ed88
+--- /dev/null
++++ b/patrol-evidence-platform/src/sites/sites.controller.ts
+@@ -0,0 +1,35 @@
++import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
++import { SitesService } from './sites.service';
++import { CreateSiteDto } from './dto/create-site.dto';
++import { UpdateSiteDto } from './dto/update-site.dto';
++import { Site } from './entities/site.entity';
++
++@Controller('sites')
++export class SitesController {
++  constructor(private readonly sitesService: SitesService) {}
++
++  @Post()
++  create(@Body() dto: CreateSiteDto): Promise<Site> {
++    return this.sitesService.create(dto);
++  }
++
++  @Get()
++  findAll(): Promise<Site[]> {
++    return this.sitesService.findAll();
++  }
++
++  @Get(':id')
++  findOne(@Param('id') id: string): Promise<Site> {
++    return this.sitesService.findOne(id);
++  }
++
++  @Patch(':id')
++  update(@Param('id') id: string, @Body() dto: UpdateSiteDto): Promise<Site> {
++    return this.sitesService.update(id, dto);
++  }
++
++  @Delete(':id')
++  remove(@Param('id') id: string): Promise<void> {
++    return this.sitesService.remove(id);
++  }
++}
+diff --git a/patrol-evidence-platform/src/sites/sites.module.ts b/patrol-evidence-platform/src/sites/sites.module.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..6804082b386bfea33ec536acc26e872af49d6478
+--- /dev/null
++++ b/patrol-evidence-platform/src/sites/sites.module.ts
+@@ -0,0 +1,13 @@
++import { Module } from '@nestjs/common';
++import { TypeOrmModule } from '@nestjs/typeorm';
++import { Site } from './entities/site.entity';
++import { SitesService } from './sites.service';
++import { SitesController } from './sites.controller';
++
++@Module({
++  imports: [TypeOrmModule.forFeature([Site])],
++  providers: [SitesService],
++  controllers: [SitesController],
++  exports: [SitesService, TypeOrmModule],
++})
++export class SitesModule {}
+diff --git a/patrol-evidence-platform/src/sites/sites.service.ts b/patrol-evidence-platform/src/sites/sites.service.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..34d16d5187ef9f90a9c8720b13f992193e35e249
+--- /dev/null
++++ b/patrol-evidence-platform/src/sites/sites.service.ts
+@@ -0,0 +1,37 @@
++import { Injectable, NotFoundException } from '@nestjs/common';
++import { InjectRepository } from '@nestjs/typeorm';
++import { Repository } from 'typeorm';
++import { Site } from './entities/site.entity';
++import { CreateSiteDto } from './dto/create-site.dto';
++import { UpdateSiteDto } from './dto/update-site.dto';
++
++@Injectable()
++export class SitesService {
++  constructor(@InjectRepository(Site) private readonly sitesRepo: Repository<Site>) {}
++
++  create(dto: CreateSiteDto): Promise<Site> {
++    return this.sitesRepo.save(this.sitesRepo.create(dto));
++  }
++
++  findAll(): Promise<Site[]> {
++    return this.sitesRepo.find({ order: { siteCode: 'ASC' } });
++  }
++
++  async findOne(id: string): Promise<Site> {
++    const site = await this.sitesRepo.findOne({ where: { id } });
++    if (!site) {
++      throw new NotFoundException(`Site ${id} not found`);
++    }
++    return site;
++  }
++
++  async update(id: string, dto: UpdateSiteDto): Promise<Site> {
++    const site = await this.findOne(id);
++    return this.sitesRepo.save({ ...site, ...dto });
++  }
++
++  async remove(id: string): Promise<void> {
++    const site = await this.findOne(id);
++    await this.sitesRepo.remove(site);
++  }
++}
+diff --git a/patrol-evidence-platform/src/storage/storage.module.ts b/patrol-evidence-platform/src/storage/storage.module.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..9183e1bc9983aad4499373e4bf268276d7ada13d
+--- /dev/null
++++ b/patrol-evidence-platform/src/storage/storage.module.ts
+@@ -0,0 +1,8 @@
++import { Module } from '@nestjs/common';
++import { StorageService } from './storage.service';
++
++@Module({
++  providers: [StorageService],
++  exports: [StorageService],
++})
++export class StorageModule {}
+diff --git a/patrol-evidence-platform/src/storage/storage.service.ts b/patrol-evidence-platform/src/storage/storage.service.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..9ac910e59897f8f29edff20a3c8c6f144a1e326f
+--- /dev/null
++++ b/patrol-evidence-platform/src/storage/storage.service.ts
+@@ -0,0 +1,66 @@
++import { Injectable } from '@nestjs/common';
++import { ConfigService } from '@nestjs/config';
++import { promises as fs } from 'fs';
++import * as path from 'path';
++
++export interface StoredFileResult {
++  storedFileName: string;
++  filePath: string;
++  fileSize: number;
++  mimeType: string;
++}
++
++@Injectable()
++export class StorageService {
++  private readonly rootPath: string;
++
++  constructor(configService: ConfigService) {
++    this.rootPath = configService.getOrThrow<string>('storageRootPath');
++  }
++
++  async savePatrolEvidence(params: {
++    siteCode: string;
++    timestamp: Date;
++    buffer: Buffer;
++    mimeType: string;
++  }): Promise<StoredFileResult> {
++    const siteCode = this.sanitize(params.siteCode);
++    const patrolDate = this.formatDate(params.timestamp);
++    const timePart = this.formatTime(params.timestamp);
++
++    const storedFileName = `${siteCode}_${patrolDate}_${timePart}.jpg`;
++    const targetDir = path.join(this.rootPath, siteCode, patrolDate);
++    const filePath = path.join(targetDir, storedFileName);
++
++    await fs.mkdir(targetDir, { recursive: true });
++    await fs.writeFile(filePath, params.buffer);
++
++    return {
++      storedFileName,
++      filePath,
++      fileSize: params.buffer.length,
++      mimeType: params.mimeType,
++    };
++  }
++
++  private sanitize(value: string): string {
++    return value
++      .trim()
++      .replace(/[^a-zA-Z0-9._-]/g, '_')
++      .replace(/_+/g, '_');
++  }
++
++  private formatDate(value: Date): string {
++    const year = value.getUTCFullYear();
++    const month = String(value.getUTCMonth() + 1).padStart(2, '0');
++    const day = String(value.getUTCDate()).padStart(2, '0');
++    return `${year}-${month}-${day}`;
++  }
++
++  private formatTime(value: Date): string {
++    const hh = String(value.getUTCHours()).padStart(2, '0');
++    const mm = String(value.getUTCMinutes()).padStart(2, '0');
++    const ss = String(value.getUTCSeconds()).padStart(2, '0');
++    return `${hh}-${mm}-${ss}`;
++  }
++}
+diff --git a/patrol-evidence-platform/src/users/users.module.ts b/patrol-evidence-platform/src/users/users.module.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..e3b6a6d6f3759b4721f49d079b0eea94a074a9b4
+--- /dev/null
++++ b/patrol-evidence-platform/src/users/users.module.ts
+@@ -0,0 +1,4 @@
++import { Module } from '@nestjs/common';
++
++@Module({})
++export class UsersModule {}
+diff --git a/patrol-evidence-platform/tsconfig.build.json b/patrol-evidence-platform/tsconfig.build.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..64f86c6bd2bb30e3d22e752295eb7c7923fc191e
+--- /dev/null
++++ b/patrol-evidence-platform/tsconfig.build.json
+@@ -0,0 +1,4 @@
++{
++  "extends": "./tsconfig.json",
++  "exclude": ["node_modules", "test", "dist", "**/*spec.ts"]
++}
+diff --git a/patrol-evidence-platform/tsconfig.json b/patrol-evidence-platform/tsconfig.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..c2bb9e3337f94975bef128c2b1830b0ba10c0dc0
+--- /dev/null
++++ b/patrol-evidence-platform/tsconfig.json
+@@ -0,0 +1,25 @@
++{
++  "compilerOptions": {
++    "module": "commonjs",
++    "declaration": true,
++    "removeComments": true,
++    "emitDecoratorMetadata": true,
++    "experimentalDecorators": true,
++    "allowSyntheticDefaultImports": true,
++    "target": "es2021",
++    "sourceMap": true,
++    "outDir": "./dist",
++    "baseUrl": "./",
++    "incremental": true,
++    "skipLibCheck": true,
++    "strict": true,
++    "noImplicitAny": true,
++    "strictNullChecks": true,
++    "moduleResolution": "node",
++    "paths": {
++      "@/*": ["src/*"]
++    }
++  },
++  "include": ["src/**/*", "test/**/*"],
++  "exclude": ["node_modules", "dist"]
++}
+ 
+EOF
+)
