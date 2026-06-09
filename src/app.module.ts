@@ -18,11 +18,17 @@ import { PatrolSlotsModule } from './patrol-slots/patrol-slots.module';
 import { CollectorsModule } from './collectors/collectors.module';
 import { ComplianceModule } from './compliance/compliance.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { OpsModule } from './ops/ops.module';
+import { IncidentsModule } from './incidents/incidents.module';
+import { DesktopModule } from './desktop/desktop.module';
+import { LicensingModule } from './licensing/licensing.module';
+import { BootstrapModule } from './bootstrap/bootstrap.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      ignoreEnvFile: Boolean(process.env.DESKTOP_CONFIG_PATH?.trim()),
       load: [appConfig, databaseConfig],
       validate: validateEnv,
     }),
@@ -44,7 +50,12 @@ import { DashboardModule } from './dashboard/dashboard.module';
     PatrolAlertsModule,
     CollectorsModule,
     ComplianceModule,
+    IncidentsModule,
     DashboardModule,
+    OpsModule,
+    LicensingModule,
+    DesktopModule,
+    BootstrapModule,
   ],
 })
 export class AppModule {}

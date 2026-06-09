@@ -5,6 +5,13 @@ import { PatrolGroup } from '@/patrol-groups/entities/patrol-group.entity';
 import { PatrolSchedule } from '@/patrol-schedules/entities/patrol-schedule.entity';
 import { PatrolSlot } from '@/patrol-slots/entities/patrol-slot.entity';
 import { PatrolSlotStatus } from '@/common/enums/patrol-slot-status.enum';
+import { User } from '@/users/entities/user.entity';
+import { UserRole } from '@/common/enums/user-role.enum';
+import { hashPassword } from '@/auth/security/password.util';
+import { Company } from '@/companies/entities/company.entity';
+import { Incident } from '@/incidents/entities/incident.entity';
+import { IncidentSeverity } from '@/common/enums/incident-severity.enum';
+import { IncidentStatus } from '@/common/enums/incident-status.enum';
 
 const SITE_CODES = [
   'OXF01',
@@ -22,22 +29,90 @@ const SITE_CODES = [
 async function seed(): Promise<void> {
   await dataSource.initialize();
 
+  const companyRepo = dataSource.getRepository(Company);
   const siteRepo = dataSource.getRepository(Site);
   const groupRepo = dataSource.getRepository(PatrolGroup);
   const scheduleRepo = dataSource.getRepository(PatrolSchedule);
   const slotRepo = dataSource.getRepository(PatrolSlot);
+  const userRepo = dataSource.getRepository(User);
+  const incidentRepo = dataSource.getRepository(Incident);
 
-  await groupRepo.delete({});
-  await scheduleRepo.delete({});
-  await slotRepo.delete({});
-  await siteRepo.delete({});
+  await dataSource.query(
+    'TRUNCATE TABLE "incidents", "users", "patrol_alerts", "patrol_slots", "patrol_images", "patrol_schedules", "patrol_groups", "sites", "companies" RESTART IDENTITY CASCADE',
+  );
+
+  const [alphaCompany, betaCompany] = await companyRepo.save(
+    companyRepo.create([
+      { companyName: 'Alpha Security', active: true },
+      { companyName: 'Beta Security', active: true },
+    ]),
+  );
 
   const today = new Date();
   const dayStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate(), 0, 0, 0));
 
+  const defaultPasswordHash = await hashPassword('Password123!');
+
+  await userRepo.save(
+    userRepo.create([
+      {
+        email: 'admin@patrol.local',
+        passwordHash: defaultPasswordHash,
+        firstName: 'Platform',
+        lastName: 'Admin',
+        role: UserRole.ADMIN,
+        companyId: null,
+        active: true,
+        approved: true,
+      },
+      {
+        email: 'alpha.admin@patrol.local',
+        passwordHash: defaultPasswordHash,
+        firstName: 'Alpha',
+        lastName: 'Admin',
+        role: UserRole.COMPANY_ADMIN,
+        companyId: alphaCompany.id,
+        active: true,
+        approved: true,
+      },
+      {
+        email: 'beta.admin@patrol.local',
+        passwordHash: defaultPasswordHash,
+        firstName: 'Beta',
+        lastName: 'Admin',
+        role: UserRole.COMPANY_ADMIN,
+        companyId: betaCompany.id,
+        active: true,
+        approved: true,
+      },
+      {
+        email: 'alpha.guard@patrol.local',
+        passwordHash: defaultPasswordHash,
+        firstName: 'Alpha',
+        lastName: 'Guard',
+        role: UserRole.GUARD,
+        companyId: alphaCompany.id,
+        active: true,
+        approved: true,
+      },
+      {
+        email: 'alpha.pending.guard@patrol.local',
+        passwordHash: defaultPasswordHash,
+        firstName: 'Pending',
+        lastName: 'Guard',
+        role: UserRole.GUARD,
+        companyId: alphaCompany.id,
+        active: true,
+        approved: false,
+      },
+    ]),
+  );
+
   for (const [index, siteCode] of SITE_CODES.entries()) {
+    const company = index < SITE_CODES.length / 2 ? alphaCompany : betaCompany;
     const site = await siteRepo.save(
       siteRepo.create({
+        companyId: company.id,
         siteCode,
         siteName: `Security Site ${index + 1}`,
         clientName: `Client ${index + 1}`,
@@ -57,9 +132,11 @@ async function seed(): Promise<void> {
     await scheduleRepo.save(
       scheduleRepo.create({
         siteId: site.id,
+        scheduleName: 'Day shift',
+        expectedGuards: 1,
         frequencyMinutes: 60,
         startHour: 0,
-        endHour: 23,
+        endHour: 0,
         graceMinutes: 15,
         activeDays: [0, 1, 2, 3, 4, 5, 6],
         active: true,
@@ -85,9 +162,23 @@ async function seed(): Promise<void> {
     await slotRepo.save(slots);
   }
 
+  const alphaGuard = await userRepo.findOneByOrFail({ email: 'alpha.guard@patrol.local' });
+  const alphaPrimarySite = await siteRepo.findOneByOrFail({ siteCode: SITE_CODES[0] });
+
+  const seededIncident = incidentRepo.create({
+    guardId: alphaGuard.id,
+    companyId: alphaPrimarySite.companyId,
+    siteId: alphaPrimarySite.id,
+    description: 'Seeded incident for trial review',
+    severity: IncidentSeverity.MEDIUM,
+    status: IncidentStatus.OPEN,
+  });
+
+  await incidentRepo.save(seededIncident);
+
   await dataSource.destroy();
   // eslint-disable-next-line no-console
-  console.log('Seed completed for 10 demo sites with hourly schedules and today slots.');
+  console.log('Seed completed with two companies and demo auth users. Default password: Password123!');
 }
 
 void seed();

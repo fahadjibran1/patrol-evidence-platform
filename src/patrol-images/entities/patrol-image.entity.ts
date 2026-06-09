@@ -2,80 +2,143 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  JoinColumn,
   ManyToOne,
+  OneToOne,
   PrimaryGeneratedColumn,
+  RelationId,
   UpdateDateColumn,
 } from 'typeorm';
 import { Site } from '@/sites/entities/site.entity';
 import { PatrolGroup } from '@/patrol-groups/entities/patrol-group.entity';
 import { CollectorType } from '@/common/enums/collector-type.enum';
 import { PatrolSlotStatus } from '@/common/enums/patrol-slot-status.enum';
+import { PatrolSlot } from '@/patrol-slots/entities/patrol-slot.entity';
+import { bigintColumn, dateTimeColumn, enumColumn } from '@/common/utils/database-column.util';
 
 @Entity('patrol_images')
 export class PatrolImage {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column('uuid')
+  @Column({ type: 'uuid' })
   siteId!: string;
 
   @ManyToOne(() => Site, (site) => site.images, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'siteId' })
   site!: Site;
 
-  @Column('uuid', { nullable: true })
-  groupId!: string | null;
+  @Column({ type: 'uuid', nullable: true })
+  groupId?: string;
 
-  @ManyToOne(() => PatrolGroup, (group) => group.images, { nullable: true, onDelete: 'SET NULL' })
-  group!: PatrolGroup | null;
+  @ManyToOne(() => PatrolGroup, (group) => group.images, {
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
+  @JoinColumn({ name: 'groupId' })
+  group?: PatrolGroup;
 
-  @Column({ type: 'enum', enum: CollectorType })
+  @OneToOne(() => PatrolSlot, (slot) => slot.image)
+  slot?: PatrolSlot | null;
+
+  @RelationId((image: PatrolImage) => image.slot)
+  readonly patrolSlotId?: string | null;
+
+  @Column(enumColumn(CollectorType))
   collectorType!: CollectorType;
 
-  @Column({ nullable: true, length: 120 })
-  senderName!: string | null;
+  @Column({
+    type: 'varchar',
+    length: 120,
+    nullable: true,
+  })
+  senderName?: string;
 
-  @Column({ nullable: true, length: 30 })
-  senderNumber!: string | null;
+  @Column({
+    type: 'varchar',
+    length: 30,
+    nullable: true,
+  })
+  senderNumber?: string;
 
-  @Column({ nullable: true, length: 120 })
-  messageExternalId!: string | null;
+  @Column({
+    type: 'varchar',
+    length: 120,
+    nullable: true,
+  })
+  senderExternalId?: string;
 
-  @Column({ type: 'timestamptz' })
+  @Column({
+    type: 'varchar',
+    length: 120,
+    nullable: true,
+  })
+  messageExternalId?: string;
+
+  @Column(dateTimeColumn())
   sentAt!: Date;
 
-  @Column({ type: 'timestamptz' })
+  @Column(dateTimeColumn())
   receivedAt!: Date;
 
-  @Column({ type: 'date' })
+  @Column({
+    type: 'date',
+  })
   patrolDate!: string;
 
-  @Column('int')
+  @Column({
+    type: 'int',
+  })
   patrolHour!: number;
 
-  @Column({ nullable: true, length: 255 })
-  originalFileName!: string | null;
+  @Column({
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
+  originalFileName?: string;
 
-  @Column({ length: 255 })
+  @Column({
+    type: 'varchar',
+    length: 255,
+  })
   storedFileName!: string;
 
-  @Column({ length: 600 })
+  @Column({
+    type: 'varchar',
+    length: 600,
+  })
   filePath!: string;
 
-  @Column('bigint')
+  @Column(bigintColumn())
   fileSize!: string;
 
-  @Column({ length: 100 })
+  @Column({
+    type: 'varchar',
+    length: 100,
+  })
   mimeType!: string;
 
-  @Column({ type: 'enum', enum: PatrolSlotStatus })
+  @Column(enumColumn(PatrolSlotStatus))
   status!: PatrolSlotStatus;
 
-  @Column({ nullable: true, type: 'text' })
-  notes!: string | null;
+  @Column({
+    type: 'text',
+    nullable: true,
+  })
+  notes?: string;
 
-  @CreateDateColumn()
+  @CreateDateColumn(dateTimeColumn())
   createdAt!: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn(dateTimeColumn())
   updatedAt!: Date;
+
+  get timestamp(): Date {
+    return this.sentAt;
+  }
+
+  get imageUrl(): string {
+    return this.filePath;
+  }
 }

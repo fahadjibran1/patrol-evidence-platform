@@ -3,6 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Between, Repository } from 'typeorm';
 import { PatrolSlot } from './entities/patrol-slot.entity';
 import { PatrolSlotStatus } from '@/common/enums/patrol-slot-status.enum';
+import { AuthenticatedUser } from '@/auth/interfaces/authenticated-request.interface';
+import { UserRole } from '@/common/enums/user-role.enum';
 
 @Injectable()
 export class PatrolSlotsService {
@@ -25,14 +27,24 @@ export class PatrolSlotsService {
     });
   }
 
-  async findBySiteCodeAndDate(siteCode: string, dayStart: Date, dayEnd: Date): Promise<PatrolSlot[]> {
-    return this.slotsRepo
+  async findBySiteCodeAndDate(
+    siteCode: string,
+    dayStart: Date,
+    dayEnd: Date,
+    user: AuthenticatedUser,
+  ): Promise<PatrolSlot[]> {
+    const query = this.slotsRepo
       .createQueryBuilder('slot')
       .innerJoinAndSelect('slot.site', 'site')
       .where('site.siteCode = :siteCode', { siteCode })
       .andWhere('slot.expectedAt BETWEEN :dayStart AND :dayEnd', { dayStart, dayEnd })
-      .orderBy('slot.expectedAt', 'ASC')
-      .getMany();
+      .orderBy('slot.expectedAt', 'ASC');
+
+    if (user.role !== UserRole.ADMIN) {
+      query.andWhere('site.companyId = :companyId', { companyId: user.companyId });
+    }
+
+    return query.getMany();
   }
 
   async findSlotForTimestamp(siteId: string, timestamp: Date): Promise<PatrolSlot | null> {

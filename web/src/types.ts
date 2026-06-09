@@ -1,0 +1,412 @@
+export type UserRole = 'ADMIN' | 'COMPANY_ADMIN' | 'GUARD';
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  role: UserRole;
+  companyId: string | null;
+  active: boolean;
+  approved: boolean;
+}
+
+export interface LoginResponse {
+  accessToken: string;
+  user: AuthUser;
+}
+
+export interface ApiErrorPayload {
+  message?: string | string[];
+  error?: string;
+  statusCode?: number;
+}
+
+export interface Site {
+  id: string;
+  companyId: string;
+  siteCode: string;
+  siteName: string;
+  clientName?: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DashboardOverview {
+  date: string;
+  siteTotals: {
+    active: number;
+    withScheduledSlots: number;
+  };
+  slotTotals: Record<string, number>;
+  imageTotals: {
+    received: number;
+  };
+  alerts: {
+    unresolved: number;
+  };
+  recentImages: Array<{
+    id: string;
+    siteCode: string;
+    sentAt: string;
+    status: string;
+    senderName?: string;
+  }>;
+}
+
+export interface DashboardSiteRow {
+  siteId: string;
+  siteCode: string;
+  siteName: string;
+  clientName?: string;
+  safeHours: number;
+  missingHours: number;
+  pendingHours: number;
+  imagesReceived: number;
+  unresolvedAlerts: number;
+  latestImageAt: string | null;
+}
+
+export interface DashboardHourlySafetyCell {
+  hour: number;
+  status: 'Safe' | 'Missing' | 'Pending';
+  safeFlag: boolean;
+  firstPictureTime: string | null;
+  firstSenderName: string | null;
+  firstImageId: string | null;
+  imageCount: number;
+}
+
+export interface DashboardHourlySafetyRow {
+  siteId: string;
+  siteCode: string;
+  siteName: string;
+  groupId: string | null;
+  groupName: string | null;
+  hourlyCells: DashboardHourlySafetyCell[];
+}
+
+export interface DashboardHourlyGuardStatusEntry {
+  guardId: string;
+  guardName: string;
+  status: 'Reported' | 'Missing';
+  firstPictureTime: string | null;
+  totalPicturesInHour: number;
+  senderNumber: string | null;
+}
+
+export interface DashboardHourlyGuardStatusRow {
+  date: string;
+  siteId: string;
+  siteCode: string;
+  siteName: string;
+  groupId: string | null;
+  groupName: string | null;
+  hour: number;
+  siteStatus: 'Safe' | 'Missing' | 'Pending';
+  expectedGuards: DashboardHourlyGuardStatusEntry[];
+}
+
+export interface WhatsAppCollectorStatus {
+  enabled: boolean;
+  connected: boolean;
+  ready: boolean;
+  state:
+    | 'disabled'
+    | 'idle'
+    | 'starting'
+    | 'browser-launching'
+    | 'whatsapp-loading'
+    | 'waiting-for-qr'
+    | 'qr-ready'
+    | 'authenticated'
+    | 'waiting-for-client-info'
+    | 'ready'
+    | 'disconnected'
+    | 'failed';
+  info: string;
+  sessionPath: string;
+  sessionCorruptionSuspected?: boolean;
+  sessionCorruptionMessage?: string | null;
+  qrCode: string | null;
+  lastQrAt: string | null;
+  lastMessageAt: string | null;
+  lastEventAt: string | null;
+  lastReadyAt: string | null;
+  lastDisconnectAt: string | null;
+  lastBackfillAt: string | null;
+  connectedAccount: string | null;
+  backfillRunning: boolean;
+  backfillMessagesScanned: number;
+  backfillImagesImported: number;
+  backfillDuplicatesSkipped: number;
+  allowFromMe: boolean;
+  mappedGroupsCount: number;
+  pilotGroupName: string | null;
+  startupStage: string | null;
+  startupStartedAt: string | null;
+  lastError: string | null;
+  collectorLogPath: string;
+  latestQrPath: string;
+  qrPayloadLength: number | null;
+  qrPersistedAt: string | null;
+  qrDeliveredAt: string | null;
+  collectorLogTail: string[];
+  browserExecutablePath: string | null;
+  browserExecutableSource: string | null;
+  browserCandidatesTried: string[];
+  sessionPathExists: boolean;
+  sessionPathWritable: boolean;
+}
+
+export interface WhatsAppCollectorGroup {
+  id: string;
+  name: string;
+  isGroup?: true;
+  sourceType?: 'group';
+  isReadOnly: boolean;
+  unreadCount: number;
+}
+
+export interface WhatsAppCollectorContact {
+  id: string;
+  name: string;
+  isGroup?: false;
+  sourceType?: 'contact';
+  unreadCount: number;
+}
+
+export type PatrolSourceType = 'group' | 'contact';
+
+export interface PatrolSlot {
+  id: string;
+  siteId: string;
+  slotStart: string;
+  slotEnd: string;
+  expectedAt: string;
+  status: string;
+  imageId: string | null;
+  resolvedAt: string | null;
+}
+
+export interface PatrolGroup {
+  id: string;
+  siteId: string;
+  groupName: string;
+  externalGroupId?: string;
+  sourceType?: PatrolSourceType;
+  linkedAccountId?: string;
+  active: boolean;
+  createdAt: string;
+  site?: Site;
+}
+
+export interface PatrolSchedule {
+  id: string;
+  siteId: string;
+  scheduleName: string;
+  expectedGuards: number;
+  frequencyMinutes: number;
+  startHour: number;
+  endHour: number;
+  graceMinutes: number;
+  activeDays: number[];
+  active: boolean;
+  createdAt: string;
+  site?: Site;
+}
+
+export interface Incident {
+  id: string;
+  guardId: string;
+  companyId: string;
+  siteId: string;
+  description: string;
+  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  status: 'OPEN' | 'IN_REVIEW' | 'RESOLVED';
+  createdAt: string;
+  updatedAt: string;
+  site?: Site;
+  guard?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+    role: UserRole;
+  };
+}
+
+export interface PatrolAlert {
+  id: string;
+  siteId: string;
+  slotId: string | null;
+  guardId: string | null;
+  alertType: 'MISSING_PATROL' | 'WELFARE' | 'EMERGENCY';
+  alertMessage: string;
+  alertTime: string;
+  isResolved: boolean;
+  resolvedAt: string | null;
+  createdAt: string;
+  site?: Site;
+}
+
+export interface PatrolImageRecord {
+  id: string;
+  siteId: string;
+  groupId?: string;
+  collectorType: 'WHATSAPP' | 'GUARD_APP' | 'MANUAL';
+  senderName?: string;
+  senderNumber?: string;
+  senderExternalId?: string;
+  messageExternalId?: string;
+  sentAt: string;
+  receivedAt: string;
+  patrolDate: string;
+  patrolHour: number;
+  originalFileName?: string;
+  storedFileName: string;
+  filePath: string;
+  mimeType: string;
+  status: string;
+  notes?: string;
+  site?: Site;
+  group?: PatrolGroup;
+}
+
+export interface DesktopWorkspaceConfig {
+  setupCompleted?: boolean;
+  workspaceName?: string;
+  companyName?: string;
+  licenseKey?: string;
+  licenseType?: 'TRIAL' | 'FULL';
+  licenseStatus?: 'ACTIVE' | 'EXPIRED' | 'INVALID';
+  trialStartDate?: string;
+  trialEndDate?: string;
+  licenseCreatedAt?: string;
+  licenseUpdatedAt?: string;
+  storageRootPath?: string;
+  autoLaunchApp?: boolean;
+  autoStartCollector?: boolean;
+  whatsappHeadless?: boolean;
+  whatsappAllowFromMe?: boolean;
+  whatsappChromePath?: string;
+  whatsappPilotGroupName?: string;
+  whatsappPilotSiteCode?: string;
+  linkedWhatsAppAccountId?: string;
+  appTimeZone?: string;
+  dbType?: 'sqlite' | 'postgres';
+  sqliteDbPath?: string;
+  dbHost?: string;
+  dbPort?: number;
+  dbUser?: string;
+  dbPassword?: string;
+  dbName?: string;
+  localAdminEmail?: string;
+  localAdminFirstName?: string;
+  localAdminLastName?: string;
+  lastSetupAt?: string;
+}
+
+export interface LicenseSnapshot {
+  companyName: string | null;
+  licenseKey: string | null;
+  licenseType: 'TRIAL' | 'FULL';
+  trialStartDate: string | null;
+  trialEndDate: string | null;
+  status: 'ACTIVE' | 'EXPIRED' | 'INVALID';
+  daysRemaining: number;
+  createdAt: string | null;
+  updatedAt: string | null;
+  message: string;
+  collectorAllowed: boolean;
+  requiresActivation: boolean;
+}
+
+export interface DesktopPostgresConfig {
+  dbHost: string;
+  dbPort: number;
+  dbUser: string;
+  dbPassword: string;
+  dbName: string;
+}
+
+export interface DesktopState {
+  isDesktop: boolean;
+  apiBaseUrl: string;
+  configPath: string | null;
+  config: DesktopWorkspaceConfig;
+  backend: {
+    status: 'stopped' | 'starting' | 'ready' | 'error';
+    startedAt: string | null;
+    lastExitAt: string | null;
+    pid: number | null;
+  };
+}
+
+export interface DesktopBootstrapStatus {
+  desktopMode: boolean;
+  configPath: string | null;
+  setupCompleted: boolean;
+  workspaceName: string | null;
+  storageRootPath: string | null;
+  activeStorageRootPath: string | null;
+  patrolImageStoragePath: string | null;
+  companyName: string | null;
+  localAdminEmail: string | null;
+  dbConfigured: boolean;
+  dbType: 'sqlite' | 'postgres';
+  databasePath: string | null;
+  databaseReady: boolean;
+  databaseFileCreated: boolean;
+  schemaReady: boolean;
+  hasCompany: boolean;
+  hasCompanyAdmin: boolean;
+  autoLaunchApp: boolean;
+  autoStartCollector: boolean;
+  whatsappAllowFromMe: boolean;
+  linkedWhatsAppAccountId: string | null;
+  settingsApplied: boolean;
+  license: LicenseSnapshot;
+}
+
+export interface DesktopSetupVerificationCheck {
+  name: string;
+  passed: boolean;
+  message: string;
+}
+
+export interface DesktopSetupVerificationResult {
+  passed: boolean;
+  checks: DesktopSetupVerificationCheck[];
+}
+
+export interface DesktopPostgresStatus {
+  host: string;
+  port: number;
+  user: string;
+  database: string;
+  localServerExpected: boolean;
+  postgresInstalled: boolean | null;
+  detectedBinaryPath: string | null;
+  installGuideUrl: string;
+  reachable: boolean;
+  credentialsValid: boolean;
+  databaseExists: boolean;
+  schemaReady: boolean;
+  migrationsRan: boolean;
+  issueCode:
+    | 'NOT_CHECKED'
+    | 'READY'
+    | 'SERVICE_NOT_RUNNING'
+    | 'WRONG_PASSWORD'
+    | 'DATABASE_MISSING'
+    | 'MIGRATIONS_MISSING'
+    | 'UNKNOWN';
+  issueTitle: string;
+  plainMessage: string;
+  recommendedAction: string;
+  checkedAt: string | null;
+  message: string;
+  error: string | null;
+}

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -9,6 +9,10 @@ import { PatrolSlotStatus } from '@/common/enums/patrol-slot-status.enum';
 import { PatrolSlot } from '@/patrol-slots/entities/patrol-slot.entity';
 import { PatrolAlertsService } from '@/patrol-alerts/patrol-alerts.service';
 import { PatrolImage } from '@/patrol-images/entities/patrol-image.entity';
+import { enumerateScheduleHours, scheduleIsActiveOnDate } from '@/common/utils/patrol-schedule.util';
+import { getPatrolTimeParts } from '@/common/utils/patrol-time.util';
+import { AuthenticatedUser } from '@/auth/interfaces/authenticated-request.interface';
+import { UserRole } from '@/common/enums/user-role.enum';
 
 export interface GenerateSlotsResult {
   slotsCreated: number;
@@ -28,21 +32,32 @@ export class ComplianceService {
     private readonly patrolAlertsService: PatrolAlertsService,
   ) {}
 
-  async generateSlotsForDate(date: string): Promise<GenerateSlotsResult> {
-    const dayStart = new Date(`${date}T00:00:00.000Z`);
-    const dayEnd = new Date(`${date}T23:59:59.999Z`);
+  async generateSlotsForDate(date: string, user?: AuthenticatedUser): Promise<GenerateSlotsResult> {
+    const normalizedDate = date?.trim();
+    const dayStart = new Date(`${normalizedDate}T00:00:00.000Z`);
+    const dayEnd = new Date(`${normalizedDate}T23:59:59.999Z`);
 
-    const activeSites = await this.siteRepo.find({ where: { active: true } });
+    if (!normalizedDate || Number.isNaN(dayStart.getTime()) || Number.isNaN(dayEnd.getTime())) {
+      throw new BadRequestException('date must use YYYY-MM-DD format');
+    }
+
+    const activeSites = await this.siteRepo.find({
+      where: user && user.role !== UserRole.ADMIN ? { active: true, companyId: user.companyId ?? undefined } : { active: true },
+    });
     let slotsCreated = 0;
     let sitesProcessed = 0;
 
     for (const site of activeSites) {
-      const schedule = await this.schedulesRepo.findOne({
+      const schedules = await this.schedulesRepo.find({
         where: { siteId: site.id, active: true },
         order: { createdAt: 'DESC' },
       });
 
-      if (!schedule || !schedule.activeDays.includes(dayStart.getUTCDay())) {
+      const activeSchedules = schedules.filter((schedule) =>
+        scheduleIsActiveOnDate(schedule, normalizedDate),
+      );
+
+      if (activeSchedules.length === 0) {
         continue;
       }
 
@@ -50,32 +65,37 @@ export class ComplianceService {
 
       const existing = await this.patrolSlotsService.findBySiteAndDate(site.id, dayStart, dayEnd);
       const existingExpectedTimes = new Set(existing.map((slot) => slot.expectedAt.toISOString()));
-
       const slots: Partial<PatrolSlot>[] = [];
-      const frequency = schedule.frequencyMinutes;
 
-      for (let hour = schedule.startHour; hour <= schedule.endHour; hour += 1) {
-        const slotStart = new Date(Date.UTC(dayStart.getUTCFullYear(), dayStart.getUTCMonth(), dayStart.getUTCDate(), hour, 0, 0));
+      for (const schedule of activeSchedules) {
+        const frequency = schedule.frequencyMinutes;
 
-        for (let minute = 0; minute < 60; minute += frequency) {
-          const expectedAt = new Date(slotStart.getTime() + minute * 60 * 1000);
-          const slotEnd = new Date(expectedAt.getTime() + frequency * 60 * 1000);
+        for (const hour of enumerateScheduleHours(schedule.startHour, schedule.endHour)) {
+          const slotStart = new Date(
+            Date.UTC(dayStart.getUTCFullYear(), dayStart.getUTCMonth(), dayStart.getUTCDate(), hour, 0, 0),
+          );
 
-          if (expectedAt > dayEnd) {
-            continue;
+          for (let minute = 0; minute < 60; minute += frequency) {
+            const expectedAt = new Date(slotStart.getTime() + minute * 60 * 1000);
+            const slotEnd = new Date(expectedAt.getTime() + frequency * 60 * 1000);
+
+            if (expectedAt > dayEnd) {
+              continue;
+            }
+
+            if (existingExpectedTimes.has(expectedAt.toISOString())) {
+              continue;
+            }
+
+            existingExpectedTimes.add(expectedAt.toISOString());
+            slots.push({
+              siteId: site.id,
+              expectedAt,
+              slotStart: expectedAt,
+              slotEnd,
+              status: PatrolSlotStatus.PENDING,
+            });
           }
-
-          if (existingExpectedTimes.has(expectedAt.toISOString())) {
-            continue;
-          }
-
-          slots.push({
-            siteId: site.id,
-            expectedAt,
-            slotStart: expectedAt,
-            slotEnd,
-            status: PatrolSlotStatus.PENDING,
-          });
         }
       }
 
@@ -88,25 +108,36 @@ export class ComplianceService {
     return { slotsCreated, sitesProcessed };
   }
 
-  async generateToday(): Promise<GenerateSlotsResult> {
+  async generateToday(user?: AuthenticatedUser): Promise<GenerateSlotsResult> {
     const date = new Date().toISOString().slice(0, 10);
-    return this.generateSlotsForDate(date);
+    return this.generateSlotsForDate(date, user);
   }
 
   async updateSlotStatusFromImage(image: PatrolImage): Promise<PatrolSlotStatus> {
-    const slot = await this.patrolSlotsService.findSlotForTimestamp(image.siteId, image.sentAt);
-    if (!slot) {
-      return PatrolSlotStatus.MISSING;
-    }
-
-    if (slot.imageId) {
-      return PatrolSlotStatus.DUPLICATE;
-    }
-
     const schedule = await this.schedulesRepo.findOne({
       where: { siteId: image.siteId, active: true },
       order: { createdAt: 'DESC' },
     });
+
+    if (!schedule) {
+      return PatrolSlotStatus.RECEIVED_ON_TIME;
+    }
+
+    let slot = await this.patrolSlotsService.findSlotForTimestamp(image.siteId, image.sentAt);
+    if (!slot) {
+      await this.generateSlotsForDate(this.toDateKey(image.sentAt));
+      slot = await this.patrolSlotsService.findSlotForTimestamp(image.siteId, image.sentAt);
+    }
+
+    if (!slot) {
+      return PatrolSlotStatus.RECEIVED_ON_TIME;
+    }
+
+    if (slot.imageId) {
+      return slot.status === PatrolSlotStatus.RECEIVED_LATE
+        ? PatrolSlotStatus.RECEIVED_LATE
+        : PatrolSlotStatus.RECEIVED_ON_TIME;
+    }
 
     const graceMinutes = schedule?.graceMinutes ?? 15;
     const graceCutoff = new Date(slot.expectedAt.getTime() + graceMinutes * 60 * 1000);
@@ -151,5 +182,9 @@ export class ComplianceService {
     if (marked > 0) {
       this.logger.warn(`Marked ${marked} slot(s) as missing.`);
     }
+  }
+
+  private toDateKey(date: Date): string {
+    return getPatrolTimeParts(date).date;
   }
 }

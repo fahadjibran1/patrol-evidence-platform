@@ -1,0 +1,12 @@
+out
+node_modules
+.packtmp
+dist
+web/dist
+Security_Patrols
+whatsapp-session
+*.zip
+*.exe
+*.log
+*.png
+*.jpg

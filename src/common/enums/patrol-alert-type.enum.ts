@@ -1,0 +1,5 @@
+export enum PatrolAlertType {
+  MISSING_PATROL = 'MISSING_PATROL',
+  WELFARE = 'WELFARE',
+  EMERGENCY = 'EMERGENCY',
+}

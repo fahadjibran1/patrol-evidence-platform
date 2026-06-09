@@ -3,6 +3,8 @@ import {
   CreateDateColumn,
   Entity,
   Index,
+  JoinColumn,
+  ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
@@ -12,29 +14,53 @@ import { PatrolSchedule } from '@/patrol-schedules/entities/patrol-schedule.enti
 import { PatrolImage } from '@/patrol-images/entities/patrol-image.entity';
 import { PatrolSlot } from '@/patrol-slots/entities/patrol-slot.entity';
 import { PatrolAlert } from '@/patrol-alerts/entities/patrol-alert.entity';
+import { Company } from '@/companies/entities/company.entity';
+import { dateTimeColumn } from '@/common/utils/database-column.util';
 
 @Entity('sites')
 export class Site {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
+  @Column({
+    type: 'uuid',
+  })
+  companyId!: string;
+
+  @ManyToOne(() => Company, (company) => company.sites, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'companyId' })
+  company!: Company;
+
   @Index({ unique: true })
-  @Column({ length: 20 })
+  @Column({
+    type: 'varchar',
+    length: 20,
+  })
   siteCode!: string;
 
-  @Column({ length: 120 })
+  @Column({
+    type: 'varchar',
+    length: 120,
+  })
   siteName!: string;
 
-  @Column({ length: 120, nullable: true })
-  clientName!: string | null;
+  @Column({
+    type: 'varchar',
+    length: 120,
+    nullable: true,
+  })
+  clientName?: string;
 
-  @Column({ default: true })
+  @Column({
+    type: 'boolean',
+    default: true,
+  })
   active!: boolean;
 
-  @CreateDateColumn()
+  @CreateDateColumn(dateTimeColumn())
   createdAt!: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn(dateTimeColumn())
   updatedAt!: Date;
 
   @OneToMany(() => PatrolGroup, (group) => group.site)

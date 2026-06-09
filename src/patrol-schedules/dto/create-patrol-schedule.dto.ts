@@ -5,14 +5,27 @@ import {
   IsBoolean,
   IsInt,
   IsOptional,
+  IsString,
   IsUUID,
   Max,
+  MaxLength,
   Min,
 } from 'class-validator';
 
 export class CreatePatrolScheduleDto {
   @IsUUID()
   siteId!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  scheduleName?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  expectedGuards?: number;
 
   @IsInt()
   @Min(5)

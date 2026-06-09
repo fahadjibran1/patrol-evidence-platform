@@ -6,4 +6,5 @@ export default new DataSource({
   ...databaseConfig(),
   entities: ['src/**/*.entity.ts'],
   migrations: ['src/database/migrations/*.ts'],
+  synchronize: false,
 });

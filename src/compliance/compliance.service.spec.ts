@@ -9,6 +9,7 @@ describe('ComplianceService', () => {
   };
 
   const schedulesRepo = {
+    find: jest.fn(),
     findOne: jest.fn(),
   };
 
@@ -38,23 +39,25 @@ describe('ComplianceService', () => {
 
   it('generates hourly slots and returns slotsCreated + sitesProcessed', async () => {
     siteRepo.find.mockResolvedValue([{ id: 'site-1', active: true }]);
-    schedulesRepo.findOne.mockResolvedValue({
-      siteId: 'site-1',
-      active: true,
-      activeDays: [2],
-      startHour: 8,
-      endHour: 10,
-      frequencyMinutes: 60,
-      graceMinutes: 15,
-    });
+    schedulesRepo.find.mockResolvedValue([
+      {
+        siteId: 'site-1',
+        active: true,
+        activeDays: [3],
+        startHour: 8,
+        endHour: 10,
+        frequencyMinutes: 60,
+        graceMinutes: 15,
+      },
+    ]);
     patrolSlotsService.findBySiteAndDate.mockResolvedValue([]);
 
     const result = await service.generateSlotsForDate('2026-03-18');
 
-    expect(result).toEqual({ slotsCreated: 3, sitesProcessed: 1 });
+    expect(result).toEqual({ slotsCreated: 2, sitesProcessed: 1 });
   });
 
-  it('updateSlotStatusFromImage marks ON_TIME, LATE, and DUPLICATE', async () => {
+  it('updateSlotStatusFromImage marks ON_TIME, LATE, and accepts extra same-slot evidence', async () => {
     const baseSlot = {
       id: 'slot-1',
       siteId: 'site-1',
@@ -84,9 +87,54 @@ describe('ComplianceService', () => {
     status = await service.updateSlotStatusFromImage(lateImage);
     expect(status).toBe(PatrolSlotStatus.RECEIVED_LATE);
 
-    patrolSlotsService.findSlotForTimestamp.mockResolvedValue({ ...baseSlot, imageId: 'img-existing' });
+    patrolSlotsService.findSlotForTimestamp.mockResolvedValue({
+      ...baseSlot,
+      imageId: 'img-existing',
+      status: PatrolSlotStatus.RECEIVED_ON_TIME,
+    });
     status = await service.updateSlotStatusFromImage(onTimeImage);
-    expect(status).toBe(PatrolSlotStatus.DUPLICATE);
+    expect(status).toBe(PatrolSlotStatus.RECEIVED_ON_TIME);
+  });
+
+  it('creates missing slots for the image date before marking Guard Safe', async () => {
+    const image = {
+      id: 'img-1',
+      siteId: 'site-1',
+      sentAt: new Date('2026-03-18T09:10:00.000Z'),
+    } as PatrolImage;
+
+    const generatedSlot = {
+      id: 'slot-generated',
+      siteId: 'site-1',
+      expectedAt: new Date('2026-03-18T09:00:00.000Z'),
+      slotEnd: new Date('2026-03-18T10:00:00.000Z'),
+      imageId: null,
+    } as PatrolSlot;
+
+    schedulesRepo.find.mockResolvedValue([
+      {
+        graceMinutes: 15,
+        siteId: 'site-1',
+        active: true,
+        activeDays: [3],
+        startHour: 9,
+        endHour: 9,
+        frequencyMinutes: 60,
+      },
+    ]);
+    patrolSlotsService.findSlotForTimestamp.mockResolvedValueOnce(null).mockResolvedValueOnce(generatedSlot);
+    siteRepo.find.mockResolvedValue([{ id: 'site-1', active: true }]);
+    patrolSlotsService.findBySiteAndDate.mockResolvedValue([]);
+
+    const status = await service.updateSlotStatusFromImage(image);
+
+    expect(patrolSlotsService.createMany).toHaveBeenCalledTimes(1);
+    expect(patrolSlotsService.updateSlotStatus).toHaveBeenCalledWith(
+      'slot-generated',
+      PatrolSlotStatus.RECEIVED_ON_TIME,
+      'img-1',
+    );
+    expect(status).toBe(PatrolSlotStatus.RECEIVED_ON_TIME);
   });
 
   it('markMissingSlots marks overdue pending slots and creates alerts', async () => {

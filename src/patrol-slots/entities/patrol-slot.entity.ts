@@ -11,6 +11,7 @@ import {
 import { Site } from '@/sites/entities/site.entity';
 import { PatrolSlotStatus } from '@/common/enums/patrol-slot-status.enum';
 import { PatrolImage } from '@/patrol-images/entities/patrol-image.entity';
+import { dateTimeColumn, enumColumn } from '@/common/utils/database-column.util';
 
 @Entity('patrol_slots')
 export class PatrolSlot {
@@ -23,16 +24,16 @@ export class PatrolSlot {
   @ManyToOne(() => Site, (site) => site.slots, { onDelete: 'CASCADE' })
   site!: Site;
 
-  @Column({ type: 'timestamptz' })
+  @Column(dateTimeColumn())
   slotStart!: Date;
 
-  @Column({ type: 'timestamptz' })
+  @Column(dateTimeColumn())
   slotEnd!: Date;
 
-  @Column({ type: 'timestamptz' })
+  @Column(dateTimeColumn())
   expectedAt!: Date;
 
-  @Column({ type: 'enum', enum: PatrolSlotStatus, default: PatrolSlotStatus.PENDING })
+  @Column(enumColumn(PatrolSlotStatus, { default: PatrolSlotStatus.PENDING }))
   status!: PatrolSlotStatus;
 
   @Column('uuid', { nullable: true })
@@ -42,12 +43,12 @@ export class PatrolSlot {
   @JoinColumn({ name: 'imageId' })
   image!: PatrolImage | null;
 
-  @Column({ type: 'timestamptz', nullable: true })
+  @Column(dateTimeColumn({ nullable: true }))
   resolvedAt!: Date | null;
 
-  @CreateDateColumn()
+  @CreateDateColumn(dateTimeColumn())
   createdAt!: Date;
 
-  @UpdateDateColumn()
+  @UpdateDateColumn(dateTimeColumn())
   updatedAt!: Date;
 }
