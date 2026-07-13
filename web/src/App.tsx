@@ -15,6 +15,8 @@ import { CollectorPage } from './pages/collector-page';
 import { AdvancedDiagnosticsPage } from './pages/advanced-diagnostics-page';
 import { DesktopSetupPage } from './pages/desktop-setup-page';
 import { GuardSafePage } from './pages/guard-safe-page';
+import { LicensePage } from './pages/license-page';
+import { LicenseRouteGate } from './components/license-route-gate';
 import { apiRequest } from './lib/api';
 import { getDesktopApiBaseUrl, isDesktopApp } from './lib/desktop';
 import type { DesktopBootstrapStatus, DesktopState } from './types';
@@ -245,6 +247,7 @@ export function App(): JSX.Element {
         path="/desktop/setup"
         element={token ? <Navigate to="/" replace /> : <DesktopSetupPage />}
       />
+      <Route path="/license" element={<LicensePage />} />
       <Route
         path="/login"
         element={token ? <Navigate to="/" replace /> : shouldForceDesktopSetup ? <Navigate to="/desktop/setup" replace /> : <LoginPage />}
@@ -253,9 +256,11 @@ export function App(): JSX.Element {
         path="/"
         element={
           <ProtectedRoute token={token}>
-            <MonitoringProvider>
-              <AppLayout />
-            </MonitoringProvider>
+            <LicenseRouteGate>
+              <MonitoringProvider>
+                <AppLayout />
+              </MonitoringProvider>
+            </LicenseRouteGate>
           </ProtectedRoute>
         }
       >

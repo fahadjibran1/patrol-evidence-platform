@@ -15,6 +15,7 @@ const navItems: Array<{ to: string; label: string; roles: UserRole[] }> = [
   { to: '/incidents', label: 'Incidents', roles: ['ADMIN', 'COMPANY_ADMIN', 'GUARD'] },
   { to: '/patrol', label: 'Patrol Ops', roles: ['ADMIN', 'COMPANY_ADMIN', 'GUARD'] },
   { to: '/collector', label: 'Monitoring', roles: ['ADMIN', 'COMPANY_ADMIN'] },
+  { to: '/license', label: 'Licence', roles: ['ADMIN', 'COMPANY_ADMIN'] },
   { to: '/setup', label: 'Setup', roles: ['ADMIN', 'COMPANY_ADMIN'] },
   { to: '/sites', label: 'Sites', roles: ['ADMIN', 'COMPANY_ADMIN'] },
   { to: '/settings/diagnostics', label: 'Diagnostics', roles: ['ADMIN', 'COMPANY_ADMIN'] },
@@ -58,22 +59,26 @@ export function AppLayout(): JSX.Element {
   const licenceSummary = useMemo(() => {
     const license = bootstrapStatus?.license;
     if (!license) {
-      return 'Trial status unavailable';
+      return 'Licence status unavailable';
     }
 
-    if (license.licenseType === 'FULL' && license.status === 'ACTIVE') {
-      return 'Full licence active';
+    if (license.status === 'NOT_ACTIVATED') {
+      return 'Licence not activated';
     }
 
-    if (license.status === 'ACTIVE') {
+    if (license.displayMode === 'Licensed' && license.status === 'ACTIVE') {
+      return 'Licensed';
+    }
+
+    if (license.status === 'ACTIVE' && license.plan === 'trial') {
       return `Trial: ${license.daysRemaining} day${license.daysRemaining === 1 ? '' : 's'} left`;
     }
 
     if (license.status === 'EXPIRED') {
-      return 'Trial expired';
+      return 'Licence expired';
     }
 
-    return 'Activation needed';
+    return license.message || 'Activation needed';
   }, [bootstrapStatus?.license]);
 
   return (
@@ -138,13 +143,17 @@ export function AppLayout(): JSX.Element {
               <strong>{bootstrapStatus?.companyName || workspaceLabel}</strong>
             </div>
             <div className="app-topbar-block">
-              <span className="app-topbar-label">Trial</span>
+              <span className="app-topbar-label">Licence</span>
               <strong>
-                {bootstrapStatus?.license.licenseType === 'TRIAL' && bootstrapStatus.license.status === 'ACTIVE'
-                  ? `Trial: ${bootstrapStatus.license.daysRemaining} day${bootstrapStatus.license.daysRemaining === 1 ? '' : 's'} left`
-                  : bootstrapStatus?.license.status === 'EXPIRED'
-                    ? 'Trial expired'
-                    : bootstrapStatus?.license.status ?? 'Unavailable'}
+                {bootstrapStatus?.license.displayMode === 'Licensed' && bootstrapStatus.license.status === 'ACTIVE'
+                  ? 'Licensed'
+                  : bootstrapStatus?.license.status === 'ACTIVE' && bootstrapStatus.license.plan === 'trial'
+                    ? `Trial: ${bootstrapStatus.license.daysRemaining} day${bootstrapStatus.license.daysRemaining === 1 ? '' : 's'} left`
+                    : bootstrapStatus?.license.status === 'EXPIRED'
+                      ? 'Licence expired'
+                      : bootstrapStatus?.license.status === 'NOT_ACTIVATED'
+                        ? 'Not activated'
+                        : bootstrapStatus?.license.status ?? 'Unavailable'}
               </strong>
             </div>
             <div className="app-topbar-block">

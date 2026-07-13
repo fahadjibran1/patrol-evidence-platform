@@ -279,8 +279,8 @@ export interface DesktopWorkspaceConfig {
   workspaceName?: string;
   companyName?: string;
   licenseKey?: string;
-  licenseType?: 'TRIAL' | 'FULL';
-  licenseStatus?: 'ACTIVE' | 'EXPIRED' | 'INVALID';
+  licenseType?: 'TRIAL' | 'FULL' | 'MONTHLY' | 'ANNUAL';
+  licenseStatus?: 'ACTIVE' | 'EXPIRED' | 'INVALID' | 'NOT_ACTIVATED';
   trialStartDate?: string;
   trialEndDate?: string;
   licenseCreatedAt?: string;
@@ -311,15 +311,49 @@ export interface DesktopWorkspaceConfig {
 export interface LicenseSnapshot {
   companyName: string | null;
   licenseKey: string | null;
-  licenseType: 'TRIAL' | 'FULL';
+  licenseId: string | null;
+  licenseType: 'TRIAL' | 'FULL' | 'MONTHLY' | 'ANNUAL';
+  plan: 'trial' | 'monthly' | 'annual' | null;
+  displayMode: 'Trial' | 'Licensed' | 'Not activated';
+  legacy: boolean;
   trialStartDate: string | null;
   trialEndDate: string | null;
-  status: 'ACTIVE' | 'EXPIRED' | 'INVALID';
+  startsAt: string | null;
+  expiresAt: string | null;
+  status: 'ACTIVE' | 'EXPIRED' | 'INVALID' | 'NOT_ACTIVATED';
   daysRemaining: number;
+  installationId: string | null;
+  maxDevices: number | null;
+  features: string[];
+  activatedAt: string | null;
+  lastSuccessfulValidationAt: string | null;
   createdAt: string | null;
   updatedAt: string | null;
   message: string;
   collectorAllowed: boolean;
+  operationsAllowed: boolean;
+  requiresActivation: boolean;
+}
+
+export interface LicenseStatusResponse {
+  status: 'ACTIVE' | 'EXPIRED' | 'INVALID' | 'NOT_ACTIVATED';
+  displayMode: 'Trial' | 'Licensed' | 'Not activated';
+  plan: 'trial' | 'monthly' | 'annual' | null;
+  companyName: string | null;
+  licenseId: string | null;
+  customerEmail: string | null;
+  startsAt: string | null;
+  expiresAt: string | null;
+  daysRemaining: number;
+  maxDevices: number | null;
+  features: string[];
+  installationId: string | null;
+  activatedAt: string | null;
+  lastSuccessfulValidationAt: string | null;
+  legacy: boolean;
+  message: string;
+  collectorAllowed: boolean;
+  operationsAllowed: boolean;
   requiresActivation: boolean;
 }
 

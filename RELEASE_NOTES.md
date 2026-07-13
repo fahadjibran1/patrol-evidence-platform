@@ -27,6 +27,46 @@ Patrol Evidence Platform `0.1` is the first trial-ready desktop release for cust
 
 - packaged desktop app output is created under `out/`
 - Windows installer output is created under `out/make/`
+- commercial TG1 licences require `resources/license-public.pem` in the repository and in every packaged build
+- Electron Forge copies that public key into the packaged app via `extraResource` at `resources/license-public.pem`
+- the private key must never be committed, packaged, or copied into customer builds
+
+### Commercial licence release workflow
+
+1. Generate a key pair once on a secure developer machine:
+
+```bash
+npm run license:generate-keypair
+```
+
+2. Copy the public key into the tracked build resource:
+
+```bash
+copy .license-keys\license-public.pem resources\license-public.pem
+```
+
+3. Keep `.license-keys/license-private.pem` outside git and back it up securely. Do not replace the private key unless you are intentionally rotating all customer licences.
+
+4. Build the customer package:
+
+```bash
+npm run release:windows
+```
+
+Release validation logs to expect:
+
+- `LICENSE_PUBLIC_KEY_BUILD_VALID`
+- `LICENSE_PUBLIC_KEY_PACKAGED`
+- `LICENSE_PUBLIC_KEY_RUNTIME_PATH` (first packaged launch)
+- `LICENSE_PUBLIC_KEY_RUNTIME_PROBE_OK` (post-package backend probe)
+
+5. Before shipping, generate and activate a test TG1 licence in the packaged EXE:
+
+```bash
+npm run license:generate -- --company "Test Customer Ltd" --plan annual --start 2026-07-13 --days 30 --max-devices 1
+```
+
+Open the packaged app, go to **Licence**, paste the TG1 key, and confirm status becomes **Active**.
 
 ### Known limitations in this trial
 

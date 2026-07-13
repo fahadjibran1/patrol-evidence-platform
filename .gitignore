@@ -19,3 +19,8 @@ web/dist/
 *.tsbuildinfo
 node_modules/
 .env
+.license-keys/
+**/license-private.pem
+**/license-private.key
+*license-private*
+*.private.pem

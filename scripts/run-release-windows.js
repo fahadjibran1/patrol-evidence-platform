@@ -50,8 +50,14 @@ function main() {
   console.log('RELEASE:WINDOWS — rebuilding native modules');
   run('npm', ['run', 'desktop:rebuild-native']);
 
+  console.log('RELEASE:WINDOWS — validating commercial licence public key');
+  run('node', ['scripts/verify-license-public-key-build.js']);
+
   console.log('RELEASE:WINDOWS — packaging Electron app');
   run('npx', ['electron-forge', 'package']);
+
+  console.log('RELEASE:WINDOWS — verifying packaged licence public key');
+  run('node', ['scripts/verify-license-public-key-packaged.js']);
 
   console.log('RELEASE:WINDOWS — verifying runtime and first-run defaults');
   run('npm', ['run', 'desktop:verify-electron-runtime']);

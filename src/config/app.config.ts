@@ -39,6 +39,7 @@ export const appConfig = () => {
     securityCompanyName: process.env.SECURITY_COMPANY_NAME?.trim() || 'Tech Guards Security',
     trialDays: Number(process.env.TRIAL_DAYS ?? 30),
     licenseSigningSecret: process.env.LICENSE_SIGNING_SECRET?.trim() || 'patrol-evidence-platform-license-secret',
+    licenseClockToleranceHours: Number(process.env.LICENSE_CLOCK_TOLERANCE_HOURS ?? 48),
     databaseType: resolveDatabaseType(),
     databasePath: resolveDatabaseType() === 'sqlite' ? resolveSqliteDatabasePath() : null,
     appTimeZone:

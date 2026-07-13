@@ -109,6 +109,23 @@ ensureExists(backendEntry, 'Nest backend dist/main.js');
 ensureExists(helperEntry, 'WhatsApp helper entry');
 ensureExists(frontendEntry, 'Built frontend index.html');
 ensureNonEmptyDirectory(frontendAssetsDir, 'Built frontend assets directory');
+
+const {
+  resolvePackagedPublicKeyPath,
+  validatePublicKeyFile,
+} = require('./lib/license-public-key.util');
+const packagedPublicKeyPath = resolvePackagedPublicKeyPath(packagedAppDir);
+if (!packagedPublicKeyPath) {
+  fail('Packaged licence public key is missing. Expected resources/license-public.pem.');
+} else {
+  try {
+    validatePublicKeyFile(packagedPublicKeyPath, 'Packaged licence public key');
+    pass(`Packaged licence public key found at ${packagedPublicKeyPath}`);
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
+  }
+}
+
 ensureExists(path.join(betterSqliteRoot, 'package.json'), 'better-sqlite3 package');
 ensureExists(path.join(sharpRoot, 'package.json'), 'sharp package');
 ensureExists(path.join(whatsappRoot, 'package.json'), 'whatsapp-web.js package');

@@ -7,8 +7,8 @@ export interface DesktopWorkspaceConfig {
   workspaceName?: string;
   companyName?: string;
   licenseKey?: string;
-  licenseType?: 'TRIAL' | 'FULL';
-  licenseStatus?: 'ACTIVE' | 'EXPIRED' | 'INVALID';
+  licenseType?: 'TRIAL' | 'FULL' | 'MONTHLY' | 'ANNUAL';
+  licenseStatus?: 'ACTIVE' | 'EXPIRED' | 'INVALID' | 'NOT_ACTIVATED';
   trialStartDate?: string;
   trialEndDate?: string;
   licenseCreatedAt?: string;

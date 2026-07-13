@@ -30,6 +30,16 @@ class EnvVars {
 
   @IsOptional()
   @IsString()
+  LICENSE_PUBLIC_KEY?: string;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(168)
+  LICENSE_CLOCK_TOLERANCE_HOURS?: number;
+
+  @IsOptional()
+  @IsString()
   DESKTOP_CONFIG_PATH?: string;
 
   @IsOptional()

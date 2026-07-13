@@ -6,6 +6,15 @@ const { MakerDMG } = require('@electron-forge/maker-dmg');
 const packageMetadata = require('./package.json');
 const { getPackagerRuntimeIgnoreBlocklist } = require('./scripts/lib/electron-runtime-manifest');
 const { ensureElectronRuntimeFiles } = require('./scripts/ensure-electron-runtime-files');
+const {
+  getTrackedPublicKeyPath,
+  resolvePackagedPublicKeyPath,
+  validatePublicKeyFile,
+  logSafePublicKeyConfirmation,
+  assertNoPrivateKeysInPaths,
+} = require('./scripts/lib/license-public-key.util');
+
+const trackedPublicKeyPath = getTrackedPublicKeyPath(__dirname);
 
 const iconBasePath = path.resolve(__dirname, 'desktop', 'assets', 'icon');
 const hasWindowsIcon = fs.existsSync(`${iconBasePath}.ico`);
@@ -45,6 +54,9 @@ const packagerIgnore = [
   /^\/\.env$/,
   /^\/\.env\..+$/,
   /^\/\.env\.example$/,
+  /^\/\.license-keys($|\/)/,
+  /\.private\.pem$/,
+  /license-private/i,
   /^\/README\.md$/,
   /^\/CUSTOMER_HANDOVER_GUIDE\.md$/,
   /^\/RELEASE_NOTES\.md$/,
@@ -158,6 +170,7 @@ function pruneCopiedApp(buildPath, _electronVersion, _platform, _arch, callback)
       'TRIAL_RELEASE_CHECKLIST.md',
       '.env',
       '.env.example',
+      '.license-keys',
       '.eslintrc.cjs',
       'forge.config.js',
       'jest.config.ts',
@@ -174,6 +187,17 @@ function pruneCopiedApp(buildPath, _electronVersion, _platform, _arch, callback)
 
 module.exports = {
   hooks: {
+    prePackage: async () => {
+      if (!fs.existsSync(trackedPublicKeyPath)) {
+        throw new Error(
+          'LICENSE_PUBLIC_KEY_PACKAGE_VALIDATION_FAILED resources/license-public.pem is missing. Copy .license-keys/license-public.pem before packaging.',
+        );
+      }
+
+      const validation = validatePublicKeyFile(trackedPublicKeyPath, 'resources/license-public.pem');
+      logSafePublicKeyConfirmation(trackedPublicKeyPath, validation.keyObject);
+      assertNoPrivateKeysInPaths([path.join(__dirname, 'resources')], 'Pre-package resources safety check');
+    },
     postPackage: async (_forgeConfig, packageResult) => {
       if (!packageResult || packageResult.platform !== 'win32') {
         return;
@@ -186,6 +210,18 @@ module.exports = {
             `[forge] Repaired Electron shell runtime files in ${outputPath}: ${repair.copied.join(', ')}`,
           );
         }
+
+        const packagedPublicKeyPath = resolvePackagedPublicKeyPath(outputPath);
+        if (!packagedPublicKeyPath) {
+          throw new Error(
+            `LICENSE_PUBLIC_KEY_PACKAGE_VALIDATION_FAILED Packaged public key missing under ${outputPath}. Expected resources/license-public.pem via extraResource.`,
+          );
+        }
+
+        const validation = validatePublicKeyFile(packagedPublicKeyPath, packagedPublicKeyPath);
+        console.log(`LICENSE_PUBLIC_KEY_PACKAGED path=${packagedPublicKeyPath}`);
+        logSafePublicKeyConfirmation(packagedPublicKeyPath, validation.keyObject);
+        assertNoPrivateKeysInPaths([outputPath], 'Post-package safety check');
       }
     },
   },
@@ -195,7 +231,7 @@ module.exports = {
     executableName: 'PatrolEvidencePlatform',
     electronDist: path.join(__dirname, 'node_modules', 'electron', 'dist'),
     icon: hasWindowsIcon || hasMacIcon ? iconBasePath : undefined,
-    extraResource: [],
+    extraResource: fs.existsSync(trackedPublicKeyPath) ? [trackedPublicKeyPath] : [],
     ignore: shouldIgnorePackagePath,
     afterCopy: [pruneCopiedApp],
     osxSign: process.env.APPLE_IDENTITY

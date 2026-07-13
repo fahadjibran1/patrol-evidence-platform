@@ -21,12 +21,14 @@
     "desktop:clean": "node scripts/clean-desktop-build.js",
     "desktop:dev": "concurrently -k \"npm run frontend:dev\" \"wait-on http://localhost:5173 && cross-env DESKTOP_DEV=true electron .\"",
     "desktop:rebuild-native": "npm run rebuild:native",
-    "desktop:package:internal": "npm run desktop:clean && npm run build && npm run frontend:build && npm run desktop:rebuild-native && electron-forge package && npm run desktop:verify-electron-runtime && npm run desktop:verify-package",
-    "desktop:make:internal": "npm run desktop:clean && npm run build && npm run frontend:build && npm run desktop:rebuild-native && electron-forge make && npm run desktop:verify-electron-runtime && npm run desktop:verify-package",
+    "desktop:package:internal": "npm run desktop:verify-license-public-key-build && npm run desktop:clean && npm run build && npm run frontend:build && npm run desktop:rebuild-native && electron-forge package && npm run desktop:verify-electron-runtime && npm run desktop:verify-license-public-key-packaged && npm run desktop:verify-package",
+    "desktop:make:internal": "npm run desktop:verify-license-public-key-build && npm run desktop:clean && npm run build && npm run frontend:build && npm run desktop:rebuild-native && electron-forge make && npm run desktop:verify-electron-runtime && npm run desktop:verify-license-public-key-packaged && npm run desktop:verify-package",
     "desktop:package": "node scripts/run-desktop-forge.js package",
     "desktop:make": "node scripts/run-desktop-forge.js make",
     "desktop:portable": "npm run desktop:package && node scripts/create-portable-zip.js",
     "desktop:verify-package": "node scripts/verify-packaged-app.js",
+    "desktop:verify-license-public-key-build": "node scripts/verify-license-public-key-build.js",
+    "desktop:verify-license-public-key-packaged": "node scripts/verify-license-public-key-packaged.js",
     "desktop:verify-electron-runtime": "node scripts/verify-electron-runtime-files.js",
     "desktop:verify-first-run-config": "node scripts/verify-desktop-first-run-config.js",
     "release:windows": "node scripts/run-release-windows.js",
@@ -46,7 +48,9 @@
     "migration:revert": "npm run typeorm -- migration:revert -d src/database/data-source.ts",
     "seed": "ts-node -r tsconfig-paths/register src/database/seeds/seed.ts",
     "repair:patrol-timezone": "npx ts-node -r tsconfig-paths/register scripts/repair-patrol-timezone.ts",
-    "license:generate-trial": "npx ts-node -r tsconfig-paths/register scripts/generate-trial-key.ts"
+    "license:generate-trial": "npx ts-node -r tsconfig-paths/register scripts/generate-trial-key.ts",
+    "license:generate": "npx ts-node -r tsconfig-paths/register scripts/generate-license.ts",
+    "license:generate-keypair": "npx ts-node scripts/generate-license-keypair.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.2",

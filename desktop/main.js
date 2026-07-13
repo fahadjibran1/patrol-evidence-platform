@@ -461,6 +461,60 @@ function getBackendHealthUrl() {
   return `http://localhost:${getBackendPort()}${BACKEND_HEALTH_PATH}`;
 }
 
+function resolvePackagedLicensePublicKeyPath() {
+  const fileNames = ['license-public.pem', 'license-public.key'];
+  const candidateRoots = [];
+
+  if (app.isPackaged) {
+    if (process.resourcesPath) {
+      candidateRoots.push(process.resourcesPath);
+      candidateRoots.push(path.join(process.resourcesPath, 'resources'));
+    }
+    candidateRoots.push(path.join(app.getAppPath(), 'resources'));
+  } else {
+    candidateRoots.push(path.join(process.cwd(), 'resources'));
+    candidateRoots.push(path.join(process.cwd(), '.license-keys'));
+  }
+
+  for (const root of candidateRoots) {
+    for (const fileName of fileNames) {
+      const candidate = path.join(root, fileName);
+      if (fs.existsSync(candidate)) {
+        appendDesktopLog('LICENSE_PUBLIC_KEY_RUNTIME_PATH', candidate);
+        return candidate;
+      }
+    }
+  }
+
+  if (app.isPackaged) {
+    appendDesktopLog(
+      'LICENSE_PUBLIC_KEY_PACKAGE_VALIDATION_FAILED',
+      'Packaged public key file was not found under Electron resources.',
+    );
+  }
+
+  return null;
+}
+
+function applyLicensePublicKeyRuntimeEnv(env) {
+  env.PATROL_DESKTOP_PACKAGED = app.isPackaged ? 'true' : 'false';
+
+  if (process.resourcesPath) {
+    env.PATROL_RESOURCES_PATH = process.resourcesPath;
+  }
+
+  if (app.isPackaged) {
+    env.PATROL_APP_PATH = app.getAppPath();
+  }
+
+  const publicKeyPath = resolvePackagedLicensePublicKeyPath();
+  if (publicKeyPath) {
+    env.LICENSE_PUBLIC_KEY_FILE = publicKeyPath;
+  }
+
+  return env;
+}
+
 function backendOutputIndicatesListening(text) {
   return /bootstrap:listening|Nest application successfully started/i.test(String(text || ''));
 }
@@ -1671,7 +1725,7 @@ async function startBackend() {
   backendListeningDetected = false;
 
   const runtimeValues = getConfiguredRuntimeValues();
-  const env = {
+  const env = applyLicensePublicKeyRuntimeEnv({
     ...process.env,
     PORT: String(getBackendPort()),
     DESKTOP_CONFIG_PATH: getConfigPath(),
@@ -1680,7 +1734,7 @@ async function startBackend() {
     STORAGE_ROOT_PATH: runtimeValues.storageRootPath,
     WHATSAPP_AUTO_START: runtimeValues.autoStartCollector ? 'true' : 'false',
     APP_DEBUG: process.env.APP_DEBUG === 'true' ? 'true' : process.env.APP_DEBUG,
-  };
+  });
   appendDesktopLog(
     runtimeValues.autoStartCollector ? 'WHATSAPP_AUTOSTART_ENABLED' : 'WHATSAPP_AUTOSTART_SKIPPED',
     `WHATSAPP_AUTO_START=${env.WHATSAPP_AUTO_START}`,
@@ -1690,6 +1744,7 @@ async function startBackend() {
     DESKTOP_CONFIG_PATH: env.DESKTOP_CONFIG_PATH,
     DB_TYPE: env.DB_TYPE,
     STORAGE_ROOT_PATH: env.STORAGE_ROOT_PATH,
+    LICENSE_PUBLIC_KEY_FILE: env.LICENSE_PUBLIC_KEY_FILE ?? null,
   };
   backendExitDetails = {
     code: null,
