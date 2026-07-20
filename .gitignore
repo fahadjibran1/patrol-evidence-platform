@@ -19,6 +19,10 @@ web/dist/
 *.tsbuildinfo
 node_modules/
 .env
+apps/license-api/.env
+apps/license-portal/.env
+apps/license-api/dist/
+apps/license-portal/dist/
 .license-keys/
 **/license-private.pem
 **/license-private.key

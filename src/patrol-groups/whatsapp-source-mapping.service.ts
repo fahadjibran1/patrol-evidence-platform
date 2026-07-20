@@ -47,7 +47,7 @@ export class WhatsAppSourceMappingService {
       return false;
     }
 
-    if (group.site?.active === false) {
+    if (group.site?.active === false || group.site?.archivedAt) {
       return false;
     }
 

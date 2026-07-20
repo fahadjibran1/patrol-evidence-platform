@@ -6,6 +6,8 @@ import { formatMonitoringStateUpdateTime } from '../lib/monitoring-state';
 import { useAuth } from '../state/auth';
 import { useMonitoring } from '../state/monitoring';
 import type { DesktopBootstrapStatus, UserRole } from '../types';
+import { AboutButton } from './about-dialog';
+import { BuildLabel } from './build-label';
 
 const navItems: Array<{ to: string; label: string; roles: UserRole[] }> = [
   { to: '/', label: 'Dashboard', roles: ['ADMIN', 'COMPANY_ADMIN'] },
@@ -35,7 +37,7 @@ function sidebarDotClass(tone: 'ready' | 'warning' | 'error' | 'idle'): string {
 
 export function AppLayout(): JSX.Element {
   const navigate = useNavigate();
-  const { user, logout, token } = useAuth();
+  const { user, logout, token, connectionState } = useAuth();
   const { view, lastStateUpdateAt } = useMonitoring();
   const [bootstrapStatus, setBootstrapStatus] = useState<DesktopBootstrapStatus | null>(null);
 
@@ -126,16 +128,22 @@ export function AppLayout(): JSX.Element {
             type="button"
             className="secondary-button"
             onClick={() => {
-              logout();
-              navigate('/login');
+              void logout().finally(() => navigate('/login'));
             }}
           >
             Sign out
           </button>
+          <AboutButton />
+          <BuildLabel />
         </div>
       </aside>
 
       <main className="content">
+        {connectionState === 'reconnecting' || connectionState === 'offline' ? (
+          <div className="banner banner-warning" role="status">
+            Reconnecting to the local control-room service. Your session is preserved.
+          </div>
+        ) : null}
         {user?.role !== 'GUARD' ? (
           <div className="app-topbar">
             <div className="app-topbar-block">

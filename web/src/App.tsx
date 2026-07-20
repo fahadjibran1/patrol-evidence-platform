@@ -35,7 +35,7 @@ interface FrontendBootStatus {
 
 export function App(): JSX.Element {
   const location = useLocation();
-  const { isLoading, token, refresh, logout } = useAuth();
+  const { isLoading, token, refresh } = useAuth();
   const [bootstrapStatus, setBootstrapStatus] = useState<DesktopBootstrapStatus | null>(null);
   const [isBootstrapLoading, setIsBootstrapLoading] = useState(isDesktopApp());
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
@@ -56,10 +56,18 @@ export function App(): JSX.Element {
       return;
     }
 
-    refresh().catch(() => {
-      logout();
+    // On desktop, wait until the backend is ready so startup delay does not clear the session.
+    if (isDesktopApp()) {
+      const status = desktopState?.backend.status;
+      if (status !== 'ready' && !startupTimeoutReached) {
+        return;
+      }
+    }
+
+    void refresh().catch(() => {
+      // Temporary backend/network failures keep the persisted session (see AuthProvider).
     });
-  }, [refresh, logout, token]);
+  }, [refresh, token, desktopState?.backend.status, startupTimeoutReached]);
 
   useEffect(() => {
     if (!isDesktopApp()) {

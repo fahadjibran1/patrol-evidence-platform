@@ -1,14 +1,16 @@
 import { Global, Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { UsersModule } from '@/users/users.module';
 import { TokenService } from './token.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
+import { RefreshToken } from './entities/refresh-token.entity';
 
 @Global()
 @Module({
-  imports: [UsersModule],
+  imports: [UsersModule, TypeOrmModule.forFeature([RefreshToken])],
   controllers: [AuthController],
   providers: [AuthService, TokenService, JwtAuthGuard, RolesGuard],
   exports: [AuthService, TokenService, JwtAuthGuard, RolesGuard],

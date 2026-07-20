@@ -1,29 +1,48 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../lib/api';
 import { useAuth } from '../state/auth';
 import type { Site } from '../types';
 import { Card, EmptyState, PageHeader, StatusBadge } from '../components/ui';
 
+interface ArchivePreview {
+  siteId: string;
+  siteCode: string;
+  siteName: string;
+  mappedGroups: number;
+  schedules: number;
+  patrolImages: number;
+  patrolSlots: number;
+}
+
 export function SitesPage(): JSX.Element {
   const navigate = useNavigate();
   const { token, user } = useAuth();
   const [sites, setSites] = useState<Site[]>([]);
+  const [includeArchived, setIncludeArchived] = useState(false);
   const [siteCode, setSiteCode] = useState('');
   const [siteName, setSiteName] = useState('');
   const [clientName, setClientName] = useState('');
   const [editingSiteId, setEditingSiteId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [archiveTarget, setArchiveTarget] = useState<Site | null>(null);
+  const [archivePreview, setArchivePreview] = useState<ArchivePreview | null>(null);
+  const [confirmCode, setConfirmCode] = useState('');
+  const [archiveReason, setArchiveReason] = useState('');
+
+  const activeSites = useMemo(() => sites.filter((site) => !site.archivedAt), [sites]);
+  const archivedSites = useMemo(() => sites.filter((site) => Boolean(site.archivedAt)), [sites]);
 
   async function loadSites(): Promise<void> {
-    const nextSites = await apiRequest<Site[]>('/sites', {}, token ?? undefined);
+    const path = includeArchived ? '/sites?includeArchived=true' : '/sites';
+    const nextSites = await apiRequest<Site[]>(path, {}, token ?? undefined);
     setSites(nextSites);
   }
 
   useEffect(() => {
     void loadSites().catch((loadError) => setError(loadError instanceof Error ? loadError.message : 'Check your setup and try again.'));
-  }, [token]);
+  }, [token, includeArchived]);
 
   function resetForm(): void {
     setEditingSiteId(null);
@@ -62,6 +81,10 @@ export function SitesPage(): JSX.Element {
   }
 
   async function toggleSite(site: Site): Promise<void> {
+    if (site.archivedAt) {
+      return;
+    }
+
     setIsSaving(true);
     setError(null);
 
@@ -79,6 +102,70 @@ export function SitesPage(): JSX.Element {
       await loadSites();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Check your setup and try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function openArchiveDialog(site: Site): Promise<void> {
+    setError(null);
+    setConfirmCode('');
+    setArchiveReason('');
+    setArchiveTarget(site);
+    try {
+      const preview = await apiRequest<ArchivePreview>(`/sites/${site.id}/archive-preview`, {}, token ?? undefined);
+      setArchivePreview(preview);
+    } catch (previewError) {
+      setArchiveTarget(null);
+      setError(previewError instanceof Error ? previewError.message : 'Unable to load archive preview.');
+    }
+  }
+
+  async function confirmArchive(): Promise<void> {
+    if (!archiveTarget || !archivePreview) {
+      return;
+    }
+
+    if (confirmCode.trim().toUpperCase() !== archivePreview.siteCode.toUpperCase()) {
+      setError(`Type ${archivePreview.siteCode} exactly to confirm archive.`);
+      return;
+    }
+
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      await apiRequest<Site>(
+        `/sites/${archiveTarget.id}`,
+        {
+          method: 'DELETE',
+          body: JSON.stringify({
+            reason: archiveReason || undefined,
+            confirmSiteCode: confirmCode,
+          }),
+        },
+        token ?? undefined,
+      );
+      setArchiveTarget(null);
+      setArchivePreview(null);
+      setConfirmCode('');
+      setIncludeArchived(true);
+      await loadSites();
+    } catch (archiveError) {
+      setError(archiveError instanceof Error ? archiveError.message : 'Unable to archive site.');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function restoreSite(site: Site): Promise<void> {
+    setIsSaving(true);
+    setError(null);
+    try {
+      await apiRequest<Site>(`/sites/${site.id}/restore`, { method: 'POST', body: '{}' }, token ?? undefined);
+      await loadSites();
+    } catch (restoreError) {
+      setError(restoreError instanceof Error ? restoreError.message : 'Unable to restore site.');
     } finally {
       setIsSaving(false);
     }
@@ -128,8 +215,18 @@ export function SitesPage(): JSX.Element {
         </Card>
 
         <Card>
-          <h3>Sites</h3>
-          {sites.length === 0 ? (
+          <div className="section-header">
+            <h3>Sites</h3>
+            <label className="checkbox-inline">
+              <input
+                type="checkbox"
+                checked={includeArchived}
+                onChange={(event) => setIncludeArchived(event.target.checked)}
+              />
+              Include archived
+            </label>
+          </div>
+          {activeSites.length === 0 ? (
             <div className="stack-list">
               <p className="muted-text">Create your first site to start tracking patrol activity.</p>
               <button type="button" className="secondary-button" onClick={() => navigate('/setup')}>
@@ -138,7 +235,7 @@ export function SitesPage(): JSX.Element {
             </div>
           ) : (
             <div className="stack-list">
-              {sites.map((site) => (
+              {activeSites.map((site) => (
                 <div key={site.id} className="list-row">
                   <div>
                     <strong>{site.siteCode}</strong>
@@ -163,13 +260,94 @@ export function SitesPage(): JSX.Element {
                     <button type="button" className="secondary-button" disabled={isSaving} onClick={() => void toggleSite(site)}>
                       {site.active ? 'Deactivate' : 'Activate'}
                     </button>
+                    <button
+                      type="button"
+                      className="danger-button"
+                      disabled={isSaving}
+                      onClick={() => void openArchiveDialog(site)}
+                    >
+                      Archive
+                    </button>
                   </div>
                 </div>
               ))}
             </div>
           )}
+
+          {includeArchived && archivedSites.length > 0 ? (
+            <div className="stack-list" style={{ marginTop: '1.5rem' }}>
+              <h4>Archived sites</h4>
+              <p className="muted-text">Historical evidence is retained. Monitoring is stopped until restore.</p>
+              {archivedSites.map((site) => (
+                <div key={site.id} className="list-row">
+                  <div>
+                    <strong>{site.siteCode}</strong>
+                    <p>{site.siteName}</p>
+                    <p className="muted-text">Archived {site.archivedAt ? new Date(site.archivedAt).toLocaleString() : ''}</p>
+                  </div>
+                  <div className="button-row">
+                    <button type="button" className="secondary-button" disabled={isSaving} onClick={() => void restoreSite(site)}>
+                      Restore
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </Card>
       </div>
+
+      {archiveTarget && archivePreview ? (
+        <div className="lightbox-backdrop" role="dialog" aria-modal="true" aria-label="Archive site confirmation">
+          <div className="lightbox-panel" style={{ maxWidth: '32rem' }}>
+            <header className="lightbox-header">
+              <div>
+                <h3>Archive site</h3>
+                <p className="muted-text">
+                  {archivePreview.siteName} ({archivePreview.siteCode})
+                </p>
+              </div>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => {
+                  setArchiveTarget(null);
+                  setArchivePreview(null);
+                }}
+              >
+                Cancel
+              </button>
+            </header>
+
+            <div className="stack-list">
+              <p>
+                Mapped WhatsApp groups: <strong>{archivePreview.mappedGroups}</strong>
+              </p>
+              <p>
+                Schedules: <strong>{archivePreview.schedules}</strong>
+              </p>
+              <p>
+                Patrol/evidence records: <strong>{archivePreview.patrolImages}</strong> images,{' '}
+                <strong>{archivePreview.patrolSlots}</strong> slots
+              </p>
+              <p className="error-text">This site will stop being monitored.</p>
+              <p className="muted-text">Historical evidence will be retained and remains available with Include archived.</p>
+              <label>
+                Reason (optional)
+                <input value={archiveReason} onChange={(event) => setArchiveReason(event.target.value)} maxLength={500} />
+              </label>
+              <label>
+                Type {archivePreview.siteCode} to confirm
+                <input value={confirmCode} onChange={(event) => setConfirmCode(event.target.value)} autoComplete="off" />
+              </label>
+              {error ? <p className="error-text">{error}</p> : null}
+              <button type="button" className="danger-button" disabled={isSaving} onClick={() => void confirmArchive()}>
+                {isSaving ? 'Archiving...' : 'Archive site'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

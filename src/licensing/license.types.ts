@@ -1,26 +1,10 @@
-export const LICENSE_FORMAT_PREFIX = 'TG1';
-export const LICENSE_PAYLOAD_VERSION = 1;
+import type { LicenseDisplayStatus, LicensePayload, LicensePlan } from '@patrol/license-core';
+import type { DesktopWorkspaceConfig } from '@/desktop/desktop-config.util';
 
-/** TODO: Remove legacy TG-TRIAL support after this date. */
-export const LEGACY_TRIAL_REMOVAL_DATE = '2026-12-31';
+export * from '@patrol/license-core';
 
-export type LicensePlan = 'trial' | 'monthly' | 'annual';
-
-export type LicenseDisplayStatus = 'ACTIVE' | 'EXPIRED' | 'INVALID' | 'NOT_ACTIVATED';
-
-export interface LicensePayload {
-  version: number;
-  licenseId: string;
-  companyName: string;
-  customerEmail?: string;
-  plan: LicensePlan;
-  issuedAt: string;
-  startsAt: string;
-  expiresAt: string;
-  maxDevices: number;
-  features: string[];
-  notes?: string;
-}
+export type LicenseType = 'TRIAL' | 'FULL' | 'MONTHLY' | 'ANNUAL';
+export type LicenseStatus = 'ACTIVE' | 'EXPIRED' | 'INVALID' | 'NOT_ACTIVATED';
 
 export interface StoredLicenseRecord {
   licenseKey: string;
@@ -34,6 +18,38 @@ export interface StoredLicenseRecord {
 export interface LicenseStoreFile {
   installationId: string;
   license: StoredLicenseRecord | null;
+}
+
+export interface LicenseSnapshot {
+  companyName: string | null;
+  licenseKey: string | null;
+  licenseId: string | null;
+  licenseType: LicenseType;
+  plan: LicensePlan | null;
+  displayMode: 'Trial' | 'Licensed' | 'Not activated';
+  legacy: boolean;
+  trialStartDate: string | null;
+  trialEndDate: string | null;
+  startsAt: string | null;
+  expiresAt: string | null;
+  status: LicenseStatus;
+  daysRemaining: number;
+  installationId: string | null;
+  maxDevices: number | null;
+  features: string[];
+  activatedAt: string | null;
+  lastSuccessfulValidationAt: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  message: string;
+  collectorAllowed: boolean;
+  operationsAllowed: boolean;
+  requiresActivation: boolean;
+}
+
+export interface LicenseActivationResult {
+  snapshot: LicenseSnapshot;
+  configPatch: Partial<DesktopWorkspaceConfig>;
 }
 
 export interface LicenseVerificationResult {

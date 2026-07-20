@@ -74,7 +74,8 @@ export function SetupPage(): JSX.Element {
     expectedGuards: 1,
     frequencyMinutes: 60,
     startHour: 6,
-    endHour: 18,
+    endHour: 22,
+    is24Hours: false,
     graceMinutes: 15,
     activeDays: [1, 2, 3, 4, 5],
   });
@@ -711,7 +712,10 @@ export function SetupPage(): JSX.Element {
                         <strong>{schedule.scheduleName || 'Shift'}</strong>
                         <p className="muted-text">
                           {site?.siteCode ?? 'Site'} · Every {schedule.frequencyMinutes} min ·{' '}
-                          {formatHourLabel(schedule.startHour)}–{formatHourLabel(schedule.endHour)} ·{' '}
+                          {schedule.is24Hours
+                            ? '24 hours'
+                            : `${formatHourLabel(schedule.startHour)}–${formatHourLabel(schedule.endHour)}`}{' '}
+                          ·{' '}
                           {schedule.expectedGuards} expected guard{schedule.expectedGuards === 1 ? '' : 's'}
                         </p>
                       </div>
@@ -723,7 +727,7 @@ export function SetupPage(): JSX.Element {
             ) : (
               <EmptyState
                 title="No schedule yet"
-                description="Most sites use an hourly check-in between 06:00 and 22:00 on weekdays. Adjust below if your contract differs."
+                description="Set any monitoring window for this site (for example 09:00–17:00 or overnight 18:00–06:00). Start is inclusive and end is exclusive. Europe/London is the default business timezone."
               />
             )}
 
@@ -786,9 +790,10 @@ export function SetupPage(): JSX.Element {
               </label>
               <div className="two-column-grid">
                 <label>
-                  Active from
+                  Active from (inclusive)
                   <select
                     value={scheduleForm.startHour}
+                    disabled={scheduleForm.is24Hours}
                     onChange={(event) =>
                       setScheduleForm((current) => ({ ...current, startHour: Number(event.target.value) }))
                     }
@@ -801,9 +806,10 @@ export function SetupPage(): JSX.Element {
                   </select>
                 </label>
                 <label>
-                  Active until
+                  Active until (exclusive)
                   <select
                     value={scheduleForm.endHour}
+                    disabled={scheduleForm.is24Hours}
                     onChange={(event) =>
                       setScheduleForm((current) => ({ ...current, endHour: Number(event.target.value) }))
                     }
@@ -816,6 +822,19 @@ export function SetupPage(): JSX.Element {
                   </select>
                 </label>
               </div>
+              <p className="muted-text">
+                Example: 09:00–17:00 covers hours 09 through 16. Overnight 18:00–06:00 covers 18 through 05.
+              </p>
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={scheduleForm.is24Hours}
+                  onChange={(event) =>
+                    setScheduleForm((current) => ({ ...current, is24Hours: event.target.checked }))
+                  }
+                />
+                24-hour monitoring (all hours)
+              </label>
               <fieldset className="weekday-fieldset">
                 <legend>Active days</legend>
                 <div className="weekday-grid">

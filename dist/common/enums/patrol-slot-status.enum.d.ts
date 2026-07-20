@@ -1,8 +1,0 @@
-export declare enum PatrolSlotStatus {
-    PENDING = "PENDING",
-    RECEIVED_ON_TIME = "RECEIVED_ON_TIME",
-    RECEIVED_LATE = "RECEIVED_LATE",
-    MISSING = "MISSING",
-    DUPLICATE = "DUPLICATE",
-    INVALID_IMAGE = "INVALID_IMAGE"
-}

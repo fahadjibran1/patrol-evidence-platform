@@ -22,6 +22,7 @@ export class PatrolSchedulesService {
         ...dto,
         scheduleName: dto.scheduleName?.trim() || 'Shift',
         expectedGuards: dto.expectedGuards ?? 1,
+        is24Hours: dto.is24Hours ?? false,
       }),
     );
   }

@@ -16,6 +16,9 @@ declare global {
       openExternal: (targetUrl: string) => Promise<boolean>;
       openPath: (targetPath: string) => Promise<string>;
       onBackendStatus?: (callback: (payload: DesktopState) => void) => () => void;
+      secureStoreGet?: (key: string) => Promise<string | null>;
+      secureStoreSet?: (key: string, value: string) => Promise<boolean>;
+      secureStoreClear?: (key: string) => Promise<boolean>;
     };
   }
 }

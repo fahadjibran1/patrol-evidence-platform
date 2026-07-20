@@ -1,10 +1,22 @@
-const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, safeStorage, shell } = require('electron');
 const { execSync, spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
+const crypto = require('crypto');
 const { pathToFileURL } = require('url');
 const { Client } = require('pg');
+
+const packageMetadata = require('../package.json');
+
+const PRODUCT_METADATA = {
+  productName: packageMetadata.productName || 'Patrol Evidence Platform',
+  version: packageMetadata.version || '1.0.0',
+  buildId: packageMetadata.buildId || '2026.07.20.1',
+  copyright: packageMetadata.copyright || '© 2026 TechGuard Security Ltd',
+  companyName: packageMetadata.companyName || 'TechGuard Security Ltd',
+  supportEmail: packageMetadata.supportEmail || 'support@techguardsecurity.com',
+};
 
 const DEFAULT_BACKEND_PORT = 3001;
 const DEFAULT_WEB_URL = 'http://localhost:5173';
@@ -332,6 +344,74 @@ function getConfigPath() {
   }
 
   return path.join(app.getPath('userData'), CONFIG_FILE_NAME);
+}
+
+function getSecureStoreDirectory() {
+  return path.join(app.getPath('userData'), 'secure-session');
+}
+
+function getSecureStoreFilePath(key) {
+  const safeKey = String(key || '')
+    .replace(/[^a-zA-Z0-9._-]/g, '_')
+    .slice(0, 120);
+  return path.join(getSecureStoreDirectory(), `${safeKey}.bin`);
+}
+
+function ensureDesktopJwtSecret() {
+  const secretPath = path.join(app.getPath('userData'), 'jwt-secret.txt');
+  try {
+    if (fs.existsSync(secretPath)) {
+      const existing = fs.readFileSync(secretPath, 'utf8').trim();
+      if (existing.length >= 16) {
+        return existing;
+      }
+    }
+  } catch (error) {
+    appendDesktopLog('jwt-secret-read-failed', error instanceof Error ? error.message : String(error));
+  }
+
+  const secret = crypto.randomBytes(48).toString('base64url');
+  try {
+    fs.writeFileSync(secretPath, secret, { encoding: 'utf8', mode: 0o600 });
+  } catch (error) {
+    appendDesktopLog('jwt-secret-write-failed', error instanceof Error ? error.message : String(error));
+  }
+  return secret;
+}
+
+function readSecureStoreValue(key) {
+  const filePath = getSecureStoreFilePath(key);
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+
+  const payload = fs.readFileSync(filePath);
+  try {
+    if (safeStorage.isEncryptionAvailable()) {
+      return safeStorage.decryptString(payload);
+    }
+  } catch (error) {
+    appendDesktopLog('secure-store-decrypt-failed', error instanceof Error ? error.message : String(error));
+    return null;
+  }
+
+  return payload.toString('utf8');
+}
+
+function writeSecureStoreValue(key, value) {
+  const directory = getSecureStoreDirectory();
+  fs.mkdirSync(directory, { recursive: true });
+  const filePath = getSecureStoreFilePath(key);
+  const payload =
+    safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(String(value)) : Buffer.from(String(value), 'utf8');
+  fs.writeFileSync(filePath, payload);
+}
+
+function clearSecureStoreValue(key) {
+  const filePath = getSecureStoreFilePath(key);
+  if (fs.existsSync(filePath)) {
+    fs.unlinkSync(filePath);
+  }
 }
 
 const DEFAULT_WORKSPACE_CONFIG = {
@@ -1734,6 +1814,8 @@ async function startBackend() {
     STORAGE_ROOT_PATH: runtimeValues.storageRootPath,
     WHATSAPP_AUTO_START: runtimeValues.autoStartCollector ? 'true' : 'false',
     APP_DEBUG: process.env.APP_DEBUG === 'true' ? 'true' : process.env.APP_DEBUG,
+    JWT_SECRET: ensureDesktopJwtSecret(),
+    JWT_REFRESH_EXPIRES_IN_DAYS: process.env.JWT_REFRESH_EXPIRES_IN_DAYS || '90',
   });
   appendDesktopLog(
     runtimeValues.autoStartCollector ? 'WHATSAPP_AUTOSTART_ENABLED' : 'WHATSAPP_AUTOSTART_SKIPPED',
@@ -2169,6 +2251,16 @@ if (handleSquirrelEvent()) {
 } else {
   app.whenReady()
     .then(async () => {
+      if (typeof app.setAboutPanelOptions === 'function') {
+        app.setAboutPanelOptions({
+          applicationName: PRODUCT_METADATA.productName,
+          applicationVersion: PRODUCT_METADATA.version,
+          version: PRODUCT_METADATA.buildId,
+          copyright: PRODUCT_METADATA.copyright,
+          credits: `${PRODUCT_METADATA.companyName}\nSupport: ${PRODUCT_METADATA.supportEmail}`,
+        });
+      }
+
       appendDesktopLog(
         'Electron app ready',
         `packaged=${app.isPackaged} appPath=${app.getAppPath()} resourcesPath=${process.resourcesPath}`,
@@ -2281,5 +2373,14 @@ if (handleSquirrelEvent()) {
   });
   ipcMain.handle('desktop:open-path', async (_event, targetPath) => {
     return shell.openPath(targetPath);
+  });
+  ipcMain.handle('desktop:secure-store-get', async (_event, key) => readSecureStoreValue(key));
+  ipcMain.handle('desktop:secure-store-set', async (_event, key, value) => {
+    writeSecureStoreValue(key, String(value ?? ''));
+    return true;
+  });
+  ipcMain.handle('desktop:secure-store-clear', async (_event, key) => {
+    clearSecureStoreValue(key);
+    return true;
   });
 }

@@ -1,0 +1,23 @@
+version: '3.9'
+
+services:
+  license-portal-db:
+    image: postgres:16-alpine
+    container_name: patrol-license-portal-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: patrol_license
+      POSTGRES_PASSWORD: patrol_license_dev
+      POSTGRES_DB: patrol_license_portal
+    ports:
+      - '5433:5432'
+    volumes:
+      - license_portal_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U patrol_license -d patrol_license_portal']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  license_portal_pg_data:

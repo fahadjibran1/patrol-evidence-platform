@@ -35,6 +35,9 @@ export class PatrolSchedule {
   @Column('int')
   endHour!: number;
 
+  @Column({ default: false })
+  is24Hours!: boolean;
+
   @Column('int', { default: 15 })
   graceMinutes!: number;
 

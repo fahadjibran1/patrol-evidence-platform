@@ -42,4 +42,17 @@ describe('WhatsAppSourceMappingService', () => {
     expect(service.isMappingEligibleForIngest(inactiveSite, '447700000001@c.us')).toBe(false);
     expect(service.isMappingEligibleForIngest(inactiveMapping, '447700000001@c.us')).toBe(false);
   });
+
+  it('excludes archived sites from ingest eligibility', () => {
+    const archivedSite = createGroup({
+      site: {
+        id: 'site-1',
+        siteCode: 'TS001',
+        active: false,
+        archivedAt: new Date('2026-07-01T00:00:00.000Z'),
+      } as never,
+    });
+
+    expect(service.isMappingEligibleForIngest(archivedSite, '447700000001@c.us')).toBe(false);
+  });
 });

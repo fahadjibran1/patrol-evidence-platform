@@ -42,6 +42,10 @@ export class CreatePatrolScheduleDto {
   @Max(23)
   endHour!: number;
 
+  @IsOptional()
+  @IsBoolean()
+  is24Hours?: boolean;
+
   @IsInt()
   @Min(0)
   @Max(120)

@@ -1,8 +1,8 @@
 import { existsSync, readFileSync } from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
-import { addDays, createSignedLicenseKey } from '../src/licensing/license-crypto.util';
-import type { LicensePayload, LicensePlan } from '../src/licensing/license.types';
+import { addDays, createSignedLicenseKey } from '@patrol/license-core';
+import type { LicensePayload, LicensePlan } from '@patrol/license-core';
 
 function readArg(flag: string): string | undefined {
   const index = process.argv.indexOf(flag);

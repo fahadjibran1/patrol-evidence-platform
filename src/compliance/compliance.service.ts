@@ -41,9 +41,14 @@ export class ComplianceService {
       throw new BadRequestException('date must use YYYY-MM-DD format');
     }
 
-    const activeSites = await this.siteRepo.find({
-      where: user && user.role !== UserRole.ADMIN ? { active: true, companyId: user.companyId ?? undefined } : { active: true },
-    });
+    const activeSites = await this.siteRepo
+      .createQueryBuilder('site')
+      .where('site.active = :active', { active: true })
+      .andWhere('site.archivedAt IS NULL')
+      .andWhere(user && user.role !== UserRole.ADMIN ? 'site.companyId = :companyId' : '1=1', {
+        companyId: user?.companyId,
+      })
+      .getMany();
     let slotsCreated = 0;
     let sitesProcessed = 0;
 
@@ -70,7 +75,7 @@ export class ComplianceService {
       for (const schedule of activeSchedules) {
         const frequency = schedule.frequencyMinutes;
 
-        for (const hour of enumerateScheduleHours(schedule.startHour, schedule.endHour)) {
+        for (const hour of enumerateScheduleHours(schedule.startHour, schedule.endHour, Boolean(schedule.is24Hours))) {
           const slotStart = new Date(
             Date.UTC(dayStart.getUTCFullYear(), dayStart.getUTCMonth(), dayStart.getUTCDate(), hour, 0, 0),
           );

@@ -107,15 +107,23 @@ export class PatrolImagesService {
       siteCode?: string;
       date?: string;
       hour?: string;
+      includeArchived?: boolean;
     },
   ): Promise<PatrolImage[]> {
     const query = this.imageRepo
       .createQueryBuilder('image')
       .innerJoinAndSelect('image.site', 'site')
       .leftJoinAndSelect('image.group', 'group')
-      .where('site.active = true')
       .orderBy('image.sentAt', 'DESC')
       .take(500);
+
+    if (filters.includeArchived) {
+      // Historical evidence may include archived sites.
+    } else if (filters.siteId?.trim() || filters.siteCode?.trim()) {
+      query.andWhere('(site.active = true OR site.archivedAt IS NOT NULL)');
+    } else {
+      query.andWhere('site.active = true').andWhere('site.archivedAt IS NULL');
+    }
 
     if (user.role !== UserRole.ADMIN) {
       query.andWhere('site.companyId = :companyId', { companyId: user.companyId });

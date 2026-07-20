@@ -1,0 +1,221 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("LICENSE_DATABASE_URL")
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+  SUPPORT
+}
+
+enum CustomerStatus {
+  PROSPECT
+  TRIAL
+  ACTIVE
+  SUSPENDED
+  CLOSED
+}
+
+enum LicensePlan {
+  TRIAL
+  MONTHLY
+  ANNUAL
+}
+
+enum LicenseStatus {
+  DRAFT
+  ACTIVE
+  EXPIRED
+  SUSPENDED
+  REVOKED
+}
+
+enum InstallationStatus {
+  PENDING
+  ACTIVE
+  DEACTIVATED
+  BLOCKED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+  WAIVED
+}
+
+model Admin {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String
+  displayName  String
+  role         AdminRole @default(ADMIN)
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  licencesCreated      Licence[]       @relation("LicenceCreatedBy")
+  licencesSuspended    Licence[]       @relation("LicenceSuspendedBy")
+  licencesRevoked      Licence[]       @relation("LicenceRevokedBy")
+  paymentsRecorded     PaymentRecord[]
+  auditLogs            AuditLog[]
+  refreshTokens        RefreshToken[]
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  adminId   String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  admin     Admin    @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([adminId])
+}
+
+model Customer {
+  id           String         @id @default(uuid())
+  companyName  String
+  tradingName  String?
+  contactName  String?
+  email        String
+  phone        String?
+  addressLine1 String?
+  addressLine2 String?
+  city         String?
+  postcode     String?
+  country      String         @default("GB")
+  status       CustomerStatus @default(PROSPECT)
+  notes        String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  licences Licence[]
+  payments PaymentRecord[]
+  auditLogs AuditLog[]
+
+  @@index([companyName])
+  @@index([email])
+}
+
+model LicenceIdSequence {
+  year      Int @id
+  lastValue Int @default(0)
+}
+
+model Licence {
+  id                 String        @id @default(uuid())
+  licenseId          String        @unique
+  customerId         String
+  plan               LicensePlan
+  status             LicenseStatus @default(DRAFT)
+  issuedAt           DateTime?
+  startsAt           DateTime      @db.Date
+  expiresAt          DateTime      @db.Date
+  maxDevices         Int
+  features           Json          @default("[]")
+  notes              String?
+  signedLicenseEnc   String?
+  payloadHash        String?
+  signingKeyId       String?
+  previousLicenceId  String?
+  createdByAdminId   String
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  suspendedAt        DateTime?
+  suspendedByAdminId String?
+  suspensionReason   String?
+  revokedAt          DateTime?
+  revokedByAdminId   String?
+  revocationReason   String?
+
+  customer         Customer         @relation(fields: [customerId], references: [id])
+  createdBy        Admin            @relation("LicenceCreatedBy", fields: [createdByAdminId], references: [id])
+  suspendedBy      Admin?           @relation("LicenceSuspendedBy", fields: [suspendedByAdminId], references: [id])
+  revokedBy        Admin?           @relation("LicenceRevokedBy", fields: [revokedByAdminId], references: [id])
+  previousLicence  Licence?         @relation("LicenceRenewalChain", fields: [previousLicenceId], references: [id])
+  renewals         Licence[]        @relation("LicenceRenewalChain")
+  installations    Installation[]
+  payments         PaymentRecord[]
+  auditLogs        AuditLog[]
+
+  @@index([customerId])
+  @@index([status])
+  @@index([expiresAt])
+}
+
+model Installation {
+  id                 String             @id @default(uuid())
+  licenceId          String
+  installationId     String
+  deviceLabel        String?
+  customerProvidedAt DateTime?
+  firstSeenAt        DateTime?
+  lastSeenAt         DateTime?
+  status             InstallationStatus @default(PENDING)
+  notes              String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  licence Licence @relation(fields: [licenceId], references: [id], onDelete: Cascade)
+
+  @@unique([licenceId, installationId])
+  @@index([installationId])
+}
+
+model PaymentRecord {
+  id                String        @id @default(uuid())
+  customerId        String
+  licenceId         String?
+  amountPence       Int
+  currency          String        @default("GBP")
+  paymentStatus     PaymentStatus @default(PENDING)
+  paymentMethod     String?
+  paymentReference  String?
+  invoiceReference  String?
+  paidAt            DateTime?
+  periodStart       DateTime?     @db.Date
+  periodEnd         DateTime?     @db.Date
+  notes             String?
+  recordedByAdminId String
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  customer   Customer @relation(fields: [customerId], references: [id])
+  licence    Licence? @relation(fields: [licenceId], references: [id])
+  recordedBy Admin    @relation(fields: [recordedByAdminId], references: [id])
+
+  @@index([customerId])
+  @@index([licenceId])
+  @@index([paymentStatus])
+}
+
+model AuditLog {
+  id           String   @id @default(uuid())
+  actorAdminId String?
+  action       String
+  entityType   String
+  entityId     String?
+  customerId   String?
+  licenceId    String?
+  metadata     Json?
+  ipAddress    String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
+
+  actor    Admin?    @relation(fields: [actorAdminId], references: [id])
+  customer Customer? @relation(fields: [customerId], references: [id])
+  licence  Licence?  @relation(fields: [licenceId], references: [id])
+
+  @@index([createdAt])
+  @@index([entityType, entityId])
+  @@index([customerId])
+  @@index([licenceId])
+}

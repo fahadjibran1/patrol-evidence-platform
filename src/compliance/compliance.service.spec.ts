@@ -6,6 +6,7 @@ import { PatrolImage } from '@/patrol-images/entities/patrol-image.entity';
 describe('ComplianceService', () => {
   const siteRepo = {
     find: jest.fn(),
+    createQueryBuilder: jest.fn(),
   };
 
   const schedulesRepo = {
@@ -27,6 +28,15 @@ describe('ComplianceService', () => {
 
   let service: ComplianceService;
 
+  function mockActiveSites(sites: Array<{ id: string; active?: boolean; companyId?: string }>): void {
+    const builder = {
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue(sites),
+    };
+    siteRepo.createQueryBuilder.mockReturnValue(builder);
+  }
+
   beforeEach(() => {
     jest.clearAllMocks();
     service = new ComplianceService(
@@ -38,7 +48,7 @@ describe('ComplianceService', () => {
   });
 
   it('generates hourly slots and returns slotsCreated + sitesProcessed', async () => {
-    siteRepo.find.mockResolvedValue([{ id: 'site-1', active: true }]);
+    mockActiveSites([{ id: 'site-1', active: true }]);
     schedulesRepo.find.mockResolvedValue([
       {
         siteId: 'site-1',
@@ -123,7 +133,7 @@ describe('ComplianceService', () => {
       },
     ]);
     patrolSlotsService.findSlotForTimestamp.mockResolvedValueOnce(null).mockResolvedValueOnce(generatedSlot);
-    siteRepo.find.mockResolvedValue([{ id: 'site-1', active: true }]);
+    mockActiveSites([{ id: 'site-1', active: true }]);
     patrolSlotsService.findBySiteAndDate.mockResolvedValue([]);
 
     const status = await service.updateSlotStatusFromImage(image);

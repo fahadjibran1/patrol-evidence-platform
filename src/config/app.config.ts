@@ -68,5 +68,6 @@ export const appConfig = () => {
       undefined,
     jwtSecret: process.env.JWT_SECRET ?? 'patrol-evidence-platform-dev-secret',
     jwtExpiresInHours: Number(process.env.JWT_EXPIRES_IN_HOURS ?? 12),
+    jwtRefreshExpiresInDays: Number(process.env.JWT_REFRESH_EXPIRES_IN_DAYS ?? 90),
   };
 };

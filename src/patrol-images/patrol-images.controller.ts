@@ -49,8 +49,15 @@ export class PatrolImagesController {
     @Query('siteCode') siteCode?: string,
     @Query('date') date?: string,
     @Query('hour') hour?: string,
+    @Query('includeArchived') includeArchived?: string,
   ): Promise<PatrolImage[]> {
-    return this.patrolImagesService.findAll(user, { siteId, siteCode, date, hour });
+    return this.patrolImagesService.findAll(user, {
+      siteId,
+      siteCode,
+      date,
+      hour,
+      includeArchived: includeArchived === 'true' || includeArchived === '1',
+    });
   }
 
   @Post()

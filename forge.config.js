@@ -228,12 +228,24 @@ module.exports = {
   packagerConfig: {
     asar: false,
     prune: true,
+    name: packageMetadata.productName || 'Patrol Evidence Platform',
     executableName: 'PatrolEvidencePlatform',
+    appVersion: packageMetadata.version,
+    buildVersion: packageMetadata.buildId || packageMetadata.version,
+    appCopyright: packageMetadata.copyright || '© 2026 TechGuard Security Ltd',
     electronDist: path.join(__dirname, 'node_modules', 'electron', 'dist'),
     icon: hasWindowsIcon || hasMacIcon ? iconBasePath : undefined,
     extraResource: fs.existsSync(trackedPublicKeyPath) ? [trackedPublicKeyPath] : [],
     ignore: shouldIgnorePackagePath,
     afterCopy: [pruneCopiedApp],
+    win32metadata: {
+      CompanyName: packageMetadata.companyName || 'TechGuard Security Ltd',
+      FileDescription: packageMetadata.productName || 'Patrol Evidence Platform',
+      OriginalFilename: 'PatrolEvidencePlatform.exe',
+      ProductName: packageMetadata.productName || 'Patrol Evidence Platform',
+      InternalName: 'PatrolEvidencePlatform',
+      LegalCopyright: packageMetadata.copyright || '© 2026 TechGuard Security Ltd',
+    },
     osxSign: process.env.APPLE_IDENTITY
       ? {
           identity: process.env.APPLE_IDENTITY,
@@ -255,7 +267,9 @@ module.exports = {
   makers: [
     new MakerSquirrel({
       name: 'patrol_evidence_platform',
-      authors: packageMetadata.author,
+      title: packageMetadata.productName || 'Patrol Evidence Platform',
+      authors: packageMetadata.companyName || packageMetadata.author || 'TechGuard Security Ltd',
+      owners: packageMetadata.companyName || packageMetadata.author || 'TechGuard Security Ltd',
       description: packageMetadata.description,
       exe: 'PatrolEvidencePlatform.exe',
       setupExe: 'PatrolEvidencePlatformSetup.exe',

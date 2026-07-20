@@ -13,6 +13,7 @@ export interface AuthUser {
 
 export interface LoginResponse {
   accessToken: string;
+  refreshToken: string;
   user: AuthUser;
 }
 
@@ -29,6 +30,7 @@ export interface Site {
   siteName: string;
   clientName?: string;
   active: boolean;
+  archivedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -210,6 +212,7 @@ export interface PatrolSchedule {
   frequencyMinutes: number;
   startHour: number;
   endHour: number;
+  is24Hours?: boolean;
   graceMinutes: number;
   activeDays: number[];
   active: boolean;

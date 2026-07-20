@@ -8,7 +8,7 @@ import {
   patrolCompliancePercent,
   siteOpsTone,
 } from '../lib/operator-ui';
-import { findActivePatrolSchedule } from '../lib/patrol-schedule';
+import { describeEffectiveSchedule, findActivePatrolSchedule } from '../lib/patrol-schedule';
 import { getPatrolTimeParts, getPatrolToday } from '../lib/patrol-time';
 import { useLiveRefresh } from '../lib/use-live-refresh';
 import { LatestEvidenceList, LoadingBlock, SiteControlCard, type PatrolTimelineCell } from '../components/operator-ui';
@@ -224,6 +224,7 @@ export function DashboardPage(): JSX.Element {
                   const hourly = hourlyBySite.get(row.siteId);
                   const group = findPatrolGroup(groups, row.siteId);
                   const schedule = activeScheduleBySite.get(row.siteId);
+                  const effective = describeEffectiveSchedule(schedules, row.siteId, date);
                   const tone = siteOpsTone(row);
                   const timelineCells: PatrolTimelineCell[] =
                     hourly?.hourlyCells.map((cell) => ({
@@ -231,12 +232,13 @@ export function DashboardPage(): JSX.Element {
                       status: cell.status,
                       firstPictureTime: cell.firstPictureTime,
                       senderLabel: cell.firstSenderName,
-                    })) ??
-                    Array.from({ length: 24 }, (_, hour) => ({
-                      hour,
-                      status: 'Pending' as const,
-                      firstPictureTime: null,
-                    }));
+                    })) ?? [];
+                  // Avoid inventing a hard-coded 06–22 window when hourly data is still loading.
+                  if (timelineCells.length === 0 && effective.source === 'fallback') {
+                    for (let hour = 6; hour < 22; hour += 1) {
+                      timelineCells.push({ hour, status: 'Pending', firstPictureTime: null });
+                    }
+                  }
 
                   return (
                     <SiteControlCard
@@ -252,6 +254,7 @@ export function DashboardPage(): JSX.Element {
                       imagesToday={row.imagesReceived}
                       alertsOpen={row.unresolvedAlerts}
                       timelineCells={timelineCells}
+                      scheduleDiagnostics={`${effective.windowLabel} · ${effective.timezone} · ${effective.source}${effective.crossesMidnight ? ' · overnight' : ''}`}
                       actions={
                         !isFullscreen ? (
                           <>

@@ -17,7 +17,8 @@
     "strictNullChecks": true,
     "moduleResolution": "node",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["src/*"],
+      "@patrol/license-core": ["packages/license-core/src/index.ts"]
     }
   },
   "include": ["src/**/*", "test/**/*"],

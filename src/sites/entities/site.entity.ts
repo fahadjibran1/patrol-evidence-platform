@@ -57,6 +57,12 @@ export class Site {
   })
   active!: boolean;
 
+  @Column({
+    ...dateTimeColumn(),
+    nullable: true,
+  })
+  archivedAt?: Date | null;
+
   @CreateDateColumn(dateTimeColumn())
   createdAt!: Date;
 

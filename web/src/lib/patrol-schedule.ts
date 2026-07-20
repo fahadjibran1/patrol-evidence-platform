@@ -22,8 +22,13 @@ function businessDayOfWeek(businessDate: string): number {
   return WEEKDAY_TO_INDEX[weekday] ?? 0;
 }
 
-export function scheduleCoversHour(startHour: number, endHour: number, hour: number): boolean {
-  if (startHour === endHour) {
+export function scheduleCoversHour(
+  startHour: number,
+  endHour: number,
+  hour: number,
+  is24Hours = false,
+): boolean {
+  if (is24Hours || startHour === endHour) {
     return true;
   }
 
@@ -63,7 +68,7 @@ export function findActivePatrolSchedule(
       schedule.siteId === siteId &&
       schedule.active &&
       normalizeActiveDays(schedule.activeDays).includes(dayOfWeek) &&
-      scheduleCoversHour(schedule.startHour, schedule.endHour, hour),
+      scheduleCoversHour(schedule.startHour, schedule.endHour, hour, Boolean(schedule.is24Hours)),
   );
 
   if (matches.length === 0) {
@@ -73,8 +78,60 @@ export function findActivePatrolSchedule(
   return matches.sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
 }
 
-export function formatScheduleWindow(startHour: number, endHour: number): string {
+export function formatScheduleWindow(startHour: number, endHour: number, is24Hours = false): string {
+  if (is24Hours) {
+    return '24 hours';
+  }
   const start = `${String(startHour).padStart(2, '0')}:00`;
   const end = `${String(endHour).padStart(2, '0')}:00`;
   return `${start}–${end}`;
+}
+
+export function describeEffectiveSchedule(
+  schedules: PatrolSchedule[],
+  siteId: string,
+  businessDate: string,
+): {
+  configured: PatrolSchedule | null;
+  timezone: string;
+  source: 'configured' | 'fallback' | 'disabled';
+  crossesMidnight: boolean;
+  windowLabel: string;
+} {
+  const siteSchedules = schedules.filter((schedule) => schedule.siteId === siteId && schedule.active);
+  const dayOfWeek = businessDayOfWeek(businessDate);
+  const activeToday = siteSchedules.filter((schedule) =>
+    normalizeActiveDays(schedule.activeDays).includes(dayOfWeek),
+  );
+
+  if (siteSchedules.length > 0 && activeToday.length === 0) {
+    return {
+      configured: siteSchedules[0] ?? null,
+      timezone: BUSINESS_TIMEZONE,
+      source: 'disabled',
+      crossesMidnight: false,
+      windowLabel: 'Disabled today',
+    };
+  }
+
+  if (activeToday.length === 0) {
+    return {
+      configured: null,
+      timezone: BUSINESS_TIMEZONE,
+      source: 'fallback',
+      crossesMidnight: false,
+      windowLabel: '06:00–22:00 (fallback)',
+    };
+  }
+
+  const primary = activeToday.sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0];
+  const crossesMidnight = !primary.is24Hours && primary.startHour !== primary.endHour && primary.startHour > primary.endHour;
+
+  return {
+    configured: primary,
+    timezone: BUSINESS_TIMEZONE,
+    source: 'configured',
+    crossesMidnight,
+    windowLabel: formatScheduleWindow(primary.startHour, primary.endHour, Boolean(primary.is24Hours)),
+  };
 }

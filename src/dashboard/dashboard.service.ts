@@ -9,7 +9,7 @@ import {
   senderIdentityKeysOverlap,
   stripSourceFromSenderName,
 } from '@/common/utils/sender-identity.util';
-import { findActivePatrolSchedule } from '@/common/utils/patrol-schedule.util';
+import { findActivePatrolSchedule, resolveSiteMonitoringHours } from '@/common/utils/patrol-schedule.util';
 import { getPatrolTimeParts } from '@/common/utils/patrol-time.util';
 import {
   queryWithChunkedInClause,
@@ -176,7 +176,12 @@ export class DashboardService {
     let recentImages: DashboardOverview['recentImages'] = [];
 
     try {
-      activeSites = await this.siteRepo.count({ where: { active: true, ...companyFilter } });
+      activeSites = await this.siteRepo
+        .createQueryBuilder('site')
+        .where('site.active = :active', { active: true })
+        .andWhere('site.archivedAt IS NULL')
+        .andWhere(companyFilter.companyId ? 'site.companyId = :companyId' : '1=1', companyFilter)
+        .getCount();
     } catch (error) {
       this.logger.error(
         `DASHBOARD_ERROR_RECORD stage=overview-active-sites date=${selectedDate} ${formatAggregationError(error)}`,
@@ -322,6 +327,7 @@ export class DashboardService {
     const sitesQuery = this.siteRepo
       .createQueryBuilder('site')
       .where('site.active = :active', { active: true })
+      .andWhere('site.archivedAt IS NULL')
       .orderBy('site.siteCode', 'ASC');
 
     if (companyFilter.companyId) {
@@ -392,7 +398,13 @@ export class DashboardService {
               siteName: row.siteName,
               groupId: row.groupId,
               groupName: row.groupName,
-              hourlyCells: this.buildHourlyCells(row, buckets, selectedDate, currentPatrolTime),
+              hourlyCells: this.buildHourlyCells(
+                row,
+                buckets,
+                selectedDate,
+                currentPatrolTime,
+                shell.schedules,
+              ),
             });
           } catch (error) {
             this.logDashboardErrorRecord('hourly-safety-group', row, error);
@@ -535,11 +547,25 @@ export class DashboardService {
               })}`,
             );
 
-            const cells = this.buildHourlyCells(row, safetyBuckets, selectedDate, currentPatrolTime);
-            const hoursToRender = normalizedHour === undefined ? cells.map((cell) => cell.hour) : [normalizedHour];
+            const cells = this.buildHourlyCells(
+              row,
+              safetyBuckets,
+              selectedDate,
+              currentPatrolTime,
+              siteSchedules,
+            );
+            const hoursToRender =
+              normalizedHour === undefined
+                ? cells.map((cell) => cell.hour)
+                : cells.some((cell) => cell.hour === normalizedHour)
+                  ? [normalizedHour]
+                  : [];
 
             for (const targetHour of hoursToRender) {
-              const cell = cells[targetHour];
+              const cell = cells.find((entry) => entry.hour === targetHour) ?? cells[targetHour];
+              if (!cell) {
+                continue;
+              }
               const activeSchedule = findActivePatrolSchedule(siteSchedules, row.siteId, selectedDate, targetHour);
 
               if (activeSchedule) {
@@ -723,6 +749,7 @@ export class DashboardService {
     const sitesQuery = this.siteRepo
       .createQueryBuilder('site')
       .where('site.active = :active', { active: true })
+      .andWhere('site.archivedAt IS NULL')
       .orderBy('site.siteCode', 'ASC');
 
     if (companyFilter.companyId) {
@@ -1956,35 +1983,51 @@ export class DashboardService {
     buckets: Map<string, HourBucket[]>,
     selectedDate: string,
     currentPatrolTime: ReturnType<typeof getPatrolTimeParts>,
+    schedules: PatrolSchedule[] = [],
   ): HourlySafetyCell[] {
     const rowKey = this.buildRowKey(row.siteId, row.groupId);
     const hourBuckets = buckets.get(rowKey) ?? this.createEmptyBuckets();
+    const monitoring = resolveSiteMonitoringHours(schedules, row.siteId, selectedDate);
 
-    return hourBuckets.map((bucket) => {
-      const pending = selectedDate === currentPatrolTime.date && bucket.hour >= currentPatrolTime.hour;
+    if (monitoring.source === 'fallback') {
+      this.logger.warn(
+        `SCHEDULE_FALLBACK_APPLIED siteId=${row.siteId} siteCode=${row.siteCode} fallback=${monitoring.schedule?.startHour ?? 6}:00-${monitoring.schedule?.endHour ?? 22}:00 reason=no_configured_schedule_for_date`,
+      );
+    }
 
-      if (bucket.count >= 1) {
+    if (monitoring.disabledDay || monitoring.hours.length === 0) {
+      return [];
+    }
+
+    const monitoredHours = new Set(monitoring.hours);
+
+    return hourBuckets
+      .filter((bucket) => monitoredHours.has(bucket.hour))
+      .map((bucket) => {
+        const pending = selectedDate === currentPatrolTime.date && bucket.hour >= currentPatrolTime.hour;
+
+        if (bucket.count >= 1) {
+          return {
+            hour: bucket.hour,
+            status: 'Safe' as const,
+            safeFlag: true,
+            firstPictureTime: bucket.firstImage ? coerceSentAtToDate(bucket.firstImage.sentAt).toISOString() : null,
+            firstSenderName: bucket.firstImage?.senderName ?? null,
+            firstImageId: bucket.firstImage?.id ?? null,
+            imageCount: bucket.count,
+          };
+        }
+
         return {
           hour: bucket.hour,
-          status: 'Safe',
-          safeFlag: true,
-          firstPictureTime: bucket.firstImage ? coerceSentAtToDate(bucket.firstImage.sentAt).toISOString() : null,
-          firstSenderName: bucket.firstImage?.senderName ?? null,
-          firstImageId: bucket.firstImage?.id ?? null,
-          imageCount: bucket.count,
+          status: pending ? ('Pending' as const) : ('Missing' as const),
+          safeFlag: false,
+          firstPictureTime: null,
+          firstSenderName: null,
+          firstImageId: null,
+          imageCount: 0,
         };
-      }
-
-      return {
-        hour: bucket.hour,
-        status: pending ? 'Pending' : 'Missing',
-        safeFlag: false,
-        firstPictureTime: null,
-        firstSenderName: null,
-        firstImageId: null,
-        imageCount: 0,
-      };
-    });
+      });
   }
 
   private createEmptyBuckets(): HourBucket[] {

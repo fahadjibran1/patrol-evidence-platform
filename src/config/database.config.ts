@@ -12,6 +12,7 @@ import { Company } from '@/companies/entities/company.entity';
 import { Incident } from '@/incidents/entities/incident.entity';
 import { GuardSenderMapping } from '@/dashboard/entities/guard-sender-mapping.entity';
 import { ShiftGuardAssignment } from '@/dashboard/entities/shift-guard-assignment.entity';
+import { RefreshToken } from '@/auth/entities/refresh-token.entity';
 import { resolveDatabaseType, resolveSqliteDatabasePath, SupportedDatabaseType } from '@/config/database-settings.util';
 import { getDesktopConfigValue, getDesktopNumberConfigValue } from '@/desktop/desktop-config.util';
 
@@ -27,6 +28,7 @@ export const databaseEntities = [
   Incident,
   GuardSenderMapping,
   ShiftGuardAssignment,
+  RefreshToken,
 ];
 
 export { resolveDatabaseType, resolveSqliteDatabasePath, SupportedDatabaseType };

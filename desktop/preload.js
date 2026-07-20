@@ -13,6 +13,9 @@ contextBridge.exposeInMainWorld('desktopBridge', {
   stopBackend: () => ipcRenderer.invoke('desktop:stop-backend'),
   openExternal: (targetUrl) => ipcRenderer.invoke('desktop:open-external', targetUrl),
   openPath: (targetPath) => ipcRenderer.invoke('desktop:open-path', targetPath),
+  secureStoreGet: (key) => ipcRenderer.invoke('desktop:secure-store-get', key),
+  secureStoreSet: (key, value) => ipcRenderer.invoke('desktop:secure-store-set', key, value),
+  secureStoreClear: (key) => ipcRenderer.invoke('desktop:secure-store-clear', key),
   onBackendStatus: (callback) => {
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on('desktop:backend-status', listener);

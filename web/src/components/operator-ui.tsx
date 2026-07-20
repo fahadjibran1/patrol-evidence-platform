@@ -42,7 +42,9 @@ export function PatrolTimeline({
   onSelectHour?: (hour: number) => void;
   compact?: boolean;
 }): JSX.Element {
-  const visible = compact ? cells.filter((cell) => cell.hour >= 6 && cell.hour <= 22) : cells;
+  // Compact is a denser layout only — never clip to a hard-coded 06:00–22:00 window.
+  // Cells already reflect each site's configured (or fallback) monitoring hours from the API.
+  const visible = cells;
 
   return (
     <ol className={`patrol-timeline${compact ? ' patrol-timeline-compact' : ''}`}>
@@ -95,6 +97,7 @@ export function SiteControlCard({
   timelineCells,
   actions,
   dense = false,
+  scheduleDiagnostics,
 }: {
   siteCode: string;
   siteName: string;
@@ -108,6 +111,7 @@ export function SiteControlCard({
   timelineCells: PatrolTimelineCell[];
   actions?: ReactNode;
   dense?: boolean;
+  scheduleDiagnostics?: string;
 }): JSX.Element {
   return (
     <article className={`site-control-card site-control-${tone}${dense ? ' site-control-dense' : ''}`}>
@@ -116,6 +120,7 @@ export function SiteControlCard({
           <p className="site-control-code">{siteCode}</p>
           <h3>{siteName}</h3>
           <p className="muted-text">Source · {sourceLabel}</p>
+          {scheduleDiagnostics ? <p className="muted-text">Schedule · {scheduleDiagnostics}</p> : null}
         </div>
         <OpsStatusPill tone={tone} label={siteOpsLabel(tone)} />
       </header>

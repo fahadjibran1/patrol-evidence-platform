@@ -12,6 +12,54 @@ export class ApiError extends Error {
 
 const DEFAULT_API_URL = 'http://localhost:3000';
 
+type RefreshHandler = () => Promise<string | null>;
+
+let refreshHandler: RefreshHandler | null = null;
+const refreshWaiters: Array<{
+  resolve: (token: string | null) => void;
+  reject: (error: unknown) => void;
+}> = [];
+let refreshPromise: Promise<string | null> | null = null;
+
+export function registerAuthRefreshHandler(handler: RefreshHandler | null): void {
+  refreshHandler = handler;
+}
+
+async function refreshAccessTokenOnce(): Promise<string | null> {
+  if (!refreshHandler) {
+    return null;
+  }
+
+  if (!refreshPromise) {
+    refreshPromise = refreshHandler()
+      .then((token) => {
+        for (const waiter of refreshWaiters.splice(0)) {
+          waiter.resolve(token);
+        }
+        return token;
+      })
+      .catch((error) => {
+        for (const waiter of refreshWaiters.splice(0)) {
+          waiter.reject(error);
+        }
+        throw error;
+      })
+      .finally(() => {
+        refreshPromise = null;
+      });
+  }
+
+  return new Promise<string | null>((resolve, reject) => {
+    if (!refreshPromise) {
+      resolve(null);
+      return;
+    }
+
+    refreshWaiters.push({ resolve, reject });
+    void refreshPromise.then(resolve).catch(reject);
+  });
+}
+
 export function getApiBaseUrl(): string {
   const desktopBaseUrl = getDesktopApiBaseUrl();
   if (desktopBaseUrl) {
@@ -22,7 +70,12 @@ export function getApiBaseUrl(): string {
   return raw && raw.length > 0 ? raw.replace(/\/$/, '') : DEFAULT_API_URL;
 }
 
-export async function apiRequest<T>(path: string, init: RequestInit = {}, token?: string): Promise<T> {
+export async function apiRequest<T>(
+  path: string,
+  init: RequestInit = {},
+  token?: string,
+  options?: { skipRefresh?: boolean },
+): Promise<T> {
   const headers = new Headers(init.headers);
 
   if (!(init.body instanceof FormData) && !headers.has('Content-Type')) {
@@ -33,10 +86,26 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}, token?
     headers.set('Authorization', `Bearer ${token}`);
   }
 
-  const response = await fetch(`${getApiBaseUrl()}${path}`, {
-    ...init,
-    headers,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${getApiBaseUrl()}${path}`, {
+      ...init,
+      headers,
+    });
+  } catch (error) {
+    throw new ApiError(error instanceof Error ? error.message : 'Network request failed', 0);
+  }
+
+  if (response.status === 401 && token && !options?.skipRefresh && !path.includes('/auth/refresh') && !path.includes('/auth/login')) {
+    try {
+      const nextToken = await refreshAccessTokenOnce();
+      if (nextToken && nextToken !== token) {
+        return apiRequest<T>(path, init, nextToken, { skipRefresh: true });
+      }
+    } catch {
+      // Fall through to throw the original 401.
+    }
+  }
 
   if (!response.ok) {
     let message = `Request failed with status ${response.status}`;

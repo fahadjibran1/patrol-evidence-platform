@@ -24,24 +24,28 @@ export function EvidencePage(): JSX.Element {
   const [viewMode, setViewMode] = useState<'gallery' | 'timeline'>('gallery');
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [includeArchived, setIncludeArchived] = useState(false);
   const filterKeyRef = useRef(`${selectedDate}|${selectedSiteId}|${selectedHour}`);
 
   useEffect(() => {
-    apiRequest<Site[]>('/sites', {}, token ?? undefined)
+    const path = includeArchived ? '/sites?includeArchived=true' : '/sites';
+    apiRequest<Site[]>(path, {}, token ?? undefined)
       .then((nextSites) => {
-        const activeSites = nextSites.filter((site) => site.active);
-        setSites(activeSites);
+        const visibleSites = includeArchived
+          ? nextSites
+          : nextSites.filter((site) => site.active && !site.archivedAt);
+        setSites(visibleSites);
 
         const siteCodeFromUrl = searchParams.get('siteCode')?.trim();
         if (!selectedSiteId && siteCodeFromUrl) {
-          const matchingSite = activeSites.find((site) => site.siteCode === siteCodeFromUrl);
+          const matchingSite = visibleSites.find((site) => site.siteCode === siteCodeFromUrl);
           if (matchingSite) {
             setSelectedSiteId(matchingSite.id);
           }
         }
       })
       .catch((loadError) => setError(loadError instanceof Error ? loadError.message : 'Failed to load sites'));
-  }, [searchParams, selectedSiteId, token]);
+  }, [includeArchived, searchParams, selectedSiteId, token]);
 
   useEffect(() => {
     const nextParams = new URLSearchParams();
@@ -73,6 +77,9 @@ export function EvidencePage(): JSX.Element {
     if (selectedHour !== 'all') {
       search.set('hour', selectedHour);
     }
+    if (includeArchived) {
+      search.set('includeArchived', 'true');
+    }
 
     try {
       const nextImages = await apiRequest<PatrolImageRecord[]>(
@@ -84,7 +91,7 @@ export function EvidencePage(): JSX.Element {
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Failed to load evidence');
     }
-  }, [selectedDate, selectedHour, selectedSiteId, token]);
+  }, [includeArchived, selectedDate, selectedHour, selectedSiteId, token]);
 
   const { lastUpdated, isLoading, refresh, markFiltersChanged } = useLiveRefresh(
     loadImages,
@@ -206,9 +213,18 @@ export function EvidencePage(): JSX.Element {
               {sites.map((site) => (
                 <option key={site.id} value={site.id}>
                   {site.siteCode} — {site.siteName}
+                  {site.archivedAt ? ' (archived)' : ''}
                 </option>
               ))}
             </select>
+          </label>
+          <label className="checkbox-inline">
+            <input
+              type="checkbox"
+              checked={includeArchived}
+              onChange={(event) => setIncludeArchived(event.target.checked)}
+            />
+            Include archived sites
           </label>
           <label className="inline-field">
             <span>Date</span>
