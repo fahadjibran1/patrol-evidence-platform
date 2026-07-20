@@ -19,7 +19,7 @@
     "node": ">=22.12.0 <23"
   },
   "scripts": {
-    "build": "nest build",
+    "build": "npm --prefix packages/license-core run build && nest build && node scripts/assert-backend-dist.js",
     "frontend:build": "npm --prefix web run build",
     "frontend:dev": "npm --prefix web run dev",
     "start": "nest start",

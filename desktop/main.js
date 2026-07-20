@@ -8,6 +8,12 @@ const { pathToFileURL } = require('url');
 const { Client } = require('pg');
 
 const packageMetadata = require('../package.json');
+const {
+  getBackendEntryCandidates,
+  getFrontendEntryCandidates,
+  getPackagedAppRoot,
+  getCanonicalBackendEntryPath,
+} = require('./packaged-runtime-paths');
 
 const PRODUCT_METADATA = {
   productName: packageMetadata.productName || 'Patrol Evidence Platform',
@@ -143,13 +149,24 @@ function appendBackendShimLog(message, details = null) {
 }
 
 function getBackendEntryPointCandidateForChild() {
-  const projectRoot = app.isPackaged ? app.getAppPath() : process.cwd();
-  return getExistingCandidatePath([
-    process.env.PATROL_BACKEND_ENTRY_PATH,
-    path.join(projectRoot, 'dist', 'main.js'),
-    path.join(process.resourcesPath || '', 'app', 'dist', 'main.js'),
-    path.join(__dirname, '..', 'dist', 'main.js'),
-  ]);
+  const packagedAppRoot = getPackagedAppRoot({
+    resourcesPath: process.resourcesPath,
+    appRoot: process.env.PATROL_APP_PATH || undefined,
+    dirnameHint: path.join(__dirname, '..'),
+  });
+  const resolution = getBackendEntryCandidates({
+    appRoot: packagedAppRoot,
+    resourcesPath: process.resourcesPath,
+    dirnameHint: packagedAppRoot,
+    envEntry: process.env.PATROL_BACKEND_ENTRY_PATH,
+    packaged: true,
+  });
+  return (
+    resolution.resolved ||
+    resolution.candidates[0]?.path ||
+    getCanonicalBackendEntryPath(packagedAppRoot) ||
+    path.join(process.cwd(), 'dist', 'main.js')
+  );
 }
 
 function runPackagedBackendEntry() {
@@ -184,21 +201,71 @@ function getResolvedFrontendEntryPoint() {
   return getFrontendEntryPoint();
 }
 
+function getUserDataDataDirectory() {
+  return path.join(app.getPath('userData'), 'data');
+}
+
+function isPathInsideDirectory(parentDirectory, candidatePath) {
+  const parent = path.resolve(parentDirectory);
+  const candidate = path.resolve(candidatePath);
+  const relative = path.relative(parent, candidate);
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
+function resolvePackagedStorageRootPath(workspaceConfig, dataDir) {
+  const fallback = path.join(dataDir, 'Security_Patrols');
+  const configured = String(workspaceConfig.storageRootPath || process.env.STORAGE_ROOT_PATH || '').trim();
+  if (!configured) {
+    return fallback;
+  }
+
+  const resolved = path.resolve(configured);
+  const installRoots = [getProjectRoot(), process.resourcesPath].filter(Boolean);
+  if (installRoots.some((root) => isPathInsideDirectory(root, resolved))) {
+    // Never write evidence into the packaged install tree.
+    return fallback;
+  }
+
+  // Keep an explicit absolute customer storage location; otherwise use userData.
+  if (path.isAbsolute(configured)) {
+    return resolved;
+  }
+
+  return fallback;
+}
+
 function getConfiguredRuntimeValues() {
   const workspaceConfig = readWorkspaceConfig();
-  const configPath = getConfigPath();
-  const configDir = path.dirname(configPath);
-  const dataDir = path.join(configDir, 'data');
+  const dataDir = getUserDataDataDirectory();
+  const defaultStorageRoot = path.join(dataDir, 'Security_Patrols');
+  const defaultSqlitePath = path.join(dataDir, 'patrol-evidence.db');
+  const defaultWhatsAppSessionPath = path.join(dataDir, 'whatsapp-session');
+
+  // Packaged desktop: DB + WhatsApp session always under Electron userData.
+  // Storage stays under userData unless the customer configured an absolute path
+  // outside the install tree.
+  if (app.isPackaged) {
+    return {
+      dbType: 'sqlite',
+      sqliteDbPath: defaultSqlitePath,
+      storageRootPath: resolvePackagedStorageRootPath(workspaceConfig, dataDir),
+      whatsappSessionPath: defaultWhatsAppSessionPath,
+      autoStartCollector: workspaceConfig.autoStartCollector === true,
+    };
+  }
+
   const configuredStorage = String(workspaceConfig.storageRootPath || '').trim();
   const storageRootPath = configuredStorage
     ? path.resolve(configuredStorage)
-    : String(process.env.STORAGE_ROOT_PATH || path.join(dataDir, 'Security_Patrols')).trim();
+    : String(process.env.STORAGE_ROOT_PATH || defaultStorageRoot).trim();
 
   return {
     dbType: String(workspaceConfig.dbType || process.env.DB_TYPE || 'sqlite').trim().toLowerCase() || 'sqlite',
     sqliteDbPath:
-      String(workspaceConfig.sqliteDbPath || process.env.SQLITE_DB_PATH || path.join(dataDir, 'patrol-evidence.db')).trim(),
+      String(workspaceConfig.sqliteDbPath || process.env.SQLITE_DB_PATH || defaultSqlitePath).trim(),
     storageRootPath,
+    whatsappSessionPath:
+      String(process.env.WHATSAPP_SESSION_PATH || defaultWhatsAppSessionPath).trim(),
     autoStartCollector: workspaceConfig.autoStartCollector === true,
   };
 }
@@ -304,18 +371,45 @@ function getExistingCandidatePath(candidatePaths) {
 
 function getProjectRoot() {
   if (app.isPackaged) {
-    return app.getAppPath();
+    return (
+      getPackagedAppRoot({
+        resourcesPath: process.resourcesPath,
+        appRoot: app.getAppPath(),
+        dirnameHint: path.join(__dirname, '..'),
+      }) || app.getAppPath()
+    );
   }
 
   return process.cwd();
 }
 
+function resolveBackendEntryDetails() {
+  return getBackendEntryCandidates({
+    appRoot: getProjectRoot(),
+    resourcesPath: app.isPackaged ? process.resourcesPath : undefined,
+    dirnameHint: path.join(__dirname, '..'),
+    envEntry: process.env.PATROL_BACKEND_ENTRY_PATH,
+    packaged: app.isPackaged,
+  });
+}
+
+function resolveFrontendEntryDetails() {
+  return getFrontendEntryCandidates({
+    appRoot: getProjectRoot(),
+    resourcesPath: app.isPackaged ? process.resourcesPath : undefined,
+    dirnameHint: path.join(__dirname, '..'),
+    packaged: app.isPackaged,
+  });
+}
+
 function getBackendEntryPoint() {
-  return getExistingCandidatePath([
-    path.join(getProjectRoot(), 'dist', 'main.js'),
-    path.join(process.resourcesPath || '', 'app', 'dist', 'main.js'),
-    path.join(__dirname, '..', 'dist', 'main.js'),
-  ]);
+  const resolution = resolveBackendEntryDetails();
+  return (
+    resolution.resolved ||
+    resolution.candidates[0]?.path ||
+    getCanonicalBackendEntryPath(getProjectRoot()) ||
+    path.join(getProjectRoot(), 'dist', 'main.js')
+  );
 }
 
 function getNestCliPath() {
@@ -330,11 +424,12 @@ function getElectronNodeBackendEnv(baseEnv) {
 }
 
 function getFrontendEntryPoint() {
-  return getExistingCandidatePath([
-    path.join(getProjectRoot(), 'web', 'dist', 'index.html'),
-    path.join(process.resourcesPath || '', 'app', 'web', 'dist', 'index.html'),
-    path.join(__dirname, '..', 'web', 'dist', 'index.html'),
-  ]);
+  const resolution = resolveFrontendEntryDetails();
+  return (
+    resolution.resolved ||
+    resolution.candidates[0]?.path ||
+    path.join(getProjectRoot(), 'web', 'dist', 'index.html')
+  );
 }
 
 function getConfigPath() {
@@ -546,11 +641,10 @@ function resolvePackagedLicensePublicKeyPath() {
   const candidateRoots = [];
 
   if (app.isPackaged) {
+    // Canonical packaged location: process.resourcesPath/license-public.pem (extraResource).
     if (process.resourcesPath) {
       candidateRoots.push(process.resourcesPath);
-      candidateRoots.push(path.join(process.resourcesPath, 'resources'));
     }
-    candidateRoots.push(path.join(app.getAppPath(), 'resources'));
   } else {
     candidateRoots.push(path.join(process.cwd(), 'resources'));
     candidateRoots.push(path.join(process.cwd(), '.license-keys'));
@@ -569,7 +663,7 @@ function resolvePackagedLicensePublicKeyPath() {
   if (app.isPackaged) {
     appendDesktopLog(
       'LICENSE_PUBLIC_KEY_PACKAGE_VALIDATION_FAILED',
-      'Packaged public key file was not found under Electron resources.',
+      'Packaged public key file was not found under process.resourcesPath.',
     );
   }
 
@@ -1108,6 +1202,20 @@ function renderStartupFailurePage(title, reason, errorMessage) {
   isShowingFrontendFallback = true;
   const backendSummary = `${backendState.status}${backendState.pid ? ` (pid ${backendState.pid})` : ''}`;
   const frontendEntryPoint = getResolvedFrontendEntryPoint();
+  const backendResolution = resolveBackendEntryDetails();
+  const frontendResolution = resolveFrontendEntryDetails();
+  const backendLogExcerpt = (() => {
+    try {
+      const logPath = getBackendLogPath();
+      if (!fs.existsSync(logPath)) {
+        return 'Backend log file not found.';
+      }
+      const lines = fs.readFileSync(logPath, 'utf8').split(/\r?\n/).filter(Boolean);
+      return lines.slice(-BACKEND_LOG_TAIL_LINES).join('\n') || 'Backend log file is empty.';
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
+  })();
   const html = `
     <!doctype html>
     <html lang="en">
@@ -1171,6 +1279,18 @@ function renderStartupFailurePage(title, reason, errorMessage) {
             <p>This page is shown instead of leaving the desktop app stuck or unclear during startup. The details below are intended to make packaged Windows failures visible on a customer machine.</p>
             <div class="meta">
               <div class="meta-item">
+                <strong>Application version</strong>
+                <code>${escapeHtml(`${PRODUCT_METADATA.productName} ${PRODUCT_METADATA.version} (build ${PRODUCT_METADATA.buildId})`)}</code>
+              </div>
+              <div class="meta-item">
+                <strong>App path</strong>
+                <code>${escapeHtml(app.getAppPath())}</code>
+              </div>
+              <div class="meta-item">
+                <strong>Resources path</strong>
+                <code>${escapeHtml(process.resourcesPath || 'unavailable')}</code>
+              </div>
+              <div class="meta-item">
                 <strong>Frontend load target</strong>
                 <code>${escapeHtml(frontendState.target ?? 'unknown')}</code>
               </div>
@@ -1179,8 +1299,34 @@ function renderStartupFailurePage(title, reason, errorMessage) {
                 <code>${escapeHtml(frontendEntryPoint)}</code>
               </div>
               <div class="meta-item">
+                <strong>Attempted frontend paths</strong>
+                <pre>${escapeHtml(
+                  JSON.stringify(
+                    frontendResolution.candidates.map((candidate) => ({
+                      path: candidate.path,
+                      exists: candidate.exists,
+                    })),
+                    null,
+                    2,
+                  ),
+                )}</pre>
+              </div>
+              <div class="meta-item">
                 <strong>Backend entry path</strong>
                 <code>${escapeHtml(backendEntryPoint ?? getResolvedBackendEntryPoint())}</code>
+              </div>
+              <div class="meta-item">
+                <strong>Attempted backend entry paths</strong>
+                <pre>${escapeHtml(
+                  JSON.stringify(
+                    backendResolution.candidates.map((candidate) => ({
+                      path: candidate.path,
+                      exists: candidate.exists,
+                    })),
+                    null,
+                    2,
+                  ),
+                )}</pre>
               </div>
               <div class="meta-item">
                 <strong>Backend command</strong>
@@ -1210,6 +1356,10 @@ function renderStartupFailurePage(title, reason, errorMessage) {
                     signal: backendExitDetails.signal,
                   }),
                 )}</code>
+              </div>
+              <div class="meta-item">
+                <strong>Backend log excerpt</strong>
+                <pre>${escapeHtml(backendLogExcerpt)}</pre>
               </div>
               <div class="meta-item">
                 <strong>Backend startup environment</strong>
@@ -1805,13 +1955,34 @@ async function startBackend() {
   backendListeningDetected = false;
 
   const runtimeValues = getConfiguredRuntimeValues();
+  fs.mkdirSync(path.dirname(runtimeValues.sqliteDbPath), { recursive: true });
+  fs.mkdirSync(runtimeValues.storageRootPath, { recursive: true });
+  if (runtimeValues.whatsappSessionPath) {
+    fs.mkdirSync(runtimeValues.whatsappSessionPath, { recursive: true });
+  }
+
+  // Keep Nest's config-driven path resolver aligned with packaged writable roots.
+  const desktopConfigPath = getConfigPath();
+  if (app.isPackaged) {
+    const currentConfig = readWorkspaceConfig();
+    const syncedConfig = {
+      ...currentConfig,
+      dbType: 'sqlite',
+      sqliteDbPath: runtimeValues.sqliteDbPath,
+      storageRootPath: runtimeValues.storageRootPath,
+    };
+    fs.mkdirSync(path.dirname(desktopConfigPath), { recursive: true });
+    fs.writeFileSync(desktopConfigPath, JSON.stringify(syncedConfig, null, 2), 'utf8');
+  }
+
   const env = applyLicensePublicKeyRuntimeEnv({
     ...process.env,
     PORT: String(getBackendPort()),
-    DESKTOP_CONFIG_PATH: getConfigPath(),
+    DESKTOP_CONFIG_PATH: desktopConfigPath,
     DB_TYPE: runtimeValues.dbType,
     SQLITE_DB_PATH: runtimeValues.sqliteDbPath,
     STORAGE_ROOT_PATH: runtimeValues.storageRootPath,
+    WHATSAPP_SESSION_PATH: runtimeValues.whatsappSessionPath,
     WHATSAPP_AUTO_START: runtimeValues.autoStartCollector ? 'true' : 'false',
     APP_DEBUG: process.env.APP_DEBUG === 'true' ? 'true' : process.env.APP_DEBUG,
     JWT_SECRET: ensureDesktopJwtSecret(),
@@ -1826,6 +1997,7 @@ async function startBackend() {
     DESKTOP_CONFIG_PATH: env.DESKTOP_CONFIG_PATH,
     DB_TYPE: env.DB_TYPE,
     STORAGE_ROOT_PATH: env.STORAGE_ROOT_PATH,
+    WHATSAPP_SESSION_PATH: env.WHATSAPP_SESSION_PATH ?? null,
     LICENSE_PUBLIC_KEY_FILE: env.LICENSE_PUBLIC_KEY_FILE ?? null,
   };
   backendExitDetails = {
@@ -1835,20 +2007,47 @@ async function startBackend() {
   const cwd = getProjectRoot();
   appendDesktopLog(
     'Starting backend',
-    `mode=${app.isPackaged ? 'packaged' : 'dev'} port=${env.PORT} cwd=${cwd} dbType=${env.DB_TYPE} sqlite=${env.SQLITE_DB_PATH} storage=${env.STORAGE_ROOT_PATH}`,
+    `mode=${app.isPackaged ? 'packaged' : 'dev'} port=${env.PORT} cwd=${cwd} dbType=${env.DB_TYPE} sqlite=${env.SQLITE_DB_PATH} storage=${env.STORAGE_ROOT_PATH} whatsappSession=${env.WHATSAPP_SESSION_PATH}`,
   );
 
   if (app.isPackaged) {
-    const entryPoint = getBackendEntryPoint();
+    const backendResolution = resolveBackendEntryDetails();
+    const entryPoint = backendResolution.resolved;
     backendEntryPoint = entryPoint;
-    backendSpawnCommand = `${process.execPath} [${BACKEND_CHILD_ENV_FLAG}=true]`;
-    appendDesktopLog('Backend entry point resolved', `${entryPoint} exists=${fs.existsSync(entryPoint)}`);
+    backendSpawnCommand = `${process.execPath} [ELECTRON_RUN_AS_NODE] ${entryPoint || 'MISSING'}`;
+    appendDesktopLog(
+      'Backend entry point resolved',
+      `entry=${entryPoint || 'MISSING'} appRoot=${cwd} resourcesPath=${process.resourcesPath} candidates=${backendResolution.candidates
+        .map((candidate) => `${candidate.path}:${candidate.exists ? 'exists' : 'missing'}`)
+        .join('|')}`,
+    );
+
+    if (!entryPoint || !fs.existsSync(entryPoint)) {
+      backendState = {
+        status: 'failed',
+        startedAt: backendState.startedAt,
+        lastExitAt: new Date().toISOString(),
+        pid: null,
+      };
+      backendExitDetails = { code: 1, signal: null };
+      mainWindow?.webContents.send('desktop:backend-status', getDesktopState());
+      renderStartupFailurePage(
+        'Patrol Evidence Platform – Frontend Load Failed',
+        'failed-to-start-local-backend',
+        'Packaged backend entry file was not found. Expected resources/app/dist/main.js (Nest production build).',
+      );
+      return;
+    }
+
     const packagedBackendEnv = {
       ...env,
-      [BACKEND_CHILD_ENV_FLAG]: 'true',
+      ELECTRON_RUN_AS_NODE: '1',
       PATROL_BACKEND_ENTRY_PATH: entryPoint,
+      PATROL_APP_PATH: cwd,
     };
     delete packagedBackendEnv.PATROL_SMOKE_BACKEND_ONLY;
+    delete packagedBackendEnv[BACKEND_CHILD_ENV_FLAG];
+    // Run Nest directly under Electron's Node ABI (matches native modules).
     const child = spawn(process.execPath, [entryPoint], {
       cwd,
       env: packagedBackendEnv,

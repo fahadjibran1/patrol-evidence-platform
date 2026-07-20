@@ -1,5 +1,13 @@
 const fs = require('fs');
 const path = require('path');
+const { spawnSync } = require('child_process');
+const {
+  getBackendEntryCandidates,
+  getFrontendEntryCandidates,
+  getWhatsAppHelperEntryCandidates,
+  getLicensePublicKeyUtilCandidates,
+  getPackagedAppRoot,
+} = require('../desktop/packaged-runtime-paths');
 
 const projectRoot = path.resolve(__dirname, '..');
 const outRoot = path.join(projectRoot, 'out');
@@ -89,12 +97,38 @@ if (!packagedAppDir) {
 pass(`Using packaged app folder ${packagedAppDir}`);
 
 const exePath = path.join(packagedAppDir, 'PatrolEvidencePlatform.exe');
-const appRoot = path.join(packagedAppDir, 'resources', 'app');
+const resourcesPath = path.join(packagedAppDir, 'resources');
+const appRoot = getPackagedAppRoot({ resourcesPath }) || path.join(resourcesPath, 'app');
 const mainEntry = path.join(appRoot, 'desktop', 'main.js');
 const preloadEntry = path.join(appRoot, 'desktop', 'preload.js');
-const backendEntry = path.join(appRoot, 'dist', 'main.js');
-const helperEntry = path.join(appRoot, 'dist', 'collectors', 'whatsapp-helper.main.js');
-const frontendEntry = path.join(appRoot, 'web', 'dist', 'index.html');
+const runtimePathsModule = path.join(appRoot, 'desktop', 'packaged-runtime-paths.js');
+const backendResolution = getBackendEntryCandidates({
+  appRoot,
+  resourcesPath,
+  dirnameHint: appRoot,
+  packaged: true,
+});
+const frontendResolution = getFrontendEntryCandidates({
+  appRoot,
+  resourcesPath,
+  dirnameHint: appRoot,
+  packaged: true,
+});
+const helperResolution = getWhatsAppHelperEntryCandidates({
+  appRoot,
+  resourcesPath,
+  dirnameHint: appRoot,
+  packaged: true,
+});
+const licenseUtilResolution = getLicensePublicKeyUtilCandidates({
+  appRoot,
+  resourcesPath,
+  dirnameHint: appRoot,
+  packaged: true,
+});
+const backendEntry = backendResolution.resolved;
+const helperEntry = helperResolution.resolved;
+const frontendEntry = frontendResolution.resolved;
 const frontendAssetsDir = path.join(appRoot, 'web', 'dist', 'assets');
 const betterSqliteRoot = path.join(appRoot, 'node_modules', 'better-sqlite3');
 const sharpRoot = path.join(appRoot, 'node_modules', 'sharp');
@@ -105,9 +139,44 @@ const puppeteerRoot = path.join(appRoot, 'node_modules', 'puppeteer');
 ensureExists(exePath, 'Packaged Windows executable');
 ensureExists(mainEntry, 'Electron main entry');
 ensureExists(preloadEntry, 'Electron preload');
-ensureExists(backendEntry, 'Nest backend dist/main.js');
-ensureExists(helperEntry, 'WhatsApp helper entry');
-ensureExists(frontendEntry, 'Built frontend index.html');
+ensureExists(runtimePathsModule, 'Packaged runtime path resolver');
+
+console.log('Backend entry candidates:');
+for (const candidate of backendResolution.candidates) {
+  console.log(`  ${candidate.exists ? 'EXISTS' : 'MISSING'} ${candidate.path}`);
+}
+if (!backendEntry) {
+  fail('Nest backend entry could not be resolved (expected resources/app/dist/main.js)');
+} else {
+  pass(`Nest backend entry resolved at ${backendEntry}`);
+}
+
+if (!licenseUtilResolution.resolved) {
+  fail('Packaged licence public-key util could not be resolved under dist/licensing/');
+} else {
+  pass(`Packaged licence public-key util resolved at ${licenseUtilResolution.resolved}`);
+}
+
+console.log('Frontend entry candidates:');
+for (const candidate of frontendResolution.candidates) {
+  console.log(`  ${candidate.exists ? 'EXISTS' : 'MISSING'} ${candidate.path}`);
+}
+if (!frontendEntry) {
+  fail('Built frontend index.html could not be resolved');
+} else {
+  pass(`Built frontend index.html resolved at ${frontendEntry}`);
+}
+
+console.log('WhatsApp helper candidates:');
+for (const candidate of helperResolution.candidates) {
+  console.log(`  ${candidate.exists ? 'EXISTS' : 'MISSING'} ${candidate.path}`);
+}
+if (!helperEntry) {
+  fail('WhatsApp helper entry could not be resolved');
+} else {
+  pass(`WhatsApp helper entry resolved at ${helperEntry}`);
+}
+
 ensureNonEmptyDirectory(frontendAssetsDir, 'Built frontend assets directory');
 
 const {
@@ -175,4 +244,18 @@ if (process.exitCode && process.exitCode !== 0) {
   process.exit(process.exitCode);
 }
 
-console.log('VERIFY PASSED: Packaged Windows app contains the expected runtime files.');
+console.log('Running packaged backend smoke test as part of package verification...');
+const smokeResult = spawnSync(process.execPath, [path.join(projectRoot, 'scripts', 'smoke-packaged-backend.js')], {
+  cwd: projectRoot,
+  stdio: 'inherit',
+  windowsHide: true,
+  env: process.env,
+});
+
+if ((smokeResult.status ?? 1) !== 0) {
+  fail('Packaged backend smoke test failed. Packaging is not considered successful.');
+  process.exit(process.exitCode || 1);
+}
+
+pass('Packaged backend smoke test passed');
+console.log('VERIFY PASSED: Packaged Windows app contains the expected runtime files and backend starts.');

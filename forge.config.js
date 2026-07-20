@@ -23,6 +23,7 @@ const packagerIgnore = [
   /^\/out($|\/)/,
   /^\/\.git($|\/)/,
   /^\/\.github($|\/)/,
+  /^\/\.cursor($|\/)/,
   /^\/\.packtmp($|\/)/,
   /^\/src($|\/)/,
   /^\/test($|\/)/,
@@ -36,10 +37,15 @@ const packagerIgnore = [
   /^\/cache($|\/)/i,
   /^\/logs($|\/)/i,
   /^\/tmp($|\/)/i,
-  /^\/tmp-installer-verify($|\/)/,
-  /^\/tmp-short-installer($|\/)/,
-  /^\/tmp-portable-verify($|\/)/,
+  /^\/tmp-[^/]+($|\/)/i,
   /^\/patrol-evidence-platform($|\/)/,
+  /^\/apps($|\/)/,
+  /^\/apps\/license-api($|\/)/,
+  /^\/apps\/license-portal($|\/)/,
+  /^\/docs($|\/)/,
+  /^\/sqt($|\/)/,
+  /^\/node_modules\/@patrol\/license-api($|\/)/,
+  /^\/node_modules\/@patrol\/license-portal($|\/)/,
   /^\/node_modules\/puppeteer-core\/\.local-chromium($|\/)/,
   /^\/node_modules\/puppeteer\/\.local-chromium($|\/)/,
   /^\/node_modules\/.*\/test($|\/)/i,
@@ -51,22 +57,31 @@ const packagerIgnore = [
   /^\/web\/package-lock\.json$/,
   /^\/web\/tsconfig(\..+)?$/,
   /^\/web\/vite\.config(\..+)?$/,
+  /^\/web\/vitest\.config(\..+)?$/,
   /^\/\.env$/,
   /^\/\.env\..+$/,
   /^\/\.env\.example$/,
   /^\/\.license-keys($|\/)/,
   /\.private\.pem$/,
   /license-private/i,
+  /^\/docker-compose(\..+)?\.yml$/,
+  /^\/Dockerfile(\..+)?$/i,
+  /^\/\.dockerignore$/,
   /^\/README\.md$/,
   /^\/CUSTOMER_HANDOVER_GUIDE\.md$/,
   /^\/RELEASE_NOTES\.md$/,
+  /^\/RELEASE_FREEZE_NOTES\.md$/,
   /^\/TRIAL_RELEASE_CHECKLIST\.md$/,
+  /^\/KNOWN_WORKING_CONFIG\.md$/,
+  /^\/SYSTEM_STATUS\.md$/,
   /^\/codex\.patch$/,
+  /^\/\.cursorignore$/,
+  /^\/\.nvmrc$/,
   /^\/.*\.zip$/,
   /^\/.*\.tsbuildinfo$/,
   /^\/.*\.map$/,
   /^\/.*\.log$/,
-  /^\/whatsapp-session-.*($|\/)/
+  /^\/whatsapp-session-.*($|\/)/,
 ];
 
 function normalizePackagePath(filePath) {
@@ -123,15 +138,17 @@ function pruneCopiedApp(buildPath, _electronVersion, _platform, _arch, callback)
       'test',
       'tests',
       'Security_Patrols',
-      'tmp-installer-verify',
-      'tmp-short-installer',
-      'tmp-portable-verify',
       'whatsapp-session',
       'whatsapp-session-test-events',
       'patrol-evidence-platform',
       'whatsapp-session-raw-capture-test',
+      'apps',
+      'docs',
+      'sqt',
       path.join('web', 'node_modules'),
       path.join('web', 'src'),
+      path.join('node_modules', '@patrol', 'license-api'),
+      path.join('node_modules', '@patrol', 'license-portal'),
       path.join('node_modules', 'puppeteer-core', '.local-chromium'),
       path.join('node_modules', 'puppeteer', '.local-chromium'),
       path.join('node_modules', 'electron'),
@@ -159,6 +176,13 @@ function pruneCopiedApp(buildPath, _electronVersion, _platform, _arch, callback)
       path.join('node_modules', 'better-sqlite3', 'deps'),
     ].forEach((relativePath) => removeIfPresent(path.join(buildPath, relativePath)));
 
+    // Remove any tmp-* directories that slipped past ignore rules.
+    for (const entryName of fs.readdirSync(buildPath)) {
+      if (/^tmp-/i.test(entryName)) {
+        removeIfPresent(path.join(buildPath, entryName));
+      }
+    }
+
     [
       'tmp-installer-verify.zip',
       'tmp-short-installer.zip',
@@ -167,13 +191,23 @@ function pruneCopiedApp(buildPath, _electronVersion, _platform, _arch, callback)
       'README.md',
       'CUSTOMER_HANDOVER_GUIDE.md',
       'RELEASE_NOTES.md',
+      'RELEASE_FREEZE_NOTES.md',
       'TRIAL_RELEASE_CHECKLIST.md',
+      'KNOWN_WORKING_CONFIG.md',
+      'SYSTEM_STATUS.md',
+      'docker-compose.license-portal.yml',
+      'docker-compose.yml',
+      'Dockerfile',
+      '.dockerignore',
+      '.cursorignore',
+      '.nvmrc',
       '.env',
       '.env.example',
       '.license-keys',
       '.eslintrc.cjs',
       'forge.config.js',
       'jest.config.ts',
+      'nest-cli.json',
       'package-lock.json',
       'tsconfig.build.json',
       'tsconfig.json',
@@ -188,6 +222,20 @@ function pruneCopiedApp(buildPath, _electronVersion, _platform, _arch, callback)
 module.exports = {
   hooks: {
     prePackage: async () => {
+      const backendEntryPath = path.join(__dirname, 'dist', 'main.js');
+      if (!fs.existsSync(backendEntryPath)) {
+        throw new Error(
+          `PACKAGED_BACKEND_MISSING Pre-package check failed: ${backendEntryPath} does not exist. Run npm run build before packaging.`,
+        );
+      }
+
+      const frontendEntryPath = path.join(__dirname, 'web', 'dist', 'index.html');
+      if (!fs.existsSync(frontendEntryPath)) {
+        throw new Error(
+          `PACKAGED_FRONTEND_MISSING Pre-package check failed: ${frontendEntryPath} does not exist. Run npm run frontend:build before packaging.`,
+        );
+      }
+
       if (!fs.existsSync(trackedPublicKeyPath)) {
         throw new Error(
           'LICENSE_PUBLIC_KEY_PACKAGE_VALIDATION_FAILED resources/license-public.pem is missing. Copy .license-keys/license-public.pem before packaging.',
@@ -211,6 +259,41 @@ module.exports = {
           );
         }
 
+        const {
+          getBackendEntryCandidates,
+          getPackagedAppRoot,
+        } = require('./desktop/packaged-runtime-paths');
+        const packagedResourcesPath = path.join(outputPath, 'resources');
+        const packagedAppRoot =
+          getPackagedAppRoot({ resourcesPath: packagedResourcesPath }) ||
+          path.join(packagedResourcesPath, 'app');
+        const backendResolution = getBackendEntryCandidates({
+          appRoot: packagedAppRoot,
+          resourcesPath: packagedResourcesPath,
+          dirnameHint: packagedAppRoot,
+          packaged: true,
+        });
+        if (!backendResolution.resolved) {
+          throw new Error(
+            `PACKAGED_BACKEND_MISSING Post-package check failed under ${outputPath}. Expected resources/app/dist/main.js.`,
+          );
+        }
+        console.log(`[forge] Packaged backend entry: ${backendResolution.resolved}`);
+
+        const packagedFrontendEntry = path.join(
+          outputPath,
+          'resources',
+          'app',
+          'web',
+          'dist',
+          'index.html',
+        );
+        if (!fs.existsSync(packagedFrontendEntry)) {
+          throw new Error(
+            `PACKAGED_FRONTEND_MISSING Post-package check failed under ${outputPath}. Expected resources/app/web/dist/index.html.`,
+          );
+        }
+
         const packagedPublicKeyPath = resolvePackagedPublicKeyPath(outputPath);
         if (!packagedPublicKeyPath) {
           throw new Error(
@@ -228,6 +311,8 @@ module.exports = {
   packagerConfig: {
     asar: false,
     prune: true,
+    // Windows packaging must copy workspace package contents instead of recreating npm symlinks.
+    derefSymlinks: true,
     name: packageMetadata.productName || 'Patrol Evidence Platform',
     executableName: 'PatrolEvidencePlatform',
     appVersion: packageMetadata.version,

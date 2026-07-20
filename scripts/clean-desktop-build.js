@@ -2,7 +2,13 @@ const fs = require('fs');
 const path = require('path');
 
 const root = path.resolve(__dirname, '..');
-const targets = ['dist', path.join('web', 'dist'), 'out'];
+const targets = [
+  'dist',
+  path.join('web', 'dist'),
+  'out',
+  // Nest/tsc incremental cache can claim a clean emit after dist/ was wiped.
+  'tsconfig.build.tsbuildinfo',
+];
 
 if (process.env.SKIP_DESKTOP_CLEAN === 'true') {
   console.log('Skipping desktop clean because SKIP_DESKTOP_CLEAN=true');

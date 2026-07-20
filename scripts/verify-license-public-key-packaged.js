@@ -10,13 +10,29 @@ const {
   resolvePackagedPublicKeyPath,
   validatePublicKeyFile,
 } = require('./lib/license-public-key.util');
+const {
+  getLicensePublicKeyUtilCandidates,
+  getPackagedAppRoot,
+} = require('../desktop/packaged-runtime-paths');
 
 function fail(message) {
   console.error(`LICENSE_PUBLIC_KEY_PACKAGE_VALIDATION_FAILED ${message}`);
   process.exit(1);
 }
 
-function probeBackendRuntimeResolution(publicKeyPath, projectRoot) {
+function resolvePackagedRuntimeUtilPath(packagedAppDir) {
+  const resourcesPath = path.join(packagedAppDir, 'resources');
+  const appRoot = getPackagedAppRoot({ resourcesPath }) || path.join(resourcesPath, 'app');
+  const resolution = getLicensePublicKeyUtilCandidates({
+    appRoot,
+    resourcesPath,
+    dirnameHint: appRoot,
+    packaged: true,
+  });
+  return resolution.resolved;
+}
+
+function probeBackendRuntimeResolution(publicKeyPath, packagedAppDir) {
   const probeConfigPath = path.join(os.tmpdir(), `patrol-license-probe-${process.pid}.json`);
   fs.writeFileSync(
     probeConfigPath,
@@ -31,9 +47,12 @@ function probeBackendRuntimeResolution(publicKeyPath, projectRoot) {
     'utf8',
   );
 
-  const runtimeUtilPath = path.join(projectRoot, 'dist', 'licensing', 'license-public-key.util.js');
-  if (!fs.existsSync(runtimeUtilPath)) {
-    fail(`Backend runtime util is missing at ${runtimeUtilPath}. Run npm run build first.`);
+  const appRoot = path.join(packagedAppDir, 'resources', 'app');
+  const runtimeUtilPath = resolvePackagedRuntimeUtilPath(packagedAppDir);
+  if (!runtimeUtilPath) {
+    fail(
+      `Packaged backend runtime util is missing under ${appRoot}. Expected dist/licensing/license-public-key.util.js.`,
+    );
   }
 
   const probeScript = `
@@ -55,7 +74,7 @@ function probeBackendRuntimeResolution(publicKeyPath, projectRoot) {
   `;
 
   const result = spawnSync(process.execPath, ['-e', probeScript], {
-    cwd: projectRoot,
+    cwd: appRoot,
     encoding: 'utf8',
     windowsHide: true,
   });
@@ -75,7 +94,7 @@ function probeBackendRuntimeResolution(publicKeyPath, projectRoot) {
     fail('Packaged backend public key runtime probe did not confirm resolution.');
   }
 
-  console.log('LICENSE_PUBLIC_KEY_RUNTIME_PROBE_OK');
+  console.log(`LICENSE_PUBLIC_KEY_RUNTIME_PROBE_OK util=${runtimeUtilPath}`);
 }
 
 function main() {
@@ -103,7 +122,7 @@ function main() {
 
   console.log(`LICENSE_PUBLIC_KEY_PACKAGED path=${publicKeyPath}`);
   logSafePublicKeyConfirmation(publicKeyPath, validation.keyObject);
-  probeBackendRuntimeResolution(publicKeyPath, projectRoot);
+  probeBackendRuntimeResolution(publicKeyPath, packagedAppDir);
 }
 
 main();
