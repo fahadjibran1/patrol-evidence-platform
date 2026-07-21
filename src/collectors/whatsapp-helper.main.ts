@@ -17,7 +17,13 @@ import {
   WHATSAPP_HELPER_EVENT_PREFIX,
 } from './whatsapp-helper.types';
 import { PatrolSourceType } from '@/common/enums/patrol-source-type.enum';
-import { getMessageSourceId, type WhatsAppMessageSource } from './whatsapp-message.util';
+import {
+  getMessageSourceId,
+  resolveWhatsAppSenderName,
+  shouldSkipWhatsAppFromMe,
+  withDetachedFrameRetry,
+  type WhatsAppMessageSource,
+} from './whatsapp-message.util';
 import {
   buildWhatsAppLaunchConfigSummary,
   buildWhatsAppWebClientOptions,
@@ -1355,7 +1361,7 @@ async function resolveSenderPreview(message: Message): Promise<{
     }
   }
 
-  const senderName = resolveSenderName({
+  const senderName = resolveWhatsAppSenderName({
     senderNumber,
     pushname,
     name: pushname,
@@ -1483,28 +1489,6 @@ async function buildIncomingPayload(
     fileBase64: media.data,
     timestamp: new Date(message.timestamp * 1000).toISOString(),
   };
-}
-
-function resolveSenderName(input: {
-  senderNumber?: string;
-  pushname?: string;
-  name?: string;
-  shortName?: string;
-  fromMe: boolean;
-}): string {
-  const candidates = [input.pushname, input.name, input.shortName]
-    .map((value) => value?.trim())
-    .filter((value): value is string => typeof value === 'string' && value.length > 0 && value.toLowerCase() !== 'whatsapp');
-
-  if (candidates[0]) {
-    return candidates[0];
-  }
-
-  if (input.fromMe) {
-    return input.senderNumber ? `Linked account (${input.senderNumber})` : 'Linked account';
-  }
-
-  return input.senderNumber ?? 'Unknown sender';
 }
 
 async function resolvePilotFallback(
@@ -1862,7 +1846,7 @@ async function processMessage(message: Message, source: MessageSource): Promise<
   }
 
   const runtimeConfig = await fetchRuntimeConfig();
-  if (message.fromMe && !runtimeConfig.allowFromMe) {
+  if (shouldSkipWhatsAppFromMe(message.fromMe, runtimeConfig.allowFromMe)) {
     appendCollectorLog(
       'process-return-fromme',
       `source=${source} message=${messageExternalId} allowFromMe=${runtimeConfig.allowFromMe}`,
@@ -1925,10 +1909,12 @@ async function processMessage(message: Message, source: MessageSource): Promise<
 }
 
 async function fetchMessagesForChat(currentClient: Client, chatId: string): Promise<Message[]> {
-  const chat = await (currentClient as unknown as { getChatById(id: string): Promise<Chat> }).getChatById(chatId);
-  return (chat as unknown as {
-    fetchMessages(options?: { limit?: number }): Promise<Message[]>;
-  }).fetchMessages(BACKFILL_MESSAGE_LIMIT === 0 ? { limit: Infinity } : { limit: BACKFILL_MESSAGE_LIMIT });
+  return withDetachedFrameRetry(async () => {
+    const chat = await (currentClient as unknown as { getChatById(id: string): Promise<Chat> }).getChatById(chatId);
+    return (chat as unknown as {
+      fetchMessages(options?: { limit?: number }): Promise<Message[]>;
+    }).fetchMessages(BACKFILL_MESSAGE_LIMIT === 0 ? { limit: Infinity } : { limit: BACKFILL_MESSAGE_LIMIT });
+  });
 }
 
 async function runBackfill(hours: number): Promise<void> {

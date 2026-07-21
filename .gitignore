@@ -29,3 +29,7 @@ apps/license-portal/dist/
 **/license-private.key
 *license-private*
 *.private.pem
+
+# Playwright CLI temporary output
+.playwright-cli/
+**/.playwright-cli/

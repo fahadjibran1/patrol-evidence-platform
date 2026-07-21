@@ -60,3 +60,59 @@ export function getMessageSourceId(message: WhatsAppGroupAddressMessage): WhatsA
 export function getMessageGroupId(message: WhatsAppGroupAddressMessage): string | null {
   return getMessageSourceId(message)?.externalId ?? null;
 }
+
+/**
+ * Shared fromMe gate used by the helper-process message pipeline.
+ * When allowFromMe is false, self-sent messages are skipped before ingest.
+ */
+export function shouldSkipWhatsAppFromMe(fromMe: boolean, allowFromMe: boolean): boolean {
+  return Boolean(fromMe) && !allowFromMe;
+}
+
+/**
+ * Resolve a usable display name for WhatsApp senders.
+ * Generic placeholders such as "WhatsApp" fall back to the sender number.
+ */
+export function resolveWhatsAppSenderName(input: {
+  senderNumber?: string;
+  pushname?: string;
+  name?: string;
+  shortName?: string;
+  fromMe: boolean;
+}): string {
+  const candidates = [input.pushname, input.name, input.shortName]
+    .map((value) => value?.trim())
+    .filter(
+      (value): value is string =>
+        typeof value === 'string' && value.length > 0 && value.toLowerCase() !== 'whatsapp',
+    );
+
+  if (candidates[0]) {
+    return candidates[0];
+  }
+
+  if (input.fromMe) {
+    return input.senderNumber ? `Linked account (${input.senderNumber})` : 'Linked account';
+  }
+
+  return input.senderNumber ?? 'Unknown sender';
+}
+
+export function isDetachedFrameError(error: unknown): boolean {
+  const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  return message.includes('detached frame');
+}
+
+/**
+ * Retry once when WhatsApp Web returns a detached-frame Puppeteer error.
+ */
+export async function withDetachedFrameRetry<T>(operation: () => Promise<T>): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (!isDetachedFrameError(error)) {
+      throw error;
+    }
+    return operation();
+  }
+}
