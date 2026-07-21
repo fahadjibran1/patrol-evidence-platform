@@ -1,14 +1,14 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { AdminRole } from '@prisma/client';
 import { CustomersService } from './customers.service';
 import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '@/auth/guards/roles.guard';
 import { CurrentAdmin } from '@/common/decorators/current-admin.decorator';
 import { AuthenticatedAdmin } from '@/auth/interfaces/authenticated-admin.interface';
-import { PaginationQueryDto, paginate } from '@/common/dto/pagination.dto';
+import { paginate, resolvePagination } from '@/common/dto/pagination.dto';
 import { CreateCustomerDto, SearchCustomersQueryDto, UpdateCustomerDto } from './dto/customer.dto';
 import { Roles } from '@/common/decorators/roles.decorator';
-import { AdminRole } from '@prisma/client';
 
 @ApiTags('customers')
 @ApiBearerAuth()
@@ -18,15 +18,16 @@ export class CustomersController {
   constructor(private readonly customersService: CustomersService) {}
 
   @Get()
-  list(@Query() pagination: PaginationQueryDto, @Query() filters: SearchCustomersQueryDto) {
+  list(@Query() query: SearchCustomersQueryDto) {
+    const { page, pageSize } = resolvePagination(query);
     return this.customersService
       .list({
-        page: pagination.page ?? 1,
-        pageSize: pagination.pageSize ?? 20,
-        search: filters.search,
-        status: filters.status,
+        page,
+        pageSize,
+        search: query.search,
+        status: query.status,
       })
-      .then(({ items, total }) => paginate(items, total, pagination.page ?? 1, pagination.pageSize ?? 20));
+      .then(({ items, total }) => paginate(items, total, page, pageSize));
   }
 
   @Post()
@@ -47,17 +48,20 @@ export class CustomersController {
   }
 
   @Get(':id/licences')
-  licences(@Param('id') id: string) {
-    return this.customersService.listLicences(id);
+  async licences(@Param('id') id: string) {
+    const items = await this.customersService.listLicences(id);
+    return paginate(items, items.length, 1, Math.max(items.length, 1));
   }
 
   @Get(':id/payments')
-  payments(@Param('id') id: string) {
-    return this.customersService.listPayments(id);
+  async payments(@Param('id') id: string) {
+    const items = await this.customersService.listPayments(id);
+    return paginate(items, items.length, 1, Math.max(items.length, 1));
   }
 
   @Get(':id/audit')
-  audit(@Param('id') id: string) {
-    return this.customersService.listAudit(id);
+  async audit(@Param('id') id: string) {
+    const items = await this.customersService.listAudit(id);
+    return paginate(items, items.length, 1, Math.max(items.length, 1));
   }
 }

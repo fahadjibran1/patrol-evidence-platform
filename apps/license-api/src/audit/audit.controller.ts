@@ -3,7 +3,8 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { PrismaService } from '@/prisma/prisma.service';
 import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '@/auth/guards/roles.guard';
-import { PaginationQueryDto, paginate } from '@/common/dto/pagination.dto';
+import { paginate, resolvePagination } from '@/common/dto/pagination.dto';
+import { ListAuditQueryDto } from './dto/list-audit-query.dto';
 
 @ApiTags('audit')
 @ApiBearerAuth()
@@ -13,17 +14,16 @@ export class AuditController {
   constructor(private readonly prisma: PrismaService) {}
 
   @Get()
-  async list(@Query() pagination: PaginationQueryDto, @Query('customerId') customerId?: string) {
-    const page = pagination.page ?? 1;
-    const pageSize = pagination.pageSize ?? 20;
-    const where = customerId ? { customerId } : {};
+  async list(@Query() query: ListAuditQueryDto) {
+    const { page, pageSize, skip, take } = resolvePagination(query);
+    const where = query.customerId ? { customerId: query.customerId } : {};
 
     const [total, items] = await Promise.all([
       this.prisma.auditLog.count({ where }),
       this.prisma.auditLog.findMany({
         where,
-        skip: (page - 1) * pageSize,
-        take: pageSize,
+        skip,
+        take,
         orderBy: { createdAt: 'desc' },
         include: { actor: { select: { email: true, displayName: true } } },
       }),

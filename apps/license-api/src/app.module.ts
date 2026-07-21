@@ -12,6 +12,7 @@ import { CustomersModule } from './customers/customers.module';
 import { LicencesModule } from './licences/licences.module';
 import { PaymentsModule } from './payments/payments.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { SettingsModule } from './settings/settings.module';
 import { ApiExceptionFilter } from './common/filters/api-exception.filter';
 
 @Module({
@@ -30,6 +31,7 @@ import { ApiExceptionFilter } from './common/filters/api-exception.filter';
     LicencesModule,
     PaymentsModule,
     DashboardModule,
+    SettingsModule,
   ],
   providers: [
     {

@@ -154,7 +154,7 @@ export class AuthService {
 
   async verifyPassword(adminId: string, password: string): Promise<boolean> {
     const admin = await this.prisma.admin.findUnique({ where: { id: adminId } });
-    if (!admin) {
+    if (!admin || !admin.isActive) {
       return false;
     }
     return bcrypt.compare(password, admin.passwordHash);

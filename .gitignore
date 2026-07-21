@@ -20,6 +20,7 @@ web/dist/
 node_modules/
 .env
 apps/license-api/.env
+apps/license-api/.env.integration-local
 apps/license-portal/.env
 apps/license-api/dist/
 apps/license-portal/dist/

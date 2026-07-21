@@ -1,4 +1,30 @@
 {
   "extends": "./tsconfig.json",
-  "exclude": ["node_modules", "dist", "test", "**/*.spec.ts"]
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    },
+    "declaration": true,
+    "sourceMap": true,
+    "incremental": false
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "test",
+    "**/*.spec.ts",
+    "prisma",
+    "scripts"
+  ],
+  "tsc-alias": {
+    "replacers": {
+      "base-url": {
+        "enabled": false
+      }
+    }
+  }
 }

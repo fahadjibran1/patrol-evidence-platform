@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider, useAuth } from './lib/auth';
 import { canIssueLicences } from './lib/roles';
@@ -35,20 +34,14 @@ function AdminsRoute(): JSX.Element {
 }
 
 function AppRoutes(): JSX.Element {
-  const { accessToken, isLoading, refreshSession } = useAuth();
-
-  useEffect(() => {
-    if (!accessToken) {
-      return;
-    }
-
-    void refreshSession().catch(() => {
-      // Protected routes will redirect on the next unauthorized API call.
-    });
-  }, [accessToken, refreshSession]);
+  const { accessToken, isLoading } = useAuth();
 
   if (isLoading) {
-    return <div className="login-shell"><p>Loading session…</p></div>;
+    return (
+      <div className="login-shell">
+        <p>Loading session…</p>
+      </div>
+    );
   }
 
   return (
@@ -66,9 +59,23 @@ function AppRoutes(): JSX.Element {
         <Route path="customers" element={<CustomersPage />} />
         <Route path="customers/:id" element={<CustomerDetailPage />} />
         <Route path="licences" element={<LicencesPage />} />
-        <Route path="licences/issue" element={<IssueRoute><IssueLicencePage /></IssueRoute>} />
+        <Route
+          path="licences/issue"
+          element={
+            <IssueRoute>
+              <IssueLicencePage />
+            </IssueRoute>
+          }
+        />
         <Route path="licences/:id" element={<LicenceDetailPage />} />
-        <Route path="licences/:id/renew" element={<IssueRoute><RenewLicencePage /></IssueRoute>} />
+        <Route
+          path="licences/:id/renew"
+          element={
+            <IssueRoute>
+              <RenewLicencePage />
+            </IssueRoute>
+          }
+        />
         <Route path="payments" element={<PaymentsPage />} />
         <Route path="audit" element={<AuditPage />} />
         <Route path="admins" element={<AdminsRoute />} />

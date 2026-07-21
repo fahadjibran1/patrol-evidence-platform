@@ -7,7 +7,7 @@ import { RolesGuard } from '@/auth/guards/roles.guard';
 import { Roles } from '@/common/decorators/roles.decorator';
 import { CurrentAdmin } from '@/common/decorators/current-admin.decorator';
 import { AuthenticatedAdmin } from '@/auth/interfaces/authenticated-admin.interface';
-import { PaginationQueryDto, paginate } from '@/common/dto/pagination.dto';
+import { paginate, resolvePagination } from '@/common/dto/pagination.dto';
 import { CreatePaymentDto, ListPaymentsQueryDto, UpdatePaymentDto } from './dto/payment.dto';
 
 @ApiTags('payments')
@@ -18,16 +18,17 @@ export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
 
   @Get()
-  list(@Query() pagination: PaginationQueryDto, @Query() filters: ListPaymentsQueryDto) {
+  list(@Query() query: ListPaymentsQueryDto) {
+    const { page, pageSize } = resolvePagination(query);
     return this.paymentsService
       .list({
-        page: pagination.page ?? 1,
-        pageSize: pagination.pageSize ?? 20,
-        customerId: filters.customerId,
-        licenceId: filters.licenceId,
-        paymentStatus: filters.paymentStatus,
+        page,
+        pageSize,
+        customerId: query.customerId,
+        licenceId: query.licenceId,
+        paymentStatus: query.paymentStatus,
       })
-      .then(({ items, total }) => paginate(items, total, pagination.page ?? 1, pagination.pageSize ?? 20));
+      .then(({ items, total }) => paginate(items, total, page, pageSize));
   }
 
   @Post()

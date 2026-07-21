@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 
+const REDIRECT_TARGET = '/';
+
 export function LoginPage(): JSX.Element {
   const navigate = useNavigate();
   const { login } = useAuth();
@@ -18,12 +20,31 @@ export function LoginPage(): JSX.Element {
 
     try {
       await login(email.trim(), password);
-      navigate('/');
+      if (import.meta.env.DEV) {
+        console.info('[license-portal:login] redirecting', { redirectTarget: REDIRECT_TARGET });
+      }
+      navigate(REDIRECT_TARGET, { replace: true });
     } catch (submissionError) {
+      let message = 'Login failed';
+      let code: string | null = null;
+
       if (submissionError instanceof ApiError) {
-        setError(submissionError.message);
-      } else {
-        setError(submissionError instanceof Error ? submissionError.message : 'Login failed');
+        code = submissionError.code ?? null;
+        message =
+          code && !submissionError.message.startsWith(`${code}:`)
+            ? `${code}: ${submissionError.message}`
+            : submissionError.message;
+      } else if (submissionError instanceof Error) {
+        message = submissionError.message;
+      }
+
+      setError(message);
+      if (import.meta.env.DEV) {
+        console.info('[license-portal:login] failure', {
+          reason: submissionError instanceof ApiError ? 'api-error' : 'exception',
+          code,
+          message,
+        });
       }
     } finally {
       setIsSubmitting(false);
@@ -38,25 +59,37 @@ export function LoginPage(): JSX.Element {
         <p>Issue TG1 licences, manage customers, record payments, and maintain an immutable audit trail.</p>
       </div>
 
-      <form className="login-card" onSubmit={handleSubmit}>
+      <form className="login-card" onSubmit={handleSubmit} noValidate={false}>
         <div>
           <h2>Administrator sign in</h2>
           <p className="muted-text">Authorised platform administrators only. No public registration.</p>
         </div>
 
-        <label className="field">
+        <label className="field" htmlFor="login-email">
           <span>Email</span>
-          <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" autoComplete="username" required />
+          <input
+            id="login-email"
+            name="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            type="email"
+            autoComplete="username"
+            required
+            disabled={isSubmitting}
+          />
         </label>
 
-        <label className="field">
+        <label className="field" htmlFor="login-password">
           <span>Password</span>
           <input
+            id="login-password"
+            name="password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             type="password"
             autoComplete="current-password"
             required
+            disabled={isSubmitting}
           />
         </label>
 

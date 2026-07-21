@@ -7,7 +7,7 @@ import { RolesGuard } from '@/auth/guards/roles.guard';
 import { Roles } from '@/common/decorators/roles.decorator';
 import { CurrentAdmin } from '@/common/decorators/current-admin.decorator';
 import { AuthenticatedAdmin } from '@/auth/interfaces/authenticated-admin.interface';
-import { PaginationQueryDto, paginate } from '@/common/dto/pagination.dto';
+import { PaginationQueryDto, paginate, resolvePagination } from '@/common/dto/pagination.dto';
 import { CreateAdminDto, ResetAdminPasswordDto, UpdateAdminDto } from './dto/admin.dto';
 
 @ApiTags('admins')
@@ -19,10 +19,11 @@ export class AdminsController {
   constructor(private readonly adminsService: AdminsService) {}
 
   @Get()
-  list(@Query() pagination: PaginationQueryDto) {
+  list(@Query() query: PaginationQueryDto) {
+    const { page, pageSize } = resolvePagination(query);
     return this.adminsService
-      .list({ page: pagination.page ?? 1, pageSize: pagination.pageSize ?? 20 })
-      .then(({ items, total }) => paginate(items, total, pagination.page ?? 1, pagination.pageSize ?? 20));
+      .list({ page, pageSize })
+      .then(({ items, total }) => paginate(items, total, page, pageSize));
   }
 
   @Post()

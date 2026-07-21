@@ -1,10 +1,12 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ApiError, apiRequest } from '../lib/api';
+import { ApiError, apiRequest, copyToClipboard } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { formatUkDate, formatUkDateTime } from '../lib/dates';
-import { canRenewLicences, canSuspendOrRevoke } from '../lib/roles';
+import { buildActivationInstructions } from '../lib/licence-file';
+import { canRenewLicences, canRevealLicenseKey, canSuspendOrRevoke } from '../lib/roles';
 import { OfflineEnforcementBanner } from '../components/layout';
+import { DownloadLicenceModal } from '../components/download-licence-modal';
 import {
   ButtonRow,
   Card,
@@ -28,6 +30,8 @@ export function LicenceDetailPage(): JSX.Element {
   const [isLoading, setIsLoading] = useState(true);
   const [reason, setReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showDownloadModal, setShowDownloadModal] = useState(false);
+  const [downloadMessage, setDownloadMessage] = useState<string | null>(null);
 
   async function loadLicence(): Promise<void> {
     if (!accessToken || !id) {
@@ -36,8 +40,15 @@ export function LicenceDetailPage(): JSX.Element {
 
     setIsLoading(true);
     try {
-      const response = await apiRequest<LicenceDetail>(`/admin/licences/${id}`, {}, accessToken);
-      setLicence(response);
+      const response = await apiRequest<LicenceDetail & { maskedKey?: string | null }>(
+        `/admin/licences/${id}`,
+        {},
+        accessToken,
+      );
+      setLicence({
+        ...response,
+        maskedLicenseKey: response.maskedLicenseKey ?? response.maskedKey ?? null,
+      });
       setError(null);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Failed to load licence');
@@ -59,10 +70,14 @@ export function LicenceDetailPage(): JSX.Element {
     setActionError(null);
 
     try {
-      await apiRequest(path, {
-        method: 'POST',
-        body: JSON.stringify(body),
-      }, accessToken);
+      await apiRequest(
+        path,
+        {
+          method: 'POST',
+          body: JSON.stringify(body),
+        },
+        accessToken,
+      );
       setReason('');
       await loadLicence();
     } catch (submissionError) {
@@ -99,6 +114,7 @@ export function LicenceDetailPage(): JSX.Element {
   }
 
   const showOfflineWarning = licence.status === 'SUSPENDED' || licence.status === 'REVOKED';
+  const canDownload = canRevealLicenseKey(admin?.role) && Boolean(licence.maskedLicenseKey);
 
   return (
     <div className="page-stack">
@@ -107,41 +123,114 @@ export function LicenceDetailPage(): JSX.Element {
         subtitle={licence.customerName ?? 'Licence detail'}
         actions={
           <ButtonRow>
-            {canRenewLicences(admin?.role) ? (
-              <Link to={`/licences/${licence.id}/renew`} className="secondary-button">Renew</Link>
+            {canDownload ? (
+              <button type="button" className="primary-button" onClick={() => setShowDownloadModal(true)}>
+                Download licence file
+              </button>
             ) : null}
-            <Link to={`/customers/${licence.customerId}`} className="secondary-button">View customer</Link>
+            {canRenewLicences(admin?.role) ? (
+              <Link to={`/licences/${licence.id}/renew`} className="secondary-button">
+                Renew
+              </Link>
+            ) : null}
+            <Link to={`/customers/${licence.customerId}`} className="secondary-button">
+              View customer
+            </Link>
           </ButtonRow>
         }
       />
 
       {showOfflineWarning ? <OfflineEnforcementBanner /> : null}
       {actionError ? <ErrorBanner message={actionError} /> : null}
+      {downloadMessage ? <p className="success-text">{downloadMessage}</p> : null}
 
       <div className="two-column-grid">
         <Card>
           <h3>Portal status</h3>
           <div className="detail-grid">
-            <div className="detail-item"><span>Portal status</span><strong><StatusBadge value={licence.status} /></strong></div>
-            <div className="detail-item"><span>Effective status</span><strong><StatusBadge value={licence.effectiveStatus} /></strong></div>
-            <div className="detail-item"><span>Plan</span><strong>{licence.plan}</strong></div>
-            <div className="detail-item"><span>Starts</span><strong>{formatUkDate(licence.startsAt)}</strong></div>
-            <div className="detail-item"><span>Expires</span><strong>{formatUkDate(licence.expiresAt)}</strong></div>
-            <div className="detail-item"><span>Max devices</span><strong>{licence.maxDevices}</strong></div>
-            <div className="detail-item"><span>Masked key</span><strong>{licence.maskedLicenseKey ?? 'Not issued'}</strong></div>
-            <div className="detail-item"><span>Signing key ID</span><strong>{licence.signingKeyId ?? '—'}</strong></div>
+            <div className="detail-item">
+              <span>Portal status</span>
+              <strong>
+                <StatusBadge value={licence.status} />
+              </strong>
+            </div>
+            <div className="detail-item">
+              <span>Effective status</span>
+              <strong>
+                <StatusBadge value={licence.effectiveStatus} />
+              </strong>
+            </div>
+            <div className="detail-item">
+              <span>Plan</span>
+              <strong>{licence.plan}</strong>
+            </div>
+            <div className="detail-item">
+              <span>Starts</span>
+              <strong>{formatUkDate(licence.startsAt)}</strong>
+            </div>
+            <div className="detail-item">
+              <span>Expires</span>
+              <strong>{formatUkDate(licence.expiresAt)}</strong>
+            </div>
+            <div className="detail-item">
+              <span>Max devices</span>
+              <strong>{licence.maxDevices}</strong>
+            </div>
+            <div className="detail-item">
+              <span>Masked key</span>
+              <strong>{licence.maskedLicenseKey ?? 'Not issued'}</strong>
+            </div>
+            <div className="detail-item">
+              <span>Signing key ID</span>
+              <strong>{licence.signingKeyId ?? '—'}</strong>
+            </div>
           </div>
+          {canDownload ? (
+            <ButtonRow>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => {
+                  void copyToClipboard(
+                    buildActivationInstructions({
+                      licenseId: licence.licenseId,
+                      companyName: licence.customerName ?? 'Customer',
+                      plan: licence.plan,
+                      expiresAtDisplay: formatUkDate(licence.expiresAt),
+                    }),
+                  ).then(() => setDownloadMessage('Activation instructions copied.'));
+                }}
+              >
+                Copy activation instructions
+              </button>
+            </ButtonRow>
+          ) : null}
         </Card>
 
         <Card>
           <h3>Signed payload summary</h3>
           {licence.payloadSummary ? (
             <div className="detail-grid">
-              <div className="detail-item"><span>Company</span><strong>{licence.payloadSummary.companyName}</strong></div>
-              <div className="detail-item"><span>Customer email</span><strong>{licence.payloadSummary.customerEmail ?? '—'}</strong></div>
-              <div className="detail-item"><span>Issued at</span><strong>{formatUkDate(licence.payloadSummary.issuedAt)}</strong></div>
-              <div className="detail-item"><span>Features</span><strong>{licence.payloadSummary.features.join(', ') || '—'}</strong></div>
-              <div className="detail-item"><span>Notes</span><strong>{licence.payloadSummary.notes ?? licence.notes ?? '—'}</strong></div>
+              <div className="detail-item">
+                <span>Company</span>
+                <strong>{licence.payloadSummary.companyName}</strong>
+              </div>
+              <div className="detail-item">
+                <span>Customer email</span>
+                <strong>{licence.payloadSummary.customerEmail ?? '—'}</strong>
+              </div>
+              <div className="detail-item">
+                <span>Issued at</span>
+                <strong>{formatUkDate(licence.payloadSummary.issuedAt)}</strong>
+              </div>
+              <div className="detail-item">
+                <span>Features</span>
+                <strong>{licence.payloadSummary.features.join(', ') || '—'}</strong>
+              </div>
+              <div className="detail-item">
+                <span>Notes</span>
+                <strong>{licence.payloadSummary.notes ?? licence.notes ?? '—'}</strong>
+              </div>
             </div>
           ) : (
             <p className="muted-text">Payload summary available after issuance.</p>
@@ -161,7 +250,9 @@ export function LicenceDetailPage(): JSX.Element {
               <input value={reason} onChange={(event) => setReason(event.target.value)} required />
             </Field>
             <ButtonRow>
-              <button type="submit" className="secondary-button" disabled={isSubmitting}>Suspend licence</button>
+              <button type="submit" className="secondary-button" disabled={isSubmitting}>
+                Suspend licence
+              </button>
               <button
                 type="button"
                 className="danger-button"
@@ -270,6 +361,16 @@ export function LicenceDetailPage(): JSX.Element {
           emptyMessage="No audit entries."
         />
       </Card>
+
+      {showDownloadModal && accessToken ? (
+        <DownloadLicenceModal
+          licenceId={licence.id}
+          humanLicenseId={licence.licenseId}
+          accessToken={accessToken}
+          onClose={() => setShowDownloadModal(false)}
+          onDownloaded={(fileName) => setDownloadMessage(`${fileName} downloaded.`)}
+        />
+      ) : null}
     </div>
   );
 }

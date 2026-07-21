@@ -1,5 +1,6 @@
 import { PaymentStatus } from '@prisma/client';
 import { IsDateString, IsEnum, IsInt, IsOptional, IsString, IsUUID, Min } from 'class-validator';
+import { PaginationQueryDto } from '@/common/dto/pagination.dto';
 
 export class CreatePaymentDto {
   @IsUUID()
@@ -93,7 +94,7 @@ export class UpdatePaymentDto {
   notes?: string;
 }
 
-export class ListPaymentsQueryDto {
+export class ListPaymentsQueryDto extends PaginationQueryDto {
   @IsOptional()
   @IsUUID()
   customerId?: string;

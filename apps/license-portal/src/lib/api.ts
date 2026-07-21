@@ -56,16 +56,20 @@ export async function apiRequest<T>(
     headers,
   });
 
+  if (!response) {
+    throw new ApiError('No response from API', 0);
+  }
+
   if (!response.ok) {
+    const text = await readBodyText(response);
     try {
-      const payload = (await response.json()) as ApiErrorPayload;
+      const payload = (text ? JSON.parse(text) : {}) as ApiErrorPayload;
       throw formatApiError(payload, response.status);
     } catch (error) {
       if (error instanceof ApiError) {
         throw error;
       }
 
-      const text = await response.text();
       throw new ApiError(text || `Request failed with status ${response.status}`, response.status);
     }
   }
@@ -74,8 +78,21 @@ export async function apiRequest<T>(
     return undefined as T;
   }
 
-  const text = await response.text();
+  const text = await readBodyText(response);
   return (text ? JSON.parse(text) : undefined) as T;
+}
+
+async function readBodyText(response: Response): Promise<string> {
+  if (typeof response.text === 'function') {
+    return response.text();
+  }
+
+  // Incomplete test doubles may only implement json().
+  if (typeof response.json === 'function') {
+    return JSON.stringify(await response.json());
+  }
+
+  return '';
 }
 
 export function downloadTextFile(fileName: string, contents: string): void {

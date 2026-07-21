@@ -1,7 +1,8 @@
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../lib/api';
 import { isDesktopApp } from '../lib/desktop';
+import { LICENCE_IMPORT_ACCEPT, readLocalLicenceFile } from '../lib/licence-file-import';
 import { useAuth } from '../state/auth';
 import type { LicenseStatusResponse } from '../types';
 import { StatusBadge } from '../components/ui';
@@ -18,6 +19,7 @@ export function LicensePage(): JSX.Element {
   const [success, setSuccess] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const loadStatus = useCallback(async () => {
     const next = await apiRequest<LicenseStatusResponse>('/license/status', {}, token ?? undefined);
@@ -93,6 +95,30 @@ export function LicensePage(): JSX.Element {
       setCopyMessage('Installation ID copied.');
     } catch {
       setCopyMessage('Could not copy automatically. Select and copy the installation ID manually.');
+    }
+  }
+
+  async function handleImportLicenceFile(event: ChangeEvent<HTMLInputElement>): Promise<void> {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) {
+      return;
+    }
+
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const result = await readLocalLicenceFile(file);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+
+      setLicenseKey(result.key);
+      setSuccess('Licence file loaded. Review the key, then select Activate licence.');
+    } catch {
+      setError('Could not read the selected licence file.');
     }
   }
 
@@ -200,11 +226,26 @@ export function LicensePage(): JSX.Element {
               placeholder="TG1...."
             />
           </label>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={LICENCE_IMPORT_ACCEPT}
+            hidden
+            onChange={(event) => void handleImportLicenceFile(event)}
+          />
           {error ? <p className="form-error">{error}</p> : null}
           {success ? <p className="muted-text">{success}</p> : null}
           <div className="button-row">
             <button type="submit" className="primary-button" disabled={isSubmitting || !licenseKey.trim()}>
               {isSubmitting ? 'Working…' : 'Activate licence'}
+            </button>
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={isSubmitting}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              Import licence file
             </button>
             <button
               type="button"

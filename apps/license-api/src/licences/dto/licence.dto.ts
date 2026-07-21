@@ -1,16 +1,23 @@
-import { InstallationStatus, LicensePlan } from '@prisma/client';
+import { LicensePlan, PaymentStatus } from '@prisma/client';
 import {
+  ArrayUnique,
   IsArray,
   IsDateString,
   IsEmail,
   IsEnum,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
   IsUUID,
+  Max,
+  MaxLength,
   Min,
   MinLength,
+  ValidateIf,
 } from 'class-validator';
+import { PaginationQueryDto } from '@/common/dto/pagination.dto';
+import { SUPPORTED_LICENCE_FEATURES } from '../licence-features';
 
 export class CreateDraftLicenceDto {
   @IsUUID()
@@ -29,15 +36,18 @@ export class CreateDraftLicenceDto {
 
   @IsInt()
   @Min(1)
+  @Max(100)
   maxDevices!: number;
 
   @IsOptional()
   @IsArray()
-  @IsString({ each: true })
+  @ArrayUnique()
+  @IsIn([...SUPPORTED_LICENCE_FEATURES], { each: true })
   features?: string[];
 
   @IsOptional()
   @IsString()
+  @MaxLength(2000)
   notes?: string;
 }
 
@@ -45,6 +55,36 @@ export class IssueLicenceDto extends CreateDraftLicenceDto {
   @IsOptional()
   @IsEmail()
   customerEmail?: string;
+
+  @IsOptional()
+  @IsEnum(PaymentStatus)
+  paymentStatus?: PaymentStatus;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  amountPence?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  paymentMethod?: string;
+
+  @ValidateIf((dto: IssueLicenceDto) => dto.paymentStatus === PaymentStatus.PAID)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(120)
+  paymentReference?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  invoiceReference?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['GBP'])
+  currency?: string;
 }
 
 export class RenewLicenceDto {
@@ -63,11 +103,13 @@ export class RenewLicenceDto {
   @IsOptional()
   @IsInt()
   @Min(1)
+  @Max(100)
   maxDevices?: number;
 
   @IsOptional()
   @IsArray()
-  @IsString({ each: true })
+  @ArrayUnique()
+  @IsIn([...SUPPORTED_LICENCE_FEATURES], { each: true })
   features?: string[];
 
   @IsOptional()
@@ -81,7 +123,7 @@ export class RevealLicenceDto {
   password!: string;
 }
 
-export class ListLicencesQueryDto {
+export class ListLicencesQueryDto extends PaginationQueryDto {
   @IsOptional()
   @IsEnum(LicensePlan)
   plan?: LicensePlan;

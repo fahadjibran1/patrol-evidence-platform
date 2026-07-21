@@ -9,17 +9,16 @@
     "target": "ES2021",
     "sourceMap": true,
     "outDir": "./dist",
-    "baseUrl": "./",
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    },
+    "moduleResolution": "node",
     "incremental": true,
     "skipLibCheck": true,
     "strict": true,
-    "noImplicitAny": true,
-    "strictNullChecks": true,
-    "moduleResolution": "node",
-    "paths": {
-      "@/*": ["src/*"],
-      "@patrol/license-core": ["../../packages/license-core/src/index.ts"]
-    }
+    "strictPropertyInitialization": false,
+    "esModuleInterop": true
   },
   "include": ["src/**/*", "test/**/*", "prisma/**/*", "scripts/**/*"],
   "exclude": ["node_modules", "dist"]

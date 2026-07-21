@@ -65,6 +65,15 @@ export class SigningService implements OnModuleInit {
     return this.signingKeyId ?? 'unknown';
   }
 
+  /** Safe metadata for the admin portal — never includes key material or paths. */
+  getSigningKeyStatus(): { keyId: string; ready: boolean; algorithm: 'Ed25519' } {
+    return {
+      keyId: this.signingKeyId ?? 'unknown',
+      ready: this.isReady(),
+      algorithm: 'Ed25519',
+    };
+  }
+
   signPayload(payload: LicensePayload): SignedLicenceResult {
     if (!this.privateKeyPem || !this.publicKey || !this.signingKeyId) {
       throw new ApiException(

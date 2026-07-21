@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Header, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { AdminRole } from '@prisma/client';
 import { LicencesService } from './licences.service';
@@ -6,7 +6,7 @@ import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '@/auth/guards/roles.guard';
 import { CurrentAdmin } from '@/common/decorators/current-admin.decorator';
 import { AuthenticatedAdmin } from '@/auth/interfaces/authenticated-admin.interface';
-import { PaginationQueryDto, paginate } from '@/common/dto/pagination.dto';
+import { paginate, resolvePagination } from '@/common/dto/pagination.dto';
 import {
   CreateDraftLicenceDto,
   IssueLicenceDto,
@@ -16,6 +16,7 @@ import {
 } from './dto/licence.dto';
 import { IssueExistingLicenceDto, RevokeLicenceDto, SuspendLicenceDto } from './dto/licence-actions.dto';
 import { CreateInstallationDto, UpdateInstallationDto } from './dto/installation.dto';
+import { DownloadEventDto } from './dto/download-event.dto';
 import { Roles } from '@/common/decorators/roles.decorator';
 
 @ApiTags('licences')
@@ -26,15 +27,16 @@ export class LicencesController {
   constructor(private readonly licencesService: LicencesService) {}
 
   @Get()
-  list(@Query() pagination: PaginationQueryDto, @Query() filters: ListLicencesQueryDto) {
+  list(@Query() query: ListLicencesQueryDto) {
+    const { page, pageSize } = resolvePagination(query);
     return this.licencesService
       .list({
-        page: pagination.page ?? 1,
-        pageSize: pagination.pageSize ?? 20,
-        customerId: filters.customerId,
-        search: filters.search,
+        page,
+        pageSize,
+        customerId: query.customerId,
+        search: query.search,
       })
-      .then(({ items, total }) => paginate(items, total, pagination.page ?? 1, pagination.pageSize ?? 20));
+      .then(({ items, total }) => paginate(items, total, page, pageSize));
   }
 
   @Post('draft')
@@ -90,8 +92,20 @@ export class LicencesController {
 
   @Post(':id/reveal')
   @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMIN)
+  @Header('Cache-Control', 'no-store')
+  @Header('Pragma', 'no-cache')
   reveal(@CurrentAdmin() admin: AuthenticatedAdmin, @Param('id') id: string, @Body() dto: RevealLicenceDto) {
     return this.licencesService.reveal(admin, id, dto);
+  }
+
+  @Post(':id/download-event')
+  @Roles(AdminRole.SUPER_ADMIN, AdminRole.ADMIN)
+  recordDownloadEvent(
+    @CurrentAdmin() admin: AuthenticatedAdmin,
+    @Param('id') id: string,
+    @Body() dto: DownloadEventDto,
+  ) {
+    return this.licencesService.recordDownloadEvent(admin, id, dto.source);
   }
 
   @Post(':id/installations')

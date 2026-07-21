@@ -46,10 +46,9 @@ export function SettingsPage(): JSX.Element {
       {isLoading ? <LoadingState label="Loading settings…" /> : status ? (
         <Card>
           <div className="detail-grid">
-            <div className="detail-item"><span>Signing key ID</span><strong>{status.signingKeyId ?? 'Not configured'}</strong></div>
-            <div className="detail-item"><span>Readiness</span><strong><StatusBadge value={status.signingKeyReady ? 'READY' : 'MISSING'} /></strong></div>
+            <div className="detail-item"><span>Signing key ID</span><strong>{status.keyId || 'Not configured'}</strong></div>
+            <div className="detail-item"><span>Readiness</span><strong><StatusBadge value={status.ready ? 'READY' : 'MISSING'} /></strong></div>
             <div className="detail-item"><span>Algorithm</span><strong>{status.algorithm}</strong></div>
-            <div className="detail-item"><span>Environment</span><strong>{status.environment}</strong></div>
           </div>
         </Card>
       ) : (

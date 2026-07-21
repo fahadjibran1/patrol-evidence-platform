@@ -29,15 +29,30 @@ export interface AdminUser {
   createdAt?: string;
 }
 
-export interface LoginResponse {
-  accessToken: string;
-  refreshToken: string;
-  admin: AdminUser;
+/** Shape returned by POST /admin/auth/login */
+export interface LoginAdminPayload {
+  sub: string;
+  email: string;
+  role: AdminRole;
+  displayName: string;
 }
 
+export interface AuthTokensPayload {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn?: string;
+}
+
+export interface LoginResponse {
+  admin: LoginAdminPayload;
+  tokens: AuthTokensPayload;
+}
+
+/** Shape returned by POST /admin/auth/refresh */
 export interface RefreshResponse {
   accessToken: string;
   refreshToken: string;
+  expiresIn?: string;
 }
 
 export interface ApiErrorPayload {
@@ -52,6 +67,7 @@ export interface PaginatedResponse<T> {
   total: number;
   page: number;
   pageSize: number;
+  totalPages?: number;
 }
 
 export interface DashboardStats {
@@ -197,13 +213,18 @@ export interface IssueLicenceRequest {
   customerEmail?: string;
   notes?: string;
   paymentStatus?: PaymentStatus;
+  amountPence?: number;
+  paymentMethod?: string;
   paymentReference?: string;
   invoiceReference?: string;
+  currency?: string;
 }
 
 export interface IssueLicenceResponse {
   licence: LicenceDetail;
   licenseKey: string;
+  fullLicenseKey?: string;
+  signedLicenseKey?: string;
 }
 
 export interface RenewLicenceRequest {
@@ -220,10 +241,9 @@ export interface RenewLicenceResponse {
 }
 
 export interface SigningKeyStatus {
-  signingKeyId: string | null;
-  signingKeyReady: boolean;
-  algorithm: string;
-  environment: string;
+  keyId: string;
+  ready: boolean;
+  algorithm: 'Ed25519' | string;
 }
 
 export interface CreateCustomerRequest {

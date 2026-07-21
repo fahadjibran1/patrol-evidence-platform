@@ -1,0 +1,16 @@
+- generic [ref=e3]:
+  - generic [ref=e4]:
+    - paragraph [ref=e5]: Private administration
+    - heading "Patrol licence administration portal." [level=1] [ref=e6]
+    - paragraph [ref=e7]: Issue TG1 licences, manage customers, record payments, and maintain an immutable audit trail.
+  - generic [ref=e8]:
+    - generic [ref=e9]:
+      - heading "Administrator sign in" [level=2] [ref=e10]
+      - paragraph [ref=e11]: Authorised platform administrators only. No public registration.
+    - generic [ref=e12]:
+      - generic [ref=e13]: Email
+      - textbox "Email" [ref=e14]
+    - generic [ref=e15]:
+      - generic [ref=e16]: Password
+      - textbox "Password" [ref=e17]
+    - button "Sign in" [ref=e18] [cursor=pointer]

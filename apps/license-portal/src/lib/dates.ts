@@ -55,6 +55,24 @@ export function todayIsoDate(): string {
   return `${year}-${month}-${day}`;
 }
 
+/** Calendar date in Europe/London for commercial licence start defaults. */
+export function todayLondonIsoDate(): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/London',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+
+  const year = parts.find((part) => part.type === 'year')?.value;
+  const month = parts.find((part) => part.type === 'month')?.value;
+  const day = parts.find((part) => part.type === 'day')?.value;
+  if (!year || !month || !day) {
+    return todayIsoDate();
+  }
+  return `${year}-${month}-${day}`;
+}
+
 export function addDaysIso(isoDate: string, days: number): string {
   const date = new Date(`${isoDate.slice(0, 10)}T00:00:00.000Z`);
   date.setUTCDate(date.getUTCDate() + days);

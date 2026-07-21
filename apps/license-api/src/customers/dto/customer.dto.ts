@@ -1,5 +1,6 @@
 import { CustomerStatus } from '@prisma/client';
 import { IsEmail, IsEnum, IsOptional, IsString, MinLength } from 'class-validator';
+import { PaginationQueryDto } from '@/common/dto/pagination.dto';
 
 export class CreateCustomerDto {
   @IsString()
@@ -101,7 +102,7 @@ export class UpdateCustomerDto {
   notes?: string;
 }
 
-export class SearchCustomersQueryDto {
+export class SearchCustomersQueryDto extends PaginationQueryDto {
   @IsOptional()
   @IsString()
   search?: string;

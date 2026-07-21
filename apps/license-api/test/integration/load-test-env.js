@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 
-function loadEnvFile(filePath) {
+function loadEnvFile(filePath, { overwrite = false } = {}) {
   if (!fs.existsSync(filePath)) {
     return;
   }
@@ -22,7 +22,7 @@ function loadEnvFile(filePath) {
       value = value.slice(1, -1);
     }
 
-    if (process.env[key] === undefined) {
+    if (overwrite || process.env[key] === undefined) {
       process.env[key] = value;
     }
   }
@@ -33,6 +33,8 @@ const repoRoot = path.resolve(apiRoot, '..', '..');
 
 loadEnvFile(path.join(apiRoot, '.env'));
 loadEnvFile(path.join(repoRoot, '.env'));
+// Optional local override when Docker (port 5433) is unavailable.
+loadEnvFile(path.join(apiRoot, '.env.integration-local'), { overwrite: true });
 
 function buildTestDatabaseUrl() {
   if (process.env.LICENSE_TEST_DATABASE_URL?.trim()) {
