@@ -51,6 +51,7 @@ sqt/
 
 # Generated release / build artefacts
 Releases/
+Releases-*.txt
 build-info.json
 
 # Customer-portal generated tsc output from composite tsconfig.node.json
