@@ -110,6 +110,7 @@ describe('WhatsAppCollectorService', () => {
       sessionPathWritable: true,
       sessionCorruptionSuspected: false,
       sessionCorruptionMessage: null,
+      failureCode: null,
       groups: [],
       contacts: [],
       ...overrides,

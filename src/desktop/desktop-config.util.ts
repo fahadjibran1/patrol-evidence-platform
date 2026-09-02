@@ -19,6 +19,8 @@ export interface DesktopWorkspaceConfig {
   whatsappHeadless?: boolean;
   whatsappAllowFromMe?: boolean;
   whatsappChromePath?: string;
+  /** Preferred automation browser: chrome | edge | auto */
+  whatsappBrowser?: 'chrome' | 'edge' | 'auto';
   whatsappPilotGroupName?: string;
   whatsappPilotSiteCode?: string;
   linkedWhatsAppAccountId?: string;

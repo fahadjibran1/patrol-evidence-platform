@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash, randomUUID } from 'crypto';
 import * as bcrypt from 'bcrypt';
@@ -6,6 +6,7 @@ import { PrismaService } from '@/prisma/prisma.service';
 import { AuditService } from '@/audit/audit.service';
 import { ApiException } from '@/common/exceptions/api.exception';
 import { ERROR_CODES } from '@/common/constants/error-codes';
+import { MetricsService } from '@/metrics/metrics.service';
 import { TokenService } from './token.service';
 import { LoginDto } from './dto/auth.dto';
 import { AuthenticatedAdmin, AuthTokens } from './interfaces/authenticated-admin.interface';
@@ -26,6 +27,7 @@ export class AuthService {
     private readonly tokenService: TokenService,
     private readonly auditService: AuditService,
     private readonly configService: ConfigService,
+    @Optional() private readonly metricsService?: MetricsService,
   ) {}
 
   async login(
@@ -41,6 +43,7 @@ export class AuthService {
 
     if (!admin || !(await bcrypt.compare(dto.password, admin.passwordHash))) {
       this.recordFailedAttempt(key);
+      this.metricsService?.increment('loginFailures');
       await this.auditService.record({
         action: 'auth.login_failed',
         entityType: 'Admin',
@@ -192,6 +195,19 @@ export class AuthService {
 
   private hashToken(token: string): string {
     return createHash('sha256').update(token).digest('hex');
+  }
+
+  /** RC1 support: clear in-memory login rate limit for an admin email (all IP keys). */
+  clearLoginRateLimit(email: string): number {
+    const needle = email.trim().toLowerCase();
+    let cleared = 0;
+    for (const key of [...this.loginAttempts.keys()]) {
+      if (key.endsWith(`:${needle}`)) {
+        this.loginAttempts.delete(key);
+        cleared += 1;
+      }
+    }
+    return cleared;
   }
 
   private assertNotRateLimited(key: string): void {

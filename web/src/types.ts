@@ -149,6 +149,7 @@ export interface WhatsAppCollectorStatus {
   startupStage: string | null;
   startupStartedAt: string | null;
   lastError: string | null;
+  failureCode?: string | null;
   collectorLogPath: string;
   latestQrPath: string;
   qrPayloadLength: number | null;
@@ -294,6 +295,7 @@ export interface DesktopWorkspaceConfig {
   whatsappHeadless?: boolean;
   whatsappAllowFromMe?: boolean;
   whatsappChromePath?: string;
+  whatsappBrowser?: 'chrome' | 'edge' | 'auto';
   whatsappPilotGroupName?: string;
   whatsappPilotSiteCode?: string;
   linkedWhatsAppAccountId?: string;
@@ -323,7 +325,7 @@ export interface LicenseSnapshot {
   trialEndDate: string | null;
   startsAt: string | null;
   expiresAt: string | null;
-  status: 'ACTIVE' | 'EXPIRED' | 'INVALID' | 'NOT_ACTIVATED';
+  status: 'ACTIVE' | 'TRIAL_ACTIVE' | 'EXPIRED' | 'INVALID' | 'NOT_ACTIVATED';
   daysRemaining: number;
   installationId: string | null;
   maxDevices: number | null;
@@ -339,8 +341,9 @@ export interface LicenseSnapshot {
 }
 
 export interface LicenseStatusResponse {
-  status: 'ACTIVE' | 'EXPIRED' | 'INVALID' | 'NOT_ACTIVATED';
+  status: 'ACTIVE' | 'TRIAL_ACTIVE' | 'EXPIRED' | 'INVALID' | 'NOT_ACTIVATED';
   displayMode: 'Trial' | 'Licensed' | 'Not activated';
+  uiState?: 'Trial Active' | 'Licensed' | 'Expired' | 'Invalid' | 'Not activated';
   plan: 'trial' | 'monthly' | 'annual' | null;
   companyName: string | null;
   licenseId: string | null;
@@ -350,7 +353,16 @@ export interface LicenseStatusResponse {
   daysRemaining: number;
   maxDevices: number | null;
   features: string[];
+  featureFlags?: {
+    whatsappMonitoring: boolean;
+    guardSafe: boolean;
+    evidence: boolean;
+    alerts: boolean;
+    incidents: boolean;
+    exports: boolean;
+  };
   installationId: string | null;
+  machineFingerprint?: string | null;
   activatedAt: string | null;
   lastSuccessfulValidationAt: string | null;
   legacy: boolean;
@@ -358,6 +370,18 @@ export interface LicenseStatusResponse {
   collectorAllowed: boolean;
   operationsAllowed: boolean;
   requiresActivation: boolean;
+  mode?: 'trial' | 'commercial' | 'unlicensed' | 'invalid';
+  buildId?: string | null;
+  appVersion?: string | null;
+  diagnostics?: {
+    dataRoot: string | null;
+    trialFilePath: string | null;
+    trialMarkerPresent: boolean;
+    licensingDirectoryWritable: boolean | null;
+    lastTrialBootstrapError: string | null;
+    cryptoMode: 'dpapi' | 'test';
+    trialCreationDisabled: boolean;
+  };
 }
 
 export interface DesktopPostgresConfig {

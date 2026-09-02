@@ -38,7 +38,9 @@ export function LicenseRouteGate({ children }: { children?: ReactNode }): JSX.El
     );
   }
 
-  const operationsAllowed = status?.operationsAllowed !== false && status?.status === 'ACTIVE';
+  const operationsAllowed =
+    status?.operationsAllowed !== false &&
+    (status?.status === 'ACTIVE' || status?.status === 'TRIAL_ACTIVE');
   if (operationsAllowed || LICENSE_ALLOWED_PATHS.has(location.pathname)) {
     return <>{children ?? <Outlet />}</>;
   }

@@ -1,35 +1,63 @@
-node_modules
-dist/
-out/
-tmp-installer-verify/
-tmp-short-installer/
-tmp-portable-verify/
-whatsapp-session/
-whatsapp-session-test-events/
-*.zip
-*.exe
-dist/
-out/
-whatsapp-session/
-.wwebjs_cache/
-sqt/
-web/dist/
-*.zip
-*.exe
-*.tsbuildinfo
 node_modules/
-.env
-apps/license-api/.env
-apps/license-api/.env.integration-local
-apps/license-portal/.env
+dist/
+out/
+web/dist/
 apps/license-api/dist/
 apps/license-portal/dist/
+*.tsbuildinfo
+*.zip
+*.exe
+
+# Environment files — keep committed examples only
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Private signing keys (do not globally ignore *.pem)
 .license-keys/
 **/license-private.pem
 **/license-private.key
 *license-private*
 *.private.pem
 
-# Playwright CLI temporary output
+# Generated licence / entitlement artefacts
+licence-output.txt
+licence-output-key.txt
+*.tglic
+*.tgreq
+
+# Local databases and dumps (do not globally ignore *.sql)
+*.db
+*.sqlite
+*.sqlite3
+*.dump
+*.sql.gz
+backups/
+
+# Authenticated WhatsApp / browser state
+whatsapp-session/
+whatsapp-session-test-events/
+.wwebjs_auth/
+.wwebjs_cache/
+
+# Transient installer/test folders
+tmp-installer-verify/
+tmp-short-installer/
+tmp-portable-verify/
+sqt/
 .playwright-cli/
 **/.playwright-cli/
+
+# Generated release / build artefacts
+Releases/
+build-info.json
+
+# Customer-portal generated tsc output from composite tsconfig.node.json
+apps/customer-portal/vite.config.js
+apps/customer-portal/vite.config.d.ts
+apps/customer-portal/vitest.config.js
+apps/customer-portal/vitest.config.d.ts
+
+docker/nginx/certs/*
+!docker/nginx/certs/.gitkeep

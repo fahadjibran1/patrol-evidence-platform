@@ -41,6 +41,52 @@ export function computeExpiresAt(startsAt: string, plan: LicensePlan, explicitEx
   return addDays(startsAt, planDurationDays(plan) - 1);
 }
 
+/** Calendar-safe expiry for lifecycle renewals (inclusive end date). */
+export function computeCalendarExpiresAt(
+  startsAt: string,
+  period: 'MONTHLY' | 'ANNUAL',
+): string {
+  if (period === 'MONTHLY') {
+    return addDays(addCalendarMonths(startsAt, 1), -1);
+  }
+  return addDays(addCalendarYears(startsAt, 1), -1);
+}
+
+/** Calendar-safe month addition (UTC date-only). Clamps day overflow to month end. */
+export function addCalendarMonths(isoDate: string, months: number): string {
+  const [year, month, day] = isoDate.slice(0, 10).split('-').map(Number);
+  const target = new Date(Date.UTC(year, month - 1 + months, 1));
+  const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+  target.setUTCDate(Math.min(day, lastDay));
+  return target.toISOString().slice(0, 10);
+}
+
+export function addCalendarYears(isoDate: string, years: number): string {
+  return addCalendarMonths(isoDate, years * 12);
+}
+
+export function computeRenewalWindow(input: {
+  renewalPeriod: 'MONTHLY' | 'ANNUAL' | 'CUSTOM';
+  sourceExpiresAt: string;
+  today?: string;
+  validFrom?: string;
+  validUntil?: string;
+}): { validFrom: string; validUntil: string } {
+  const today = input.today ?? todayUtcDate();
+  if (input.renewalPeriod === 'CUSTOM') {
+    if (!input.validFrom || !input.validUntil) {
+      throw new Error('CUSTOM renewal requires validFrom and validUntil');
+    }
+    return { validFrom: input.validFrom, validUntil: input.validUntil };
+  }
+
+  const sourceExpiry = input.sourceExpiresAt.slice(0, 10);
+  const defaultFrom = sourceExpiry >= today ? addDays(sourceExpiry, 1) : today;
+  const validFrom = input.validFrom ?? defaultFrom;
+  const validUntil = input.validUntil ?? computeCalendarExpiresAt(validFrom, input.renewalPeriod);
+  return { validFrom, validUntil };
+}
+
 export function toDateOnly(value: Date | string): string {
   if (typeof value === 'string') {
     return value.slice(0, 10);

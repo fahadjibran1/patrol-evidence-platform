@@ -5,6 +5,7 @@ import { useAuth } from '../lib/auth';
 import { formatMoney, formatUkDate, toIsoDate } from '../lib/dates';
 import {
   buildActivationInstructions,
+  buildLicenceFilename,
   downloadLicenceFile,
 } from '../lib/licence-file';
 import {
@@ -26,6 +27,7 @@ import { penceToPoundsInput, poundsToPence } from '../lib/money';
 import { computeExpiresAtIso, PLAN_DESCRIPTIONS } from '../lib/plan-dates';
 import { canIssueLicences } from '../lib/roles';
 import { WizardStepper } from '../components/wizard-stepper';
+import { EmailLicenceModal } from '../components/email-licence-modal';
 import {
   ButtonRow,
   Card,
@@ -85,6 +87,7 @@ export function IssueLicencePage(): JSX.Element {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [issueResult, setIssueResult] = useState<IssueLicenceResponse | null>(null);
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
+  const [showEmailModal, setShowEmailModal] = useState(false);
   const [showCreateCustomer, setShowCreateCustomer] = useState(false);
   const submittingRef = useRef(false);
 
@@ -360,6 +363,14 @@ export function IssueLicencePage(): JSX.Element {
               type="button"
               className="secondary-button"
               disabled={!hasFullKey}
+              onClick={() => setShowEmailModal(true)}
+            >
+              Email licence
+            </button>
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={!hasFullKey}
               onClick={() => {
                 if (!hasFullKey) {
                   return;
@@ -411,6 +422,37 @@ export function IssueLicencePage(): JSX.Element {
           </ButtonRow>
           {copyMessage ? <p className="success-text">{copyMessage}</p> : null}
         </Card>
+        {showEmailModal && accessToken && hasFullKey ? (
+          <EmailLicenceModal
+            licenceId={issueResult.licence.id}
+            humanLicenseId={issueResult.licence.licenseId}
+            defaultRecipient={selectedCustomer?.email ?? issueResult.licence.customerEmail ?? ''}
+            defaultSubject={`Your Patrol Evidence Platform Licence – ${issueResult.licence.licenseId}`}
+            accessToken={accessToken}
+            source="issue-success"
+            fullLicenseKey={key}
+            requirePassword={false}
+            onClose={() => setShowEmailModal(false)}
+            onSent={(result) => {
+              setCopyMessage(`Licence emailed successfully to ${result.recipient}.`);
+            }}
+            onDownloadInstead={() => {
+              if (!hasFullKey || !key) {
+                return;
+              }
+              downloadLicenceFile(issueResult.licence.licenseId, key);
+              void apiRequest(
+                `/admin/licences/${issueResult.licence.id}/download-event`,
+                {
+                  method: 'POST',
+                  body: JSON.stringify({ source: 'issue-success' }),
+                },
+                accessToken,
+              ).catch(() => undefined);
+              setCopyMessage(`${buildLicenceFilename(issueResult.licence.licenseId)} downloaded.`);
+            }}
+          />
+        ) : null}
       </div>
     );
   }

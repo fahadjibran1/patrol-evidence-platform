@@ -1,7 +1,7 @@
-export const LICENCE_IMPORT_MAX_BYTES = 64 * 1024;
-export const LICENCE_IMPORT_ACCEPT = '.lic,.txt,text/plain';
+export const LICENCE_IMPORT_MAX_BYTES = 256 * 1024;
+export const LICENCE_IMPORT_ACCEPT = '.tglic,.lic,.txt,application/json,text/plain';
 
-const ALLOWED_EXTENSIONS = ['.lic', '.txt'] as const;
+const ALLOWED_EXTENSIONS = ['.tglic', '.lic', '.txt', '.json'] as const;
 
 export type LicenceImportResult =
   | { ok: true; key: string }
@@ -15,7 +15,7 @@ export function validateImportedLicenceFile(
   const lower = fileName.trim().toLowerCase();
   const hasAllowedExtension = ALLOWED_EXTENSIONS.some((extension) => lower.endsWith(extension));
   if (!hasAllowedExtension) {
-    return { ok: false, error: 'Unsupported file type. Use a .lic or .txt file.' };
+    return { ok: false, error: 'Unsupported file type. Use a .tglic licence file.' };
   }
 
   if (byteLength <= 0) {
@@ -23,7 +23,7 @@ export function validateImportedLicenceFile(
   }
 
   if (byteLength > LICENCE_IMPORT_MAX_BYTES) {
-    return { ok: false, error: 'Licence file is too large (maximum 64 KB).' };
+    return { ok: false, error: 'Licence file is too large (maximum 256 KB).' };
   }
 
   const trimmed = contents.trim();
@@ -31,26 +31,24 @@ export function validateImportedLicenceFile(
     return { ok: false, error: 'Licence file is empty.' };
   }
 
-  const lines = trimmed
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-
-  if (lines.length !== 1) {
-    return { ok: false, error: 'Licence file must contain a single TG1 key on one line.' };
+  if (trimmed.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(trimmed) as { payload?: unknown; signature?: unknown };
+      if (!parsed.payload || typeof parsed.signature !== 'string') {
+        return { ok: false, error: 'Commercial licence file must include payload and signature.' };
+      }
+      return { ok: true, key: trimmed };
+    } catch {
+      return { ok: false, error: 'Licence file is not valid JSON.' };
+    }
   }
 
-  const key = lines[0];
-  if (!key.startsWith('TG1.')) {
-    return { ok: false, error: 'Licence file must begin with TG1.' };
-  }
-
-  return { ok: true, key };
+  return { ok: false, error: 'Licence file must be a commercial .tglic JSON document.' };
 }
 
 export async function readLocalLicenceFile(file: File): Promise<LicenceImportResult> {
   if (file.size > LICENCE_IMPORT_MAX_BYTES) {
-    return { ok: false, error: 'Licence file is too large (maximum 64 KB).' };
+    return { ok: false, error: 'Licence file is too large (maximum 256 KB).' };
   }
 
   const contents = await file.text();

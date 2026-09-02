@@ -47,7 +47,7 @@ Companion docs:
 | App | `0.1.1` |
 | `whatsapp-web.js` | `1.34.7` |
 | `puppeteer` / `puppeteer-core` | `24.38.0` |
-| WhatsApp Web HTML | `2.3000.1039703269-alpha` |
+| WhatsApp Web HTML | `2.3000.1040111714-alpha` (local vendored cache; previous remote pin 404'd) |
 
 Details: [KNOWN_WORKING_CONFIG.md](./KNOWN_WORKING_CONFIG.md).
 

@@ -14,17 +14,25 @@ This document records the **exact** dependency and environment matrix verified f
 | **whatsapp-web.js** | `1.34.7` | Exact dependency in root `package.json` (no `^`) |
 | **puppeteer** | `24.38.0` | Transitive dependency of `whatsapp-web.js@1.34.7` (`package-lock.json`) |
 | **puppeteer-core** | `24.38.0` | Transitive (`package-lock.json`) |
-| **WhatsApp Web HTML** | `2.3000.1039703269-alpha` | Default in `src/collectors/whatsapp-web-runtime.config.ts` |
-| **WA HTML cache** | Remote, non-strict | `type: 'remote'`, `strict: false` unless `PATROL_WHATSAPP_WEB_VERSION_STRICT=true` |
+| **WhatsApp Web HTML** | `2.3000.1040111714-alpha` | Default in `src/collectors/whatsapp-web-runtime.config.ts` |
+| **WA HTML cache** | Local, strict | Vendored under `src/collectors/wa-web-cache/` (+ Nest/Electron copy). Remote only if `PATROL_WHATSAPP_WEB_VERSION_CACHE_TYPE=remote` |
 | **Node.js** | `>= 18` | Required by `whatsapp-web.js` engines field |
 
-### WA Web version cache URL (default)
+### WA Web version cache (default)
+
+Local file:
+
+```text
+src/collectors/wa-web-cache/2.3000.1040111714-alpha.html
+```
+
+Packaged copies: `dist/collectors/wa-web-cache/` and Electron `resources/wa-web-cache/`.
+
+Remote override URL (only when `PATROL_WHATSAPP_WEB_VERSION_CACHE_TYPE=remote`):
 
 ```text
 https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/{version}.html
 ```
-
-`{version}` is replaced with `2.3000.1039703269-alpha`.
 
 ### Runtime config source of truth
 
@@ -96,9 +104,12 @@ npm run migration:run
 
 | Variable | Default when unset |
 |----------|-------------------|
-| `PATROL_WHATSAPP_WEB_VERSION` | `2.3000.1039703269-alpha` |
-| `PATROL_WHATSAPP_WEB_VERSION_CACHE_URL` | wppconnect `wa-version` URL above |
-| `PATROL_WHATSAPP_WEB_VERSION_STRICT` | `false` |
+| `PATROL_WHATSAPP_WEB_VERSION` | `2.3000.1040111714-alpha` |
+| `PATROL_WHATSAPP_WEB_VERSION_CACHE_PATH` | Directory containing `{version}.html` |
+| `PATROL_WHATSAPP_WEB_VERSION_CACHE_TYPE` | unset = local pin; `remote` uses wppconnect URL |
+| `PATROL_WHATSAPP_WEB_VERSION_STRICT` | `true` (fail closed; set `false` only for diagnostics) |
+| `PATROL_HELPER_LOG_MAX_BYTES` | `20971520` (20 MB) collector log rotation threshold |
+| `PATROL_HELPER_LOG_KEEP` | `3` rotated log files kept |
 
 ### API server
 

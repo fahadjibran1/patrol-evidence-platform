@@ -134,6 +134,29 @@ function redactSecrets(text) {
     .replace(/Bearer\s+[A-Za-z0-9._-]+/g, 'Bearer [redacted]');
 }
 
+function getLicenseStatus(url) {
+  return new Promise((resolve, reject) => {
+    const request = http.get(url, (response) => {
+      let payload = '';
+      response.on('data', (chunk) => {
+        payload += chunk.toString();
+      });
+      response.on('end', () => {
+        if (response.statusCode === 200) {
+          try {
+            resolve(JSON.parse(payload));
+          } catch (error) {
+            reject(error);
+          }
+          return;
+        }
+        reject(new Error(`license/status returned ${response.statusCode}: ${payload}`));
+      });
+    });
+    request.on('error', reject);
+  });
+}
+
 async function main() {
   const packagedAppDir = findPackagedAppDir();
   const packagedExePath = path.join(packagedAppDir, 'PatrolEvidencePlatform.exe');
@@ -152,6 +175,7 @@ async function main() {
     packaged: true,
   });
   const backendEntryPath = backendResolution.resolved;
+  // Temporary clean app-data directory for first-run trial bootstrap verification.
   const smokeRoot = path.join(os.tmpdir(), 'patrol-evidence-platform-smoke');
   const configRoot = path.join(smokeRoot, `run-${Date.now()}`);
   const configPath = path.join(configRoot, 'workspace-config.json');
@@ -220,6 +244,14 @@ async function main() {
       ELECTRON_RUN_AS_NODE: '1',
       PORT: String(HEALTH_PORT),
       DESKTOP_CONFIG_PATH: configPath,
+      // Keep licensing artefacts inside the clean temp app-data tree and use a file marker
+      // so smoke does not pollute the machine-wide HKCU TrialMarker used by real installs.
+      PATROL_LICENSE_DATA_ROOT: configRoot,
+      PATROL_LICENSE_USE_FILE_MARKER: 'true',
+      // Exercise production DPAPI encryption on Windows packaged builds.
+      PATROL_LICENSE_TEST_MODE: '',
+      PATROL_DISABLE_LOCAL_TRIAL: '',
+      NODE_ENV: 'production',
       DB_TYPE: 'sqlite',
       SQLITE_DB_PATH: sqliteDbPath,
       STORAGE_ROOT_PATH: storageRoot,
@@ -241,6 +273,44 @@ async function main() {
     const body = await waitForHealth(HEALTH_URL, HEALTH_TIMEOUT_MS);
     pass(`health ready at ${HEALTH_URL}`);
     console.log(`SMOKE HEALTH BODY: ${body}`);
+
+    const licenseStatusUrl = `http://localhost:${HEALTH_PORT}/license/status`;
+    const licenseStatus = await getLicenseStatus(licenseStatusUrl);
+    pass('license/status endpoint booted successfully');
+    console.log(`SMOKE LICENSE STATUS: ${JSON.stringify(licenseStatus).slice(0, 500)}`);
+
+    if (licenseStatus.status !== 'TRIAL_ACTIVE') {
+      fail(
+        `Expected TRIAL_ACTIVE on clean first-run app-data, got status=${licenseStatus.status} message=${licenseStatus.message} diagnostics=${JSON.stringify(licenseStatus.diagnostics ?? null)}`,
+      );
+    }
+    if (licenseStatus.uiState !== 'Trial Active' || licenseStatus.plan !== 'trial') {
+      fail(`Expected Trial Active ui/plan, got uiState=${licenseStatus.uiState} plan=${licenseStatus.plan}`);
+    }
+    if (licenseStatus.daysRemaining !== 30) {
+      fail(`Expected exactly 30 trial days, got daysRemaining=${licenseStatus.daysRemaining}`);
+    }
+    if (!licenseStatus.installationId) {
+      fail('Expected installationId to be created during first-run bootstrap');
+    }
+    if (licenseStatus.diagnostics?.trialCreationDisabled) {
+      fail('Production smoke must not disable local trial creation');
+    }
+    if (process.platform === 'win32' && licenseStatus.diagnostics?.cryptoMode !== 'dpapi') {
+      fail(`Expected DPAPI crypto mode on Windows packaged smoke, got ${licenseStatus.diagnostics?.cryptoMode}`);
+    }
+    pass('TRIAL_ACTIVE with exactly 30 days granted on clean app-data');
+
+    // Second status call must not mint another trial when the marker already exists.
+    const licenseStatusAgain = await getLicenseStatus(licenseStatusUrl);
+    if (licenseStatusAgain.installationId !== licenseStatus.installationId) {
+      fail('Installation ID changed between status calls');
+    }
+    if (licenseStatusAgain.daysRemaining !== 30 || licenseStatusAgain.status !== 'TRIAL_ACTIVE') {
+      fail('Existing trial was not preserved on subsequent license/status call');
+    }
+    pass('Existing trial marker/record preserved (no regeneration)');
+
     killChild(child);
     await new Promise((resolve) => setTimeout(resolve, 1000));
     process.exit(0);

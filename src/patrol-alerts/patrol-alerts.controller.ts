@@ -9,30 +9,36 @@ import { AuthenticatedUser } from '@/auth/interfaces/authenticated-request.inter
 import { PatrolAlert } from './entities/patrol-alert.entity';
 import { CreatePatrolAlertDto } from './dto/create-patrol-alert.dto';
 
+import { LicenceFeatureGuard, RequireLicenceFeature } from '@/licensing/licence-feature.guard';
+
 @Controller('patrol-alerts')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, LicenceFeatureGuard)
 export class PatrolAlertsController {
   constructor(private readonly patrolAlertsService: PatrolAlertsService) {}
 
   @Post()
+  @RequireLicenceFeature('alerts')
   @Roles(UserRole.GUARD)
   create(@Body() dto: CreatePatrolAlertDto, @CurrentUser() user: AuthenticatedUser): Promise<PatrolAlert> {
     return this.patrolAlertsService.createGuardAlert(dto, user);
   }
 
   @Get()
+  @RequireLicenceFeature('alerts')
   @Roles(UserRole.ADMIN, UserRole.COMPANY_ADMIN, UserRole.GUARD)
   findAll(@CurrentUser() user: AuthenticatedUser): Promise<PatrolAlert[]> {
     return this.patrolAlertsService.findAll(user);
   }
 
   @Get(':id')
+  @RequireLicenceFeature('alerts')
   @Roles(UserRole.ADMIN, UserRole.COMPANY_ADMIN, UserRole.GUARD)
   findOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser): Promise<PatrolAlert> {
     return this.patrolAlertsService.findOne(id, user);
   }
 
   @Patch(':id/resolve')
+  @RequireLicenceFeature('alerts')
   @Roles(UserRole.ADMIN, UserRole.COMPANY_ADMIN)
   resolve(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser): Promise<PatrolAlert> {
     return this.patrolAlertsService.resolve(id, user);

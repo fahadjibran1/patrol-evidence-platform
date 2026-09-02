@@ -21,6 +21,7 @@ export function CollectorPage(): JSX.Element {
     start,
     stop,
     resetSession,
+    createFreshProfile,
   } = useMonitoring();
 
   if (user?.role === 'GUARD') {
@@ -100,6 +101,22 @@ export function CollectorPage(): JSX.Element {
               <button type="button" className="secondary-button" disabled={isBusy} onClick={() => void resetSession()}>
                 Re-link WhatsApp
               </button>
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={isBusy}
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      'Create a completely fresh WhatsApp browser profile? The current app profile will be archived and a new QR will be shown.',
+                    )
+                  ) {
+                    void createFreshProfile();
+                  }
+                }}
+              >
+                Create fresh WhatsApp profile
+              </button>
               <Link className="secondary-button" to="/setup">
                 Source & site setup
               </Link>
@@ -124,8 +141,8 @@ export function CollectorPage(): JSX.Element {
                   <div className="collector-initializing">
                     <LoadingBlock label={view.stageLabel} />
                     <p className="muted-text collector-initializing-hint">
-                      First launch can take up to two minutes while Edge and WhatsApp Web start. Do not close the
-                      browser window.
+                      First launch can take up to two minutes while the selected browser and WhatsApp Web start. Do not
+                      close the browser window.
                     </p>
                   </div>
                 )}

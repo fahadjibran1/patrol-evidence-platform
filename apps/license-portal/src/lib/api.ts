@@ -107,6 +107,40 @@ export function downloadTextFile(fileName: string, contents: string): void {
   window.URL.revokeObjectURL(blobUrl);
 }
 
+/** Authenticated binary/text download (CSV exports). */
+export async function downloadAuthenticatedFile(
+  path: string,
+  fileName: string,
+  accessToken: string,
+): Promise<void> {
+  const response = await fetch(`${getApiBaseUrl()}${path}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (!response.ok) {
+    const text = await readBodyText(response);
+    try {
+      const payload = (text ? JSON.parse(text) : {}) as ApiErrorPayload;
+      throw formatApiError(payload, response.status);
+    } catch (error) {
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      throw new ApiError(text || `Download failed with status ${response.status}`, response.status);
+    }
+  }
+
+  const blob = await response.blob();
+  const blobUrl = window.URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = blobUrl;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.URL.revokeObjectURL(blobUrl);
+}
+
 export async function copyToClipboard(text: string): Promise<void> {
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(text);

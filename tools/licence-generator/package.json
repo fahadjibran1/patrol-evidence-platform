@@ -1,0 +1,12 @@
+{
+  "name": "@patrol/licence-generator",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Operator-only offline commercial licence generator. Private key stays outside the product tree.",
+  "bin": {
+    "patrol-licence-generator": "./generate-licence.js"
+  },
+  "scripts": {
+    "generate": "node ./generate-licence.js"
+  }
+}

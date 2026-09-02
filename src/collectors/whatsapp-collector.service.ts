@@ -3,7 +3,7 @@ import { SimulateLiveImageIngestDto } from './dto/simulate-live-image-ingest.dto
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import { ChildProcessWithoutNullStreams, spawn } from 'child_process';
-import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as readline from 'readline';
@@ -11,6 +11,14 @@ import { CollectorType } from '@/common/enums/collector-type.enum';
 import { LicensingService } from '@/licensing/licensing.service';
 import { WhatsAppSourceMappingService } from '@/patrol-groups/whatsapp-source-mapping.service';
 import { IngestPatrolImageEvent, PatrolImageIngestionService } from '@/patrol-images/patrol-image-ingestion.service';
+import {
+  ensureProfileUnlocked,
+  findBrowserProcessesUsingProfile,
+  isProcessAlive,
+  readHelperMutex,
+  terminateBrowserOwners,
+  type BrowserProcessOwner,
+} from './browser-profile-lock.util';
 import {
   WhatsAppCollectorContact,
   WhatsAppCollectorGroup,
@@ -203,7 +211,15 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
   }
 
   async resetSession(): Promise<WhatsAppCollectorStatus> {
-    this.appendCollectorLog('session-reset-requested', 'user-initiated reset');
+    const stack = new Error('session-reset-requested').stack ?? 'stack-unavailable';
+    this.appendCollectorLog(
+      'SESSION_DELETE_REQUESTED',
+      `user-initiated reset stack=${stack.replace(/\s+/g, ' ')} pid=${process.pid}`,
+    );
+    this.appendCollectorLog(
+      'session-reset-requested',
+      `user-initiated reset stack=${stack.replace(/\s+/g, ' ')}`,
+    );
     await this.stopHelperProcess();
     await this.sleep(3_000);
 
@@ -237,6 +253,80 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       contacts: [],
     });
     this.appendCollectorLog('session-reset', 'WhatsApp session folder deleted. Restarting QR flow.');
+
+    if (!this.enabled) {
+      return this.getStatus();
+    }
+
+    return this.start();
+  }
+
+  /**
+   * Operator action: archive the current automated browser profile and start with a brand-new userDataDir.
+   * Closes only browser processes that hold this application's profile — not the user's personal Chrome/Edge.
+   */
+  async createFreshWhatsAppProfile(): Promise<WhatsAppCollectorStatus> {
+    const stack = new Error('fresh-profile-requested').stack ?? 'stack-unavailable';
+    const profileDir = path.join(this.sessionPath, 'session-patrol-evidence-platform');
+    this.appendCollectorLog(
+      'SESSION_DELETE_REQUESTED',
+      `create-fresh-whatsapp-profile stack=${stack.replace(/\s+/g, ' ')} pid=${process.pid} profileDir=${profileDir}`,
+    );
+
+    await this.stopHelperProcess();
+    await this.sleep(1_000);
+
+    const owners = findBrowserProcessesUsingProfile(profileDir);
+    if (owners.length > 0) {
+      this.appendCollectorLog(
+        'EXISTING_BROWSER_FOUND',
+        owners.map((owner) => `pid=${owner.pid} name=${owner.name}`).join(' | '),
+      );
+      await terminateBrowserOwners(owners, { forceAfterMs: 5_000 });
+    }
+
+    try {
+      await ensureProfileUnlocked(profileDir, (event, details) => {
+        this.appendCollectorLog(event, details);
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.appendCollectorLog('fresh-profile-unlock-warning', message);
+    }
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    if (existsSync(this.sessionPath)) {
+      const archivePath = `${this.sessionPath}.bak-${timestamp}`;
+      try {
+        renameSync(this.sessionPath, archivePath);
+        this.appendCollectorLog(
+          'fresh-profile-archived',
+          `from=${this.sessionPath} to=${archivePath}`,
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.appendCollectorLog('fresh-profile-archive-failed', message);
+        await this.deleteSessionFolderWithRetry();
+      }
+    }
+
+    mkdirSync(this.sessionPath, { recursive: true });
+    this.appendCollectorLog(
+      'fresh-profile-created',
+      `sessionPath=${this.sessionPath} userDataDir=${path.join(this.sessionPath, 'session-patrol-evidence-platform')}`,
+    );
+
+    this.helperStatus = this.buildDefaultStatus({
+      state: 'idle',
+      info: 'Fresh WhatsApp profile created. Starting QR flow…',
+      startupStage: 'Fresh profile',
+      lastError: null,
+      sessionCorruptionSuspected: false,
+      sessionCorruptionMessage: null,
+      connectedAccount: null,
+      groups: [],
+      contacts: [],
+    });
 
     if (!this.enabled) {
       return this.getStatus();
@@ -465,6 +555,7 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
     }
 
     this.ensureSessionDirectoryWritable();
+    await this.ensureSingleHelperInstance();
     this.stopHelperProcessStreams();
     this.stoppingHelper = false;
 
@@ -545,6 +636,12 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       PATROL_HELPER_PILOT_GROUP_NAME: this.pilotGroupName ?? '',
       PATROL_HELPER_PILOT_SITE_CODE: this.pilotSiteCode ?? '',
       PATROL_HELPER_CHROME_PATH: this.configService.get<string>('whatsappChromePath') ?? '',
+      WHATSAPP_BROWSER: this.resolveHelperBrowserPreference(),
+      PATROL_WHATSAPP_BROWSER: this.resolveHelperBrowserPreference(),
+      PATROL_WHATSAPP_WEB_VERSION_MODE:
+        process.env.PATROL_WHATSAPP_WEB_VERSION_MODE ??
+        process.env.WHATSAPP_WEB_VERSION_MODE ??
+        'pinned',
       PATROL_HELPER_BACKFILL_MESSAGE_LIMIT: String(this.configService.get<number>('whatsappBackfillMessageLimit') ?? 150),
       PATROL_HELPER_BROWSER_LAUNCH_GRACE_MS: process.env.PATROL_HELPER_BROWSER_LAUNCH_GRACE_MS ?? '90000',
       PATROL_HELPER_QR_TIMEOUT_MS: process.env.PATROL_HELPER_QR_TIMEOUT_MS ?? '120000',
@@ -687,6 +784,41 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
     return !nonFatalPatterns.some((pattern) => normalized.includes(pattern));
   }
 
+  private async ensureSingleHelperInstance(): Promise<void> {
+    if (this.isHelperRunning()) {
+      this.appendCollectorLog(
+        'EXISTING_HELPER_FOUND',
+        `pid=${this.helperProcess?.pid ?? 'unknown'} action=stop-before-restart`,
+      );
+      await this.stopHelperProcess();
+    }
+
+    const mutex = readHelperMutex(this.sessionPath);
+    if (mutex && isProcessAlive(mutex.pid)) {
+      this.appendCollectorLog(
+        'EXISTING_HELPER_FOUND',
+        `pid=${mutex.pid} startedAt=${mutex.startedAt} action=terminate-orphan`,
+      );
+      const owners: BrowserProcessOwner[] = [
+        {
+          pid: mutex.pid,
+          name: 'whatsapp-helper',
+          commandLine: `pid=${mutex.pid}`,
+        },
+      ];
+      await terminateBrowserOwners(owners, { forceAfterMs: 3_000 });
+    }
+
+    const mutexPath = path.join(this.sessionPath, 'helper.mutex');
+    if (existsSync(mutexPath)) {
+      try {
+        unlinkSync(mutexPath);
+      } catch {
+        // ignore
+      }
+    }
+  }
+
   private async stopHelperProcess(): Promise<void> {
     if (!this.helperProcess) {
       return;
@@ -807,10 +939,35 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       sessionPathWritable: this.canWriteToSessionPath(),
       sessionCorruptionSuspected: false,
       sessionCorruptionMessage: null,
+      failureCode: null,
       groups: [],
       contacts: [],
       ...overrides,
     };
+  }
+
+  private resolveHelperBrowserPreference(): 'chrome' | 'edge' | 'auto' {
+    const configured =
+      this.configService.get<string>('whatsappBrowser')?.trim().toLowerCase() ||
+      process.env.WHATSAPP_BROWSER?.trim().toLowerCase() ||
+      process.env.PATROL_WHATSAPP_BROWSER?.trim().toLowerCase() ||
+      '';
+
+    if (configured === 'chrome' || configured === 'edge' || configured === 'auto') {
+      return configured;
+    }
+
+    const chromePath = this.configService.get<string>('whatsappChromePath')?.trim() || '';
+    if (chromePath) {
+      // A saved Chrome/Edge path must force that browser family — never fall back to Edge via auto.
+      if (/msedge\.exe$/i.test(chromePath)) {
+        return 'edge';
+      }
+      return 'chrome';
+    }
+
+    // Packaged default: Chrome. Auto historically preferred Edge and ignored an operator Chrome choice.
+    return 'chrome';
   }
 
   private readCollectorLogTail(maxLines = 80): string[] {

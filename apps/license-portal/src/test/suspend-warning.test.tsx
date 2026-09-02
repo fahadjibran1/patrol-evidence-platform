@@ -60,7 +60,7 @@ describe('LicenceDetailPage suspend warning', () => {
     expect(screen.getByText(/Offline desktop licences already activated/i)).toBeInTheDocument();
   });
 
-  it('shows portal-only enforcement guidance in the action panel', async () => {
+  it('shows lifecycle actions with offline enforcement guidance in the action panel', async () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,
       status: 200,
@@ -94,9 +94,13 @@ describe('LicenceDetailPage suspend warning', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Suspension and revocation')).toBeInTheDocument();
+      expect(screen.getByText('Lifecycle actions')).toBeInTheDocument();
     });
 
-    expect(screen.getByText('Portal-only enforcement')).toBeInTheDocument();
+    expect(screen.getByText('Offline enforcement limits')).toBeInTheDocument();
+    expect(screen.getByText(/no instantaneous remote kill-switch today/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Suspend' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Revoke' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reactivate' })).not.toBeInTheDocument();
   });
 });

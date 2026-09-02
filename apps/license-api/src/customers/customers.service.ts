@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { CustomerStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma/prisma.service';
 import { AuditService } from '@/audit/audit.service';
@@ -7,12 +7,16 @@ import { ERROR_CODES } from '@/common/constants/error-codes';
 import { AuthenticatedAdmin } from '@/auth/interfaces/authenticated-admin.interface';
 import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer.dto';
 import { deriveEffectiveStatus, toDateOnly } from '@/licences/licence.util';
+import { EventBus } from '@/domain-events/event-bus.service';
+import { createDomainEvent } from '@/domain-events/domain-event';
+import { DOMAIN_EVENTS } from '@/domain-events/domain-event.types';
 
 @Injectable()
 export class CustomersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    @Optional() private readonly eventBus?: EventBus,
   ) {}
 
   async list(query: { page: number; pageSize: number; search?: string; status?: CustomerStatus }) {
@@ -75,6 +79,12 @@ export class CustomersService {
       customerId: customer.id,
       metadata: { companyName: customer.companyName },
     });
+    await this.eventBus?.publish(
+      createDomainEvent(DOMAIN_EVENTS.CustomerCreated, {
+        customerId: customer.id,
+        companyName: customer.companyName,
+      }),
+    );
 
     return customer;
   }

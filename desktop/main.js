@@ -18,7 +18,15 @@ const {
 const PRODUCT_METADATA = {
   productName: packageMetadata.productName || 'Patrol Evidence Platform',
   version: packageMetadata.version || '1.0.0',
-  buildId: packageMetadata.buildId || '2026.07.20.1',
+  // Prefer human-readable display build; never show windowsBuild as the About build label.
+  buildId:
+    packageMetadata.buildId ||
+    packageMetadata.displayBuild ||
+    '2026.07.20.1',
+  displayBuild:
+    packageMetadata.displayBuild ||
+    packageMetadata.buildId ||
+    '2026.07.20.1',
   copyright: packageMetadata.copyright || '© 2026 TechGuard Security Ltd',
   companyName: packageMetadata.companyName || 'TechGuard Security Ltd',
   supportEmail: packageMetadata.supportEmail || 'support@techguardsecurity.com',
@@ -1280,7 +1288,7 @@ function renderStartupFailurePage(title, reason, errorMessage) {
             <div class="meta">
               <div class="meta-item">
                 <strong>Application version</strong>
-                <code>${escapeHtml(`${PRODUCT_METADATA.productName} ${PRODUCT_METADATA.version} (build ${PRODUCT_METADATA.buildId})`)}</code>
+                <code>${escapeHtml(`${PRODUCT_METADATA.productName} ${PRODUCT_METADATA.version} (build ${PRODUCT_METADATA.displayBuild || PRODUCT_METADATA.buildId})`)}</code>
               </div>
               <div class="meta-item">
                 <strong>App path</strong>
@@ -2454,7 +2462,7 @@ if (handleSquirrelEvent()) {
         app.setAboutPanelOptions({
           applicationName: PRODUCT_METADATA.productName,
           applicationVersion: PRODUCT_METADATA.version,
-          version: PRODUCT_METADATA.buildId,
+          version: PRODUCT_METADATA.displayBuild || PRODUCT_METADATA.buildId,
           copyright: PRODUCT_METADATA.copyright,
           credits: `${PRODUCT_METADATA.companyName}\nSupport: ${PRODUCT_METADATA.supportEmail}`,
         });

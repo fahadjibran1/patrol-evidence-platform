@@ -16,6 +16,26 @@ const {
 
 const trackedPublicKeyPath = getTrackedPublicKeyPath(__dirname);
 
+function resolveWindowsBuildVersion() {
+  const fromPackage = String(packageMetadata.windowsBuild || '').trim();
+  if (fromPackage) {
+    const parts = fromPackage.split('.');
+    if (parts.length >= 1 && parts.length <= 4 && parts.every((part) => /^\d+$/.test(part))) {
+      return fromPackage;
+    }
+  }
+
+  // Never fall back to display/buildId timestamps (can be 6-part and reject in Electron).
+  return packageMetadata.version || '1.0.0';
+}
+
+const windowsBuildVersion = resolveWindowsBuildVersion();
+if (String(windowsBuildVersion).split('.').length > 4) {
+  throw new Error(
+    `Electron Windows buildVersion must have at most 4 components. Got: ${windowsBuildVersion}`,
+  );
+}
+
 const iconBasePath = path.resolve(__dirname, 'desktop', 'assets', 'icon');
 const hasWindowsIcon = fs.existsSync(`${iconBasePath}.ico`);
 const hasMacIcon = fs.existsSync(`${iconBasePath}.icns`);
@@ -29,6 +49,7 @@ const packagerIgnore = [
   /^\/test($|\/)/,
   /^\/tests($|\/)/,
   /^\/scripts($|\/)/,
+  /^\/tools($|\/)/,
   /^\/Security_Patrols($|\/)/,
   /^\/whatsapp-session($|\/)/,
   /^\/whatsapp-session-test-events($|\/)/,
@@ -134,6 +155,7 @@ function pruneCopiedApp(buildPath, _electronVersion, _platform, _arch, callback)
       'logs',
       'out',
       'scripts',
+      'tools',
       'src',
       'test',
       'tests',
@@ -316,11 +338,21 @@ module.exports = {
     name: packageMetadata.productName || 'Patrol Evidence Platform',
     executableName: 'PatrolEvidencePlatform',
     appVersion: packageMetadata.version,
-    buildVersion: packageMetadata.buildId || packageMetadata.version,
+    // Electron FILEVERSION / productVersion — must be 1–4 numeric components.
+    buildVersion: windowsBuildVersion,
     appCopyright: packageMetadata.copyright || '© 2026 TechGuard Security Ltd',
     electronDist: path.join(__dirname, 'node_modules', 'electron', 'dist'),
     icon: hasWindowsIcon || hasMacIcon ? iconBasePath : undefined,
-    extraResource: fs.existsSync(trackedPublicKeyPath) ? [trackedPublicKeyPath] : [],
+    extraResource: [
+      ...(fs.existsSync(trackedPublicKeyPath) ? [trackedPublicKeyPath] : []),
+      // Vendored WhatsApp Web HTML pin for whatsapp-web.js LocalWebCache (survives src prune).
+      ...(fs.existsSync(path.join(__dirname, 'src', 'collectors', 'wa-web-cache'))
+        ? [path.join(__dirname, 'src', 'collectors', 'wa-web-cache')]
+        : []),
+      ...(fs.existsSync(path.join(__dirname, 'resources', 'whatsapp-web-cache'))
+        ? [path.join(__dirname, 'resources', 'whatsapp-web-cache')]
+        : []),
+    ],
     ignore: shouldIgnorePackagePath,
     afterCopy: [pruneCopiedApp],
     win32metadata: {

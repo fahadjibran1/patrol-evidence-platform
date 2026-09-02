@@ -1,0 +1,198 @@
+diff --git a/node_modules/whatsapp-web.js/src/Client.js b/node_modules/whatsapp-web.js/src/Client.js
+index 800109e..2201b93 100644
+--- a/node_modules/whatsapp-web.js/src/Client.js
++++ b/node_modules/whatsapp-web.js/src/Client.js
+@@ -144,7 +144,7 @@ class Client extends EventEmitter {
+         await this.pupPage.evaluate(ExposeAuthStore);
+ 
+         const needAuthentication = await this.pupPage.evaluate(async () => {
+-            let state = window.require('WAWebSocketModel').Socket.state;
++            let state = ((window.AuthStore && window.AuthStore.AppState) || window.require('WAWebSocketModel').Socket).state;
+ 
+             if (
+                 state === 'OPENING' ||
+@@ -153,9 +153,7 @@ class Client extends EventEmitter {
+             ) {
+                 // wait till state changes
+                 await new Promise((r) => {
+-                    window
+-                        .require('WAWebSocketModel')
+-                        .Socket.on(
++                    window.AuthStore.AppState.on(
+                             'change:state',
+                             function waitTillInit(_AppState, state) {
+                                 if (
+@@ -163,9 +161,7 @@ class Client extends EventEmitter {
+                                     state !== 'UNLAUNCHED' &&
+                                     state !== 'PAIRING'
+                                 ) {
+-                                    window
+-                                        .require('WAWebSocketModel')
+-                                        .Socket.off(
++                                    window.AuthStore.AppState.off(
+                                             'change:state',
+                                             waitTillInit,
+                                         );
+@@ -175,7 +171,7 @@ class Client extends EventEmitter {
+                         );
+                 });
+             }
+-            state = window.require('WAWebSocketModel').Socket.state;
++            state = ((window.AuthStore && window.AuthStore.AppState) || window.require('WAWebSocketModel').Socket).state;
+             return state == 'UNPAIRED' || state == 'UNPAIRED_IDLE';
+         });
+ 
+@@ -398,14 +394,10 @@ class Client extends EventEmitter {
+             },
+         );
+         await this.pupPage.evaluate(() => {
+-            window
+-                .require('WAWebSocketModel')
+-                .Socket.on('change:state', (_AppState, state) => {
++            window.AuthStore.AppState.on('change:state', (_AppState, state) => {
+                     window.onAuthAppStateChangedEvent(state);
+                 });
+-            window
+-                .require('WAWebSocketModel')
+-                .Socket.on('change:hasSynced', () => {
++            window.AuthStore.AppState.on('change:hasSynced', () => {
+                     window.onAppStateHasSyncedEvent();
+                 });
+             const Cmd = window.require('WAWebCmd').Cmd;
+@@ -546,7 +538,7 @@ class Client extends EventEmitter {
+                 }
+                 window.codeInterval = setInterval(async () => {
+                     const state =
+-                        window.require('WAWebSocketModel').Socket.state;
++                        ((window.AuthStore && window.AuthStore.AppState) || window.require('WAWebSocketModel').Socket).state;
+                     if (state != 'UNPAIRED' && state != 'UNPAIRED_IDLE') {
+                         clearInterval(window.codeInterval);
+                         return;
+@@ -834,9 +826,7 @@ class Client extends EventEmitter {
+                     if (state === WAState.CONFLICT) {
+                         setTimeout(() => {
+                             this.pupPage.evaluate(() =>
+-                                window
+-                                    .require('WAWebSocketModel')
+-                                    .Socket.takeover(),
++                                window.AuthStore.AppState.takeover(),
+                             );
+                         }, this.options.takeoverTimeoutMs);
+                     }
+@@ -1022,7 +1012,7 @@ class Client extends EventEmitter {
+ 
+         await this.pupPage.evaluate(() => {
+             const { Msg, Chat } = window.require('WAWebCollections');
+-            const AppState = window.require('WAWebSocketModel').Socket;
++            const AppState = ((window.AuthStore && window.AuthStore.AppState) || window.require('WAWebSocketModel').Socket);
+ 
+             // Enable placeholder message resend (recovery for ciphertext messages)
+             const gatingUtils = window.require('WAWebSyncGatingUtils');
+@@ -1288,7 +1278,7 @@ class Client extends EventEmitter {
+      */
+     async logout() {
+         await this.pupPage.evaluate(() => {
+-            return window.require('WAWebSocketModel').Socket.logout();
++            return ((window.AuthStore && window.AuthStore.AppState) || window.require('WAWebSocketModel').Socket).logout();
+         });
+         await this.pupBrowser.close();
+ 
+@@ -1974,7 +1964,7 @@ class Client extends EventEmitter {
+      */
+     async getState() {
+         return await this.pupPage.evaluate(() => {
+-            return window.require('WAWebSocketModel').Socket.state ?? null;
++            return ((window.AuthStore && window.AuthStore.AppState) || window.require('WAWebSocketModel').Socket).state ?? null;
+         });
+     }
+ 
+@@ -2202,7 +2192,7 @@ class Client extends EventEmitter {
+      */
+     async resetState() {
+         await this.pupPage.evaluate(() => {
+-            window.require('WAWebSocketModel').Socket.reconnect();
++            ((window.AuthStore && window.AuthStore.AppState) || window.require('WAWebSocketModel').Socket).reconnect();
+         });
+     }
+ 
+diff --git a/node_modules/whatsapp-web.js/src/util/Injected/AuthStore/AuthStore.js b/node_modules/whatsapp-web.js/src/util/Injected/AuthStore/AuthStore.js
+index 9c4644d..7ef6e71 100644
+--- a/node_modules/whatsapp-web.js/src/util/Injected/AuthStore/AuthStore.js
++++ b/node_modules/whatsapp-web.js/src/util/Injected/AuthStore/AuthStore.js
+@@ -1,8 +1,75 @@
+ 'use strict';
+ 
++/**
++ * Resolve WhatsApp Web Socket / AppState across module renames.
++ * Throws a tagged error when no compatible module is available.
++ */
++function resolveWaSocket() {
++    const tryRequire = (moduleId) => {
++        try {
++            return window.require(moduleId);
++        } catch (_error) {
++            return undefined;
++        }
++    };
++
++    const fromModule = (mod) => {
++        if (!mod) {
++            return undefined;
++        }
++        if (mod.Socket && typeof mod.Socket.on === 'function') {
++            return mod.Socket;
++        }
++        if (mod.default && mod.default.Socket && typeof mod.default.Socket.on === 'function') {
++            return mod.default.Socket;
++        }
++        if (typeof mod.on === 'function' && mod.state !== undefined) {
++            return mod;
++        }
++        return undefined;
++    };
++
++    const directIds = [
++        'WAWebSocketModel',
++        'WAWebSocket',
++        'WAWebSocketCollection',
++        'SocketModel',
++    ];
++
++    for (const moduleId of directIds) {
++        const socket = fromModule(tryRequire(moduleId));
++        if (socket) {
++            return { socket, moduleId, strategy: 'require' };
++        }
++    }
++
++    const webpackRequire = window.require;
++    const factories = webpackRequire && webpackRequire.m ? webpackRequire.m : null;
++    if (factories && typeof factories === 'object') {
++        for (const moduleId of Object.keys(factories)) {
++            const mod = tryRequire(moduleId);
++            const socket = fromModule(mod);
++            if (
++                socket &&
++                socket.state !== undefined &&
++                (socket.stream !== undefined || typeof socket.reconnect === 'function')
++            ) {
++                return { socket, moduleId: String(moduleId), strategy: 'webpack-scan' };
++            }
++        }
++    }
++
++    throw new Error(
++        'WWEBJS_MODULE_COMPATIBILITY_ERROR: missing WAWebSocketModel (and no Socket fallback)',
++    );
++}
++
+ exports.ExposeAuthStore = () => {
++    const resolved = resolveWaSocket();
+     window.AuthStore = {};
+-    window.AuthStore.AppState = window.require('WAWebSocketModel').Socket;
++    window.AuthStore.AppState = resolved.socket;
++    window.AuthStore.__socketModuleId = resolved.moduleId;
++    window.AuthStore.__socketStrategy = resolved.strategy;
+     window.AuthStore.Cmd = window.require('WAWebCmd').Cmd;
+     window.AuthStore.Conn = window.require('WAWebConnModel').Conn;
+     window.AuthStore.OfflineMessageHandler = window.require(

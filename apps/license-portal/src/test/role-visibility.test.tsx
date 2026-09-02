@@ -52,5 +52,12 @@ describe('role visibility', () => {
   it('shows admin navigation only for SUPER_ADMIN', () => {
     renderWithRole('SUPER_ADMIN');
     expect(screen.getByRole('link', { name: 'Admin users' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'System status' })).toBeInTheDocument();
+  });
+
+  it('shows System status for ADMIN but not Admin users', () => {
+    renderWithRole('ADMIN');
+    expect(screen.getByRole('link', { name: 'System status' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Admin users' })).not.toBeInTheDocument();
   });
 });

@@ -94,6 +94,8 @@ export interface WhatsAppHelperStatusSnapshot {
   sessionPathWritable: boolean;
   sessionCorruptionSuspected: boolean;
   sessionCorruptionMessage: string | null;
+  /** Distinct failure code — never treat WWEBJS_MODULE_COMPATIBILITY_ERROR as logout. */
+  failureCode: string | null;
   groups: WhatsAppCollectorGroup[];
   contacts: WhatsAppCollectorContact[];
 }

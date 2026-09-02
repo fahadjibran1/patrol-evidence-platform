@@ -76,6 +76,10 @@ export function AppLayout(): JSX.Element {
       return `Trial: ${license.daysRemaining} day${license.daysRemaining === 1 ? '' : 's'} left`;
     }
 
+    if (license.status === 'TRIAL_ACTIVE') {
+      return `Trial: ${license.daysRemaining} day${license.daysRemaining === 1 ? '' : 's'} left`;
+    }
+
     if (license.status === 'EXPIRED') {
       return 'Licence expired';
     }
@@ -155,7 +159,8 @@ export function AppLayout(): JSX.Element {
               <strong>
                 {bootstrapStatus?.license.displayMode === 'Licensed' && bootstrapStatus.license.status === 'ACTIVE'
                   ? 'Licensed'
-                  : bootstrapStatus?.license.status === 'ACTIVE' && bootstrapStatus.license.plan === 'trial'
+                  : bootstrapStatus?.license.status === 'TRIAL_ACTIVE' ||
+                      (bootstrapStatus?.license.status === 'ACTIVE' && bootstrapStatus.license.plan === 'trial')
                     ? `Trial: ${bootstrapStatus.license.daysRemaining} day${bootstrapStatus.license.daysRemaining === 1 ? '' : 's'} left`
                     : bootstrapStatus?.license.status === 'EXPIRED'
                       ? 'Licence expired'

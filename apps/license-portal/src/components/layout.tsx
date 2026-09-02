@@ -8,8 +8,16 @@ const navItems: Array<{ to: string; label: string; roles?: AdminRole[] }> = [
   { to: '/customers', label: 'Customers' },
   { to: '/licences', label: 'Licences' },
   { to: '/payments', label: 'Payments' },
+  { to: '/billing/plans', label: 'Billing plans' },
+  { to: '/billing/subscriptions', label: 'Subscriptions' },
+  { to: '/billing/invoices', label: 'Invoices' },
+  { to: '/billing/payments', label: 'Billing payments' },
+  { to: '/billing/self-service-report', label: 'Self-service report' },
+  { to: '/stripe', label: 'Stripe operations' },
+  { to: '/support', label: 'Support ops', roles: ['SUPER_ADMIN', 'ADMIN', 'SUPPORT'] },
   { to: '/audit', label: 'Audit log' },
   { to: '/admins', label: 'Admin users', roles: ['SUPER_ADMIN'] },
+  { to: '/system', label: 'System status', roles: ['SUPER_ADMIN', 'ADMIN'] },
   { to: '/settings', label: 'Settings' },
 ];
 
@@ -71,6 +79,12 @@ export function AppLayout(): JSX.Element {
     </div>
   );
 }
+
+/** Shared copy for the offline enforcement limitation, reused by lifecycle action modals and the licence detail page. */
+export const OFFLINE_ENFORCEMENT_LIMITS_TEXT =
+  'Desktop installations validate licences offline using the signed file. Suspension, revocation, plan changes, and ' +
+  'device-limit changes take effect after the customer imports an updated .lic file (for entitlement changes) or when ' +
+  'a future online status check is available (for suspension/revocation). There is no instantaneous remote kill-switch today.';
 
 export function OfflineEnforcementBanner(): JSX.Element {
   return (

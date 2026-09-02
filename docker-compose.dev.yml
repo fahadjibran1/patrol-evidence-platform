@@ -1,0 +1,38 @@
+# Development stack — hot-reload friendly local services + infra
+name: patrol-license-dev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: patrol_license
+      POSTGRES_PASSWORD: patrol_license_dev
+      POSTGRES_DB: patrol_license_portal
+    ports:
+      - "5433:5432"
+    volumes:
+      - patrol_license_pg_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U patrol_license -d patrol_license_portal"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+volumes:
+  patrol_license_pg_dev:

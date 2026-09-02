@@ -106,15 +106,81 @@ export async function createIntegrationContext(): Promise<IntegrationContext> {
 export async function resetIntegrationDatabase(prisma: PrismaService): Promise<void> {
   await prisma.$executeRawUnsafe(`
     TRUNCATE TABLE
+      "NotificationLog",
       "AuditLog",
+      "StripeReconciliationAlert",
+      "StripeWebhookEvent",
+      "StripeCheckoutSession",
+      "StripeSubscriptionMapping",
+      "StripePriceMapping",
+      "StripeCustomerMapping",
+      "BillingCredit",
+      "BillingPayment",
+      "Invoice",
+      "InvoiceNumberSequence",
+      "Subscription",
       "PaymentRecord",
       "Installation",
+      "LicenceVersion",
       "Licence",
       "LicenceIdSequence",
       "RefreshToken",
+      "CustomerEmailVerificationToken",
+      "CustomerPasswordResetToken",
+      "OrganisationInvitation",
+      "CustomerSession",
+      "CustomerRefreshToken",
+      "CustomerUser",
       "Customer",
       "Admin"
     RESTART IDENTITY CASCADE
+  `);
+
+  // Catalogue plans are seeded by migration; re-assert after accidental truncation in older harnesses.
+  await prisma.$executeRawUnsafe(`
+    INSERT INTO "Plan" (
+      "id", "code", "name", "description", "status",
+      "monthlyPrice", "annualPrice", "currency", "billingInterval",
+      "trialDays", "maxDevices", "includedFeatures", "supportLevel", "sortOrder", "isPublic",
+      "createdAt", "updatedAt"
+    ) VALUES
+    (
+      'plan-starter-0000000000000001',
+      'STARTER',
+      'Starter',
+      'Essential patrol evidence licensing for small teams.',
+      'ACTIVE',
+      4900, 49000, 'GBP', 'MONTHLY',
+      14, 2,
+      '["MULTI_USER","HAZARD_DETECTION"]'::jsonb,
+      'STANDARD', 10, true,
+      CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+    ),
+    (
+      'plan-professional-0000000001',
+      'PROFESSIONAL',
+      'Professional',
+      'Advanced reporting and multi-device deployments.',
+      'ACTIVE',
+      9900, 99000, 'GBP', 'MONTHLY',
+      14, 10,
+      '["MULTI_USER","HAZARD_DETECTION","UNLIMITED_DOWNLOADS","ADVANCED_REPORTING","API_ACCESS","REMOTE_MONITORING"]'::jsonb,
+      'PRIORITY', 20, true,
+      CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+    ),
+    (
+      'plan-enterprise-00000000001',
+      'ENTERPRISE',
+      'Enterprise',
+      'Full platform access with dedicated support. Custom pricing available.',
+      'ACTIVE',
+      24900, 249000, 'GBP', 'ANNUAL',
+      30, 100,
+      '["MULTI_USER","HAZARD_DETECTION","UNLIMITED_DOWNLOADS","ADVANCED_REPORTING","API_ACCESS","REMOTE_MONITORING","WHITE_LABEL","CUSTOM_BRANDING"]'::jsonb,
+      'DEDICATED', 30, true,
+      CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+    )
+    ON CONFLICT ("code") DO NOTHING
   `);
 }
 

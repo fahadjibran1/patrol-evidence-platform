@@ -52,7 +52,9 @@ export function StatusBadge({ value }: { value: string | boolean }): JSX.Element
     'READY',
     'CONNECTED',
     'ACTIVE',
+    'TRIAL_ACTIVE',
     'TRIAL ACTIVE',
+    'Trial Active',
     'FULL',
     'Reported',
   ]);

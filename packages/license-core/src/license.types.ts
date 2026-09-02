@@ -5,7 +5,7 @@ export const LEGACY_TRIAL_REMOVAL_DATE = '2026-12-31';
 
 export type LicensePlan = 'trial' | 'monthly' | 'annual';
 
-export type LicenseDisplayStatus = 'ACTIVE' | 'EXPIRED' | 'INVALID' | 'NOT_ACTIVATED';
+export type LicenseDisplayStatus = 'ACTIVE' | 'TRIAL_ACTIVE' | 'EXPIRED' | 'INVALID' | 'NOT_ACTIVATED';
 
 export interface LicensePayload {
   version: number;

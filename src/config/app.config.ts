@@ -61,6 +61,10 @@ export const appConfig = () => {
       process.env.WHATSAPP_SESSION_PATH ??
       path.join(process.cwd(), 'whatsapp-session'),
     whatsappChromePath: getDesktopConfigValue('whatsappChromePath') ?? process.env.WHATSAPP_CHROME_PATH,
+    whatsappBrowser:
+      getDesktopConfigValue('whatsappBrowser') ??
+      (process.env.WHATSAPP_BROWSER as 'chrome' | 'edge' | 'auto' | undefined) ??
+      (process.env.PATROL_WHATSAPP_BROWSER as 'chrome' | 'edge' | 'auto' | undefined),
     whatsappPilotGroupName:
       getDesktopConfigValue('whatsappPilotGroupName') ?? process.env.WHATSAPP_PILOT_GROUP_NAME?.trim(),
     whatsappPilotSiteCode:

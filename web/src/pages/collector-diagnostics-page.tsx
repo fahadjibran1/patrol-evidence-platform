@@ -28,6 +28,7 @@ export function CollectorDiagnosticsPage(): JSX.Element {
     start,
     stop,
     resetSession,
+    createFreshProfile,
   } = useMonitoring();
   const [overview, setOverview] = useState<DashboardOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -36,6 +37,7 @@ export function CollectorDiagnosticsPage(): JSX.Element {
   const [desktopState, setDesktopState] = useState<DesktopState | null>(null);
   const [bootstrapStatus, setBootstrapStatus] = useState<DesktopBootstrapStatus | null>(null);
   const [chromePath, setChromePath] = useState('');
+  const [browserPreference, setBrowserPreference] = useState<'chrome' | 'edge' | 'auto'>('chrome');
   const [now, setNow] = useState(() => Date.now());
   const [qrRenderedAt, setQrRenderedAt] = useState<string | null>(null);
 
@@ -54,6 +56,7 @@ export function CollectorDiagnosticsPage(): JSX.Element {
       }
       setDesktopState(nextState);
       setChromePath(nextState.config.whatsappChromePath ?? '');
+      setBrowserPreference(nextState.config.whatsappBrowser ?? 'chrome');
     });
   }, []);
 
@@ -147,6 +150,7 @@ export function CollectorDiagnosticsPage(): JSX.Element {
     try {
       const nextState = await saveDesktopConfig({
         whatsappChromePath: chromePath.trim() || undefined,
+        whatsappBrowser: browserPreference,
       });
       setDesktopState(nextState);
       await refresh();
@@ -163,7 +167,10 @@ export function CollectorDiagnosticsPage(): JSX.Element {
 
     try {
       setChromePath('');
-      const nextState = await saveDesktopConfig({ whatsappChromePath: undefined });
+      const nextState = await saveDesktopConfig({
+        whatsappChromePath: undefined,
+        whatsappBrowser: browserPreference,
+      });
       setDesktopState(nextState);
       await refresh();
     } catch (actionError) {
@@ -171,6 +178,20 @@ export function CollectorDiagnosticsPage(): JSX.Element {
     } finally {
       setIsBusy(false);
     }
+  }
+
+  function collectorErrorText(collectorStatus: WhatsAppCollectorStatus): string | null {
+    if (collectorStatus.failureCode === 'WWEBJS_MODULE_COMPATIBILITY_ERROR') {
+      return 'WhatsApp connected, but this WhatsApp Web version is not compatible with the installed collector runtime.';
+    }
+    if (
+      collectorStatus.lastError?.includes('WWEBJS_MODULE_COMPATIBILITY_ERROR') ||
+      collectorStatus.lastError?.toLowerCase().includes('chat store') ||
+      collectorStatus.info?.toLowerCase().includes('not compatible')
+    ) {
+      return 'WhatsApp connected, but this WhatsApp Web version is not compatible with the installed collector runtime.';
+    }
+    return collectorStatus.lastError;
   }
 
   if (user?.role === 'GUARD') {
@@ -338,6 +359,22 @@ export function CollectorDiagnosticsPage(): JSX.Element {
                     <button type="button" className="secondary-button" disabled={actionBusy} onClick={() => void resetSession()}>
                       Reconnect WhatsApp
                     </button>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      disabled={actionBusy}
+                      onClick={() => {
+                        if (
+                          window.confirm(
+                            'Archive the current app WhatsApp profile and create a fresh one? A new QR will be required.',
+                          )
+                        ) {
+                          void createFreshProfile();
+                        }
+                      }}
+                    >
+                      Create fresh WhatsApp profile
+                    </button>
                   </div>
 
                   <div className="collector-recovery-row">
@@ -384,11 +421,17 @@ export function CollectorDiagnosticsPage(): JSX.Element {
                     <div className="ops-stat"><span>Last state update</span><strong>{formatMonitoringStateUpdateTime(collectorStatus.lastEventAt)}</strong></div>
                   </div>
 
-                  {collectorStatus.lastError || showQrTimeoutPanel ? (
+                  {collectorStatus.lastError || collectorStatus.failureCode || showQrTimeoutPanel ? (
                     <Card className="wizard-card">
-                      <h3>{showQrTimeoutPanel ? 'QR is taking longer than expected' : 'Patrol monitoring error'}</h3>
+                      <h3>
+                        {collectorStatus.failureCode === 'WWEBJS_MODULE_COMPATIBILITY_ERROR'
+                          ? 'WhatsApp Web compatibility'
+                          : showQrTimeoutPanel
+                            ? 'QR is taking longer than expected'
+                            : 'Patrol monitoring error'}
+                      </h3>
                       <p className="muted-text">
-                        {collectorStatus.lastError ??
+                        {collectorErrorText(collectorStatus) ??
                           'Patrol monitoring did not receive a QR code within 20 seconds. Review the latest debug log lines below, then retry the start action.'}
                       </p>
                       <div className="button-row">
@@ -451,13 +494,26 @@ export function CollectorDiagnosticsPage(): JSX.Element {
                 </Card>
 
                 <Card className="wizard-card">
-                  <h3>Browser path</h3>
+                  <h3>Browser preference</h3>
                   <p className="muted-text">
-                    Patrol monitoring will use an installed Chrome or Edge browser. If this laptop uses a non-standard path,
-                    add it here and save before starting the QR flow.
+                    Choose Chrome or Edge explicitly. When Chrome is selected, the collector launches Chrome only and never
+                    falls back to Edge.
                   </p>
                   <label className="inline-field">
-                    <span>Manual Chrome or Edge path</span>
+                    <span>Browser</span>
+                    <select
+                      value={browserPreference}
+                      onChange={(event) =>
+                        setBrowserPreference(event.target.value as 'chrome' | 'edge' | 'auto')
+                      }
+                    >
+                      <option value="chrome">Google Chrome</option>
+                      <option value="edge">Microsoft Edge</option>
+                      <option value="auto">Auto (Chrome preferred)</option>
+                    </select>
+                  </label>
+                  <label className="inline-field">
+                    <span>Manual executable path (optional)</span>
                     <input
                       value={chromePath}
                       onChange={(event) => setChromePath(event.target.value)}
@@ -466,7 +522,7 @@ export function CollectorDiagnosticsPage(): JSX.Element {
                   </label>
                   <div className="button-row">
                     <button type="button" className="secondary-button" disabled={isBusy} onClick={() => void saveChromePath()}>
-                      Save browser path
+                      Save browser settings
                     </button>
                     {desktopState?.config.whatsappChromePath ? (
                       <button
@@ -480,7 +536,8 @@ export function CollectorDiagnosticsPage(): JSX.Element {
                     ) : null}
                   </div>
                   <p className="muted-text">
-                    Saved path: {desktopState?.config.whatsappChromePath || 'Using automatic Chrome or Edge detection'}
+                    Preference: {desktopState?.config.whatsappBrowser ?? browserPreference}. Path:{' '}
+                    {desktopState?.config.whatsappChromePath || 'Automatic detection for the selected browser'}
                   </p>
                 </Card>
               </>

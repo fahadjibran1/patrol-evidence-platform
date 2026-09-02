@@ -50,6 +50,145 @@ enum PaymentStatus {
   WAIVED
 }
 
+enum NotificationType {
+  LICENSE_ISSUED
+  LICENSE_REISSUED
+  LICENSE_RENEWED
+  LICENSE_EXPIRED
+  LICENSE_EXPIRING
+  PAYMENT_RECEIVED
+  PAYMENT_FAILED
+  WELCOME
+  PASSWORD_RESET
+  ADMIN_ALERT
+}
+
+enum NotificationStatus {
+  PENDING
+  QUEUED
+  SENT
+  FAILED
+}
+
+enum NotificationProviderKind {
+  EMAIL
+}
+
+enum CustomerRole {
+  OWNER
+  ADMINISTRATOR
+  TECHNICAL
+  FINANCE
+  VIEWER
+}
+
+enum OrganisationInvitationStatus {
+  PENDING
+  ACCEPTED
+  CANCELLED
+  EXPIRED
+}
+
+enum LicenceVersionAction {
+  ISSUED
+  RENEWED
+  REISSUED
+  PLAN_CHANGED
+  DEVICE_LIMIT_CHANGED
+  REACTIVATED
+  SUSPENDED
+  REVOKED
+}
+
+enum PlanStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum BillingInterval {
+  MONTHLY
+  ANNUAL
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  SUSPENDED
+  CANCELLED
+  EXPIRED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  OPEN
+  PAID
+  VOID
+  REFUNDED
+  OVERDUE
+}
+
+enum BillingPaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+enum PaymentProvider {
+  MANUAL
+  STRIPE
+  PAYPAL
+  GOCARDLESS
+}
+
+enum StripeCheckoutSessionStatus {
+  OPEN
+  COMPLETE
+  EXPIRED
+}
+
+enum StripeCheckoutPurpose {
+  INITIAL
+  RENEWAL
+  UPGRADE
+}
+
+enum ScheduledPlanChangeType {
+  UPGRADE
+  DOWNGRADE
+}
+
+enum StripeWebhookProcessingStatus {
+  RECEIVED
+  PROCESSING
+  PROCESSED
+  IGNORED
+  FAILED
+  DEAD_LETTER
+}
+
+enum StripeReconciliationAlertStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+enum ManualPaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CARD
+  CHEQUE
+  OTHER
+}
+
+enum SupportLevel {
+  STANDARD
+  PRIORITY
+  DEDICATED
+}
+
 model Admin {
   id           String    @id @default(uuid())
   email        String    @unique
@@ -61,12 +200,17 @@ model Admin {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  licencesCreated      Licence[]       @relation("LicenceCreatedBy")
-  licencesSuspended    Licence[]       @relation("LicenceSuspendedBy")
-  licencesRevoked      Licence[]       @relation("LicenceRevokedBy")
-  paymentsRecorded     PaymentRecord[]
-  auditLogs            AuditLog[]
-  refreshTokens        RefreshToken[]
+  licencesCreated         Licence[]         @relation("LicenceCreatedBy")
+  licencesSuspended       Licence[]         @relation("LicenceSuspendedBy")
+  licencesRevoked         Licence[]         @relation("LicenceRevokedBy")
+  licenceVersionsIssued   LicenceVersion[]  @relation("LicenceVersionIssuedBy")
+  paymentsRecorded        PaymentRecord[]
+  auditLogs               AuditLog[]
+  refreshTokens           RefreshToken[]
+  notificationLogs        NotificationLog[]
+  subscriptionsCreated    Subscription[]    @relation("SubscriptionCreatedBy")
+  billingPaymentsRecorded BillingPayment[]  @relation("BillingPaymentRecordedBy")
+  billingCreditsIssued    BillingCredit[]   @relation("BillingCreditIssuedBy")
 }
 
 model RefreshToken {
@@ -81,28 +225,168 @@ model RefreshToken {
 }
 
 model Customer {
-  id           String         @id @default(uuid())
-  companyName  String
-  tradingName  String?
-  contactName  String?
-  email        String
-  phone        String?
-  addressLine1 String?
-  addressLine2 String?
-  city         String?
-  postcode     String?
-  country      String         @default("GB")
-  status       CustomerStatus @default(PROSPECT)
-  notes        String?
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  id                    String         @id @default(uuid())
+  companyName           String
+  tradingName           String?
+  contactName           String?
+  email                 String
+  phone                 String?
+  addressLine1          String?
+  addressLine2          String?
+  city                  String?
+  postcode              String?
+  country               String         @default("GB")
+  status                CustomerStatus @default(PROSPECT)
+  notes                 String?
+  technicalContactName  String?
+  technicalContactEmail String?
+  technicalContactPhone String?
+  /// Organisation billing contact (defaults to primary email when null).
+  billingEmail          String?
+  /// Additional invoice recipient emails (JSON string array).
+  invoiceRecipients     Json           @default("[]")
+  /// When false, FINANCE role cannot purchase (Owner/Admin still can).
+  allowFinancePurchases Boolean        @default(true)
+  /// Tax / VAT identifier placeholder for future tax features.
+  taxId                 String?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
 
-  licences Licence[]
-  payments PaymentRecord[]
-  auditLogs AuditLog[]
+  licences                   Licence[]
+  payments                   PaymentRecord[]
+  auditLogs                  AuditLog[]
+  notificationLogs           NotificationLog[]
+  users                      CustomerUser[]
+  invitations                OrganisationInvitation[]
+  subscriptions              Subscription[]
+  billingCredits             BillingCredit[]
+  stripeCustomerMappings     StripeCustomerMapping[]
+  stripeCheckoutSessions     StripeCheckoutSession[]
+  stripeReconciliationAlerts StripeReconciliationAlert[]
 
   @@index([companyName])
   @@index([email])
+}
+
+/// Organisation member identity for a company (Customer). Distinct from Admin accounts.
+model CustomerUser {
+  id              String       @id @default(uuid())
+  customerId      String
+  email           String       @unique
+  passwordHash    String
+  displayName     String
+  phone           String?
+  role            CustomerRole @default(VIEWER)
+  isActive        Boolean      @default(true)
+  emailVerifiedAt DateTime?
+  /// Reserved for future MFA — not enforced yet.
+  mfaEnabled      Boolean      @default(false)
+  mfaSecretEnc    String?
+  notifyLicence   Boolean      @default(true)
+  notifyGeneral   Boolean      @default(true)
+  notifySystem    Boolean      @default(true)
+  lastLoginAt     DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  customer                Customer                         @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  sessions                CustomerSession[]
+  refreshTokens           CustomerRefreshToken[]
+  auditLogs               AuditLog[]
+  invitationsSent         OrganisationInvitation[]         @relation("InvitationInvitedBy")
+  passwordResetTokens     CustomerPasswordResetToken[]
+  emailVerificationTokens CustomerEmailVerificationToken[]
+
+  @@index([customerId])
+  @@index([email])
+  @@index([role])
+}
+
+model OrganisationInvitation {
+  id              String                       @id @default(uuid())
+  customerId      String
+  email           String
+  role            CustomerRole
+  status          OrganisationInvitationStatus @default(PENDING)
+  tokenHash       String                       @unique
+  invitedByUserId String
+  expiresAt       DateTime
+  acceptedAt      DateTime?
+  cancelledAt     DateTime?
+  acceptedUserId  String?
+  createdAt       DateTime                     @default(now())
+  updatedAt       DateTime                     @updatedAt
+
+  customer  Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  invitedBy CustomerUser @relation("InvitationInvitedBy", fields: [invitedByUserId], references: [id])
+
+  @@index([customerId])
+  @@index([email])
+  @@index([status])
+  @@index([expiresAt])
+}
+
+model CustomerPasswordResetToken {
+  id             String    @id @default(uuid())
+  customerUserId String
+  tokenHash      String    @unique
+  expiresAt      DateTime
+  usedAt         DateTime?
+  createdAt      DateTime  @default(now())
+
+  customerUser CustomerUser @relation(fields: [customerUserId], references: [id], onDelete: Cascade)
+
+  @@index([customerUserId])
+  @@index([expiresAt])
+}
+
+model CustomerEmailVerificationToken {
+  id             String    @id @default(uuid())
+  customerUserId String
+  tokenHash      String    @unique
+  expiresAt      DateTime
+  usedAt         DateTime?
+  createdAt      DateTime  @default(now())
+
+  customerUser CustomerUser @relation(fields: [customerUserId], references: [id], onDelete: Cascade)
+
+  @@index([customerUserId])
+  @@index([expiresAt])
+}
+
+model CustomerRefreshToken {
+  id             String   @id @default(uuid())
+  customerUserId String
+  tokenHash      String   @unique
+  expiresAt      DateTime
+  rememberMe     Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  customerUser CustomerUser     @relation(fields: [customerUserId], references: [id], onDelete: Cascade)
+  session      CustomerSession?
+
+  @@index([customerUserId])
+}
+
+/// Tracks an authenticated customer portal session (MFA-ready: extend with challenge state later).
+model CustomerSession {
+  id             String    @id @default(uuid())
+  customerUserId String
+  refreshTokenId String?   @unique
+  ipAddress      String?
+  userAgent      String?
+  rememberMe     Boolean   @default(false)
+  expiresAt      DateTime
+  revokedAt      DateTime?
+  /// Reserved for future MFA step-up verification.
+  mfaVerifiedAt  DateTime?
+  createdAt      DateTime  @default(now())
+
+  customerUser CustomerUser          @relation(fields: [customerUserId], references: [id], onDelete: Cascade)
+  refreshToken CustomerRefreshToken? @relation(fields: [refreshTokenId], references: [id], onDelete: SetNull)
+
+  @@index([customerUserId])
+  @@index([expiresAt])
 }
 
 model LicenceIdSequence {
@@ -126,6 +410,7 @@ model Licence {
   payloadHash        String?
   signingKeyId       String?
   previousLicenceId  String?
+  currentVersionId   String?       @unique
   createdByAdminId   String
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
@@ -135,20 +420,59 @@ model Licence {
   revokedAt          DateTime?
   revokedByAdminId   String?
   revocationReason   String?
+  downloadCount      Int           @default(0)
+  lastDownloadedAt   DateTime?
 
-  customer         Customer         @relation(fields: [customerId], references: [id])
-  createdBy        Admin            @relation("LicenceCreatedBy", fields: [createdByAdminId], references: [id])
-  suspendedBy      Admin?           @relation("LicenceSuspendedBy", fields: [suspendedByAdminId], references: [id])
-  revokedBy        Admin?           @relation("LicenceRevokedBy", fields: [revokedByAdminId], references: [id])
-  previousLicence  Licence?         @relation("LicenceRenewalChain", fields: [previousLicenceId], references: [id])
-  renewals         Licence[]        @relation("LicenceRenewalChain")
+  customer         Customer          @relation(fields: [customerId], references: [id])
+  createdBy        Admin             @relation("LicenceCreatedBy", fields: [createdByAdminId], references: [id])
+  suspendedBy      Admin?            @relation("LicenceSuspendedBy", fields: [suspendedByAdminId], references: [id])
+  revokedBy        Admin?            @relation("LicenceRevokedBy", fields: [revokedByAdminId], references: [id])
+  previousLicence  Licence?          @relation("LicenceRenewalChain", fields: [previousLicenceId], references: [id])
+  renewals         Licence[]         @relation("LicenceRenewalChain")
+  currentVersion   LicenceVersion?   @relation("LicenceCurrentVersion", fields: [currentVersionId], references: [id])
+  versions         LicenceVersion[]  @relation("LicenceVersions")
   installations    Installation[]
   payments         PaymentRecord[]
   auditLogs        AuditLog[]
+  notificationLogs NotificationLog[]
 
   @@index([customerId])
   @@index([status])
   @@index([expiresAt])
+}
+
+model LicenceVersion {
+  id                String               @id @default(uuid())
+  licenceId         String
+  versionNumber     Int
+  actionType        LicenceVersionAction
+  plan              LicensePlan
+  maxDevices        Int
+  features          Json                 @default("[]")
+  validFrom         DateTime             @db.Date
+  validUntil        DateTime             @db.Date
+  statusSnapshot    LicenseStatus
+  signedLicenseEnc  String?
+  payloadHash       String?
+  signingKeyId      String?
+  issuedByAdminId   String
+  previousVersionId String?
+  reason            String?
+  metadata          Json?
+  createdAt         DateTime             @default(now())
+
+  licence           Licence          @relation("LicenceVersions", fields: [licenceId], references: [id], onDelete: Cascade)
+  issuedBy          Admin            @relation("LicenceVersionIssuedBy", fields: [issuedByAdminId], references: [id])
+  previousVersion   LicenceVersion?  @relation("LicenceVersionChain", fields: [previousVersionId], references: [id])
+  nextVersions      LicenceVersion[] @relation("LicenceVersionChain")
+  currentForLicence Licence?         @relation("LicenceCurrentVersion")
+
+  @@unique([licenceId, versionNumber])
+  @@index([licenceId, versionNumber])
+  @@index([statusSnapshot])
+  @@index([validUntil])
+  @@index([createdAt])
+  @@index([actionType])
 }
 
 model Installation {
@@ -198,24 +522,329 @@ model PaymentRecord {
 }
 
 model AuditLog {
-  id           String   @id @default(uuid())
-  actorAdminId String?
-  action       String
-  entityType   String
-  entityId     String?
-  customerId   String?
-  licenceId    String?
-  metadata     Json?
-  ipAddress    String?
-  userAgent    String?
-  createdAt    DateTime @default(now())
+  id                  String   @id @default(uuid())
+  actorAdminId        String?
+  actorCustomerUserId String?
+  action              String
+  entityType          String
+  entityId            String?
+  customerId          String?
+  licenceId           String?
+  metadata            Json?
+  ipAddress           String?
+  userAgent           String?
+  createdAt           DateTime @default(now())
 
-  actor    Admin?    @relation(fields: [actorAdminId], references: [id])
-  customer Customer? @relation(fields: [customerId], references: [id])
-  licence  Licence?  @relation(fields: [licenceId], references: [id])
+  actor             Admin?        @relation(fields: [actorAdminId], references: [id])
+  actorCustomerUser CustomerUser? @relation(fields: [actorCustomerUserId], references: [id])
+  customer          Customer?     @relation(fields: [customerId], references: [id])
+  licence           Licence?      @relation(fields: [licenceId], references: [id])
 
   @@index([createdAt])
   @@index([entityType, entityId])
   @@index([customerId])
   @@index([licenceId])
+  @@index([actorCustomerUserId])
+}
+
+model NotificationLog {
+  id               String                   @id @default(uuid())
+  notificationType NotificationType
+  provider         NotificationProviderKind
+  recipient        String
+  subject          String
+  status           NotificationStatus       @default(PENDING)
+  attempts         Int                      @default(0)
+  sentAt           DateTime?
+  errorMessage     String?
+  metadata         Json?
+  source           String?
+  licenceId        String?
+  customerId       String?
+  actorAdminId     String?
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+
+  licence    Licence?  @relation(fields: [licenceId], references: [id], onDelete: SetNull)
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  actorAdmin Admin?    @relation(fields: [actorAdminId], references: [id], onDelete: SetNull)
+
+  @@index([notificationType])
+  @@index([status])
+  @@index([recipient])
+  @@index([createdAt])
+  @@index([licenceId])
+  @@index([customerId])
+  @@index([actorAdminId])
+}
+
+/// Commercial plan catalogue — source of truth for pricing and entitlements.
+model Plan {
+  id               String          @id @default(uuid())
+  code             String          @unique
+  name             String
+  description      String?
+  status           PlanStatus      @default(DRAFT)
+  /// Minor currency units (e.g. pence).
+  monthlyPrice     Int
+  /// Minor currency units (e.g. pence).
+  annualPrice      Int
+  currency         String          @default("GBP")
+  billingInterval  BillingInterval @default(MONTHLY)
+  trialDays        Int             @default(0)
+  maxDevices       Int             @default(1)
+  /// Application feature codes (see BillingFeature).
+  includedFeatures Json            @default("[]")
+  supportLevel     SupportLevel    @default(STANDARD)
+  sortOrder        Int             @default(100)
+  isPublic         Boolean         @default(true)
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  subscriptions        Subscription[]       @relation("SubscriptionCurrentPlan")
+  pendingSubscriptions Subscription[]       @relation("SubscriptionPendingPlan")
+  stripePriceMappings  StripePriceMapping[]
+
+  @@index([status])
+  @@index([isPublic])
+  @@index([sortOrder])
+}
+
+model Subscription {
+  id                      String                   @id @default(uuid())
+  organisationId          String
+  planId                  String
+  status                  SubscriptionStatus       @default(TRIAL)
+  billingInterval         BillingInterval
+  startedAt               DateTime?
+  currentPeriodStart      DateTime?
+  currentPeriodEnd        DateTime?
+  nextBillingDate         DateTime?
+  autoRenew               Boolean                  @default(true)
+  trialEndsAt             DateTime?
+  cancelAtPeriodEnd       Boolean                  @default(false)
+  cancelledAt             DateTime?
+  cancellationReason      String?
+  /// Pending purchase awaiting Stripe Checkout confirmation (not yet ACTIVE).
+  pendingCheckout         Boolean                  @default(false)
+  /// Scheduled/in-flight plan change (upgrade pending payment or downgrade at period end).
+  pendingPlanId           String?
+  pendingBillingInterval  BillingInterval?
+  planChangeEffectiveAt   DateTime?
+  scheduledChangeType     ScheduledPlanChangeType?
+  /// Admin override for grace period days (null = use BILLING_GRACE_PERIOD_DAYS).
+  gracePeriodDaysOverride Int?
+  createdByAdminId        String?
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+
+  organisation              Customer                   @relation(fields: [organisationId], references: [id])
+  plan                      Plan                       @relation("SubscriptionCurrentPlan", fields: [planId], references: [id])
+  pendingPlan               Plan?                      @relation("SubscriptionPendingPlan", fields: [pendingPlanId], references: [id])
+  createdBy                 Admin?                     @relation("SubscriptionCreatedBy", fields: [createdByAdminId], references: [id])
+  invoices                  Invoice[]
+  billingCredits            BillingCredit[]
+  stripeSubscriptionMapping StripeSubscriptionMapping?
+  stripeCheckoutSessions    StripeCheckoutSession[]
+
+  @@index([organisationId])
+  @@index([planId])
+  @@index([status])
+  @@index([nextBillingDate])
+  @@index([currentPeriodEnd])
+  @@index([pendingCheckout])
+  @@index([pendingPlanId])
+  @@index([planChangeEffectiveAt])
+}
+
+model BillingCredit {
+  id              String   @id @default(uuid())
+  organisationId  String
+  subscriptionId  String?
+  /// Minor currency units (positive credit).
+  amount          Int
+  currency        String   @default("GBP")
+  reason          String
+  issuedByAdminId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  organisation Customer      @relation(fields: [organisationId], references: [id])
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id])
+  issuedBy     Admin?        @relation("BillingCreditIssuedBy", fields: [issuedByAdminId], references: [id])
+
+  @@index([organisationId])
+  @@index([subscriptionId])
+}
+
+model InvoiceNumberSequence {
+  year      Int @id
+  lastValue Int @default(0)
+}
+
+model Invoice {
+  id             String        @id @default(uuid())
+  subscriptionId String
+  number         String        @unique
+  status         InvoiceStatus @default(DRAFT)
+  /// Minor currency units.
+  subtotal       Int
+  tax            Int           @default(0)
+  discount       Int           @default(0)
+  total          Int
+  currency       String        @default("GBP")
+  issuedAt       DateTime?
+  dueAt          DateTime?
+  paidAt         DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  subscription Subscription     @relation(fields: [subscriptionId], references: [id])
+  payments     BillingPayment[]
+
+  @@index([subscriptionId])
+  @@index([status])
+  @@index([dueAt])
+  @@index([issuedAt])
+}
+
+/// Provider-agnostic payment against an invoice. MANUAL + STRIPE in Phase 5A.
+model BillingPayment {
+  id                String               @id @default(uuid())
+  invoiceId         String
+  provider          PaymentProvider      @default(MANUAL)
+  providerReference String?
+  status            BillingPaymentStatus @default(PENDING)
+  amount            Int
+  currency          String               @default("GBP")
+  manualMethod      ManualPaymentMethod?
+  notes             String?
+  receivedAt        DateTime?
+  recordedByAdminId String?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  invoice    Invoice @relation(fields: [invoiceId], references: [id])
+  recordedBy Admin?  @relation("BillingPaymentRecordedBy", fields: [recordedByAdminId], references: [id])
+
+  @@unique([provider, providerReference])
+  @@index([invoiceId])
+  @@index([status])
+  @@index([provider])
+  @@index([receivedAt])
+}
+
+model StripeCustomerMapping {
+  id               String   @id @default(uuid())
+  organisationId   String
+  stripeCustomerId String   @unique
+  livemode         Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  organisation Customer @relation(fields: [organisationId], references: [id])
+
+  @@unique([organisationId, livemode])
+  @@index([organisationId])
+}
+
+model StripePriceMapping {
+  id              String          @id @default(uuid())
+  planId          String
+  billingInterval BillingInterval
+  stripeProductId String
+  stripePriceId   String          @unique
+  currency        String
+  active          Boolean         @default(true)
+  livemode        Boolean         @default(false)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  plan Plan @relation(fields: [planId], references: [id])
+
+  @@unique([planId, billingInterval, livemode])
+  @@index([planId])
+  @@index([active])
+}
+
+model StripeSubscriptionMapping {
+  id                    String   @id @default(uuid())
+  subscriptionId        String   @unique
+  stripeSubscriptionId  String   @unique
+  stripeCustomerId      String
+  latestStripeInvoiceId String?
+  livemode              Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id])
+
+  @@index([stripeCustomerId])
+}
+
+model StripeCheckoutSession {
+  id                      String                      @id @default(uuid())
+  organisationId          String
+  internalSubscriptionId  String?
+  internalInvoiceId       String?
+  stripeCheckoutSessionId String                      @unique
+  purpose                 StripeCheckoutPurpose       @default(INITIAL)
+  status                  StripeCheckoutSessionStatus @default(OPEN)
+  expiresAt               DateTime?
+  completedAt             DateTime?
+  livemode                Boolean                     @default(false)
+  acceptedTermsVersion    String?
+  idempotencyKey          String                      @unique
+  createdAt               DateTime                    @default(now())
+  updatedAt               DateTime                    @updatedAt
+
+  organisation Customer      @relation(fields: [organisationId], references: [id])
+  subscription Subscription? @relation(fields: [internalSubscriptionId], references: [id])
+
+  @@index([organisationId])
+  @@index([status])
+  @@index([purpose])
+  @@index([internalSubscriptionId])
+}
+
+model StripeWebhookEvent {
+  id               String                        @id @default(uuid())
+  stripeEventId    String                        @unique
+  type             String
+  apiVersion       String?
+  livemode         Boolean                       @default(false)
+  processingStatus StripeWebhookProcessingStatus @default(RECEIVED)
+  attempts         Int                           @default(0)
+  receivedAt       DateTime                      @default(now())
+  processedAt      DateTime?
+  lastError        String?
+  payloadHash      String
+  /// Minimal metadata JSON (object ids / type) — never full card data.
+  metadata         Json                          @default("{}")
+  createdAt        DateTime                      @default(now())
+  updatedAt        DateTime                      @updatedAt
+
+  @@index([processingStatus])
+  @@index([type])
+  @@index([receivedAt])
+}
+
+model StripeReconciliationAlert {
+  id             String                          @id @default(uuid())
+  organisationId String?
+  alertType      String
+  message        String
+  status         StripeReconciliationAlertStatus @default(OPEN)
+  stripeObjectId String?
+  internalRef    String?
+  metadata       Json                            @default("{}")
+  createdAt      DateTime                        @default(now())
+  updatedAt      DateTime                        @updatedAt
+  resolvedAt     DateTime?
+
+  organisation Customer? @relation(fields: [organisationId], references: [id])
+
+  @@index([status])
+  @@index([organisationId])
+  @@index([alertType])
 }

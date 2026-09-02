@@ -4,7 +4,7 @@ import { DesktopWorkspaceConfig, readDesktopWorkspaceConfig } from '@/desktop/de
 import { LicenseService } from './license.service';
 
 export type LicenseType = 'TRIAL' | 'FULL' | 'MONTHLY' | 'ANNUAL';
-export type LicenseStatus = 'ACTIVE' | 'EXPIRED' | 'INVALID' | 'NOT_ACTIVATED';
+export type LicenseStatus = 'ACTIVE' | 'TRIAL_ACTIVE' | 'EXPIRED' | 'INVALID' | 'NOT_ACTIVATED';
 
 export interface LicenseSnapshot {
   companyName: string | null;
@@ -18,7 +18,7 @@ export interface LicenseSnapshot {
   trialEndDate: string | null;
   startsAt: string | null;
   expiresAt: string | null;
-  status: LicenseStatus;
+  status: 'ACTIVE' | 'TRIAL_ACTIVE' | 'EXPIRED' | 'INVALID' | 'NOT_ACTIVATED';
   daysRemaining: number;
   installationId: string | null;
   maxDevices: number | null;
@@ -78,7 +78,12 @@ export class LicensingService {
           licenseType: snapshot.licenseType,
           trialStartDate: snapshot.trialStartDate ?? undefined,
           trialEndDate: snapshot.trialEndDate ?? undefined,
-          licenseStatus: snapshot.status === 'NOT_ACTIVATED' ? 'INVALID' : snapshot.status,
+          licenseStatus:
+            snapshot.status === 'NOT_ACTIVATED'
+              ? 'INVALID'
+              : snapshot.status === 'TRIAL_ACTIVE'
+                ? 'ACTIVE'
+                : snapshot.status,
           licenseCreatedAt: workspaceConfig.licenseCreatedAt ?? timestamp,
           licenseUpdatedAt: timestamp,
         },

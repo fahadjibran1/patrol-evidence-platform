@@ -51,6 +51,7 @@ export function StatusBadge({ value }: { value: string }): JSX.Element {
     'SCHEDULED',
     'READY',
     'TRUE',
+    'SUCCEEDED',
   ]);
   const danger = new Set([
     'EXPIRED',
@@ -211,6 +212,40 @@ export function LoadingState({ label = 'Loading…' }: { label?: string }): JSX.
     <Card className="loading-state">
       <p>{label}</p>
     </Card>
+  );
+}
+
+export function SkeletonBlock({ className = '' }: { className?: string }): JSX.Element {
+  return <div className={`skeleton-block ${className}`.trim()} aria-hidden="true" />;
+}
+
+export function DashboardSkeleton(): JSX.Element {
+  return (
+    <div className="page-stack" aria-busy="true" aria-live="polite">
+      <p className="sr-only">Loading dashboard…</p>
+      <div className="metrics-grid">
+        {Array.from({ length: 10 }).map((_, index) => (
+          <Card key={`kpi-skel-${index}`} className="metric-card">
+            <SkeletonBlock className="skeleton-line short" />
+            <SkeletonBlock className="skeleton-line value" />
+          </Card>
+        ))}
+      </div>
+      <div className="two-column-grid">
+        <Card>
+          <SkeletonBlock className="skeleton-line title" />
+          <SkeletonBlock className="skeleton-table" />
+        </Card>
+        <Card>
+          <SkeletonBlock className="skeleton-line title" />
+          <SkeletonBlock className="skeleton-table" />
+        </Card>
+      </div>
+      <Card>
+        <SkeletonBlock className="skeleton-line title" />
+        <SkeletonBlock className="skeleton-table" />
+      </Card>
+    </div>
   );
 }
 

@@ -179,16 +179,36 @@ describe('LoginPage', () => {
       }
       if (url.includes('/admin/dashboard')) {
         return mockJsonResponse({
-          totalCustomers: 0,
-          activeLicences: 0,
-          trials: 0,
-          expiredLicences: 0,
-          suspendedLicences: 0,
-          expiringIn7Days: 0,
-          expiringIn30Days: 0,
-          outstandingPayments: 0,
+          generatedAt: '2026-07-21T12:00:00.000Z',
+          kpis: {
+            activeCustomers: 0,
+            activeLicences: 0,
+            trialLicences: 0,
+            monthlyLicences: 0,
+            annualLicences: 0,
+            expiredLicences: 0,
+            expiringIn7Days: 0,
+            expiringIn30Days: 0,
+            emailsSentToday: 0,
+            failedEmailsToday: 0,
+          },
+          renewalQueue: [],
           recentActivity: [],
-          upcomingRenewals: [],
+          notificationHealth: {
+            sentToday: 0,
+            failedToday: 0,
+            pendingToday: 0,
+            recentFailures: [],
+          },
+          revenue: {
+            currency: 'GBP',
+            outstandingPaymentsCount: 0,
+            outstandingPaymentsAmountPence: 0,
+            paidTodayCount: 0,
+            paidTodayAmountPence: 0,
+            paidThisMonthCount: 0,
+            paidThisMonthAmountPence: 0,
+          },
         });
       }
 

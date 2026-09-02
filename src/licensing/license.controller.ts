@@ -1,5 +1,6 @@
 import { BadRequestException, Body, Controller, Get, Post } from '@nestjs/common';
 import { ActivateLicenseDto } from './dto/activate-license.dto';
+import { CreateLicenceRequestFileDto, ImportLicenceDto } from './dto/commercial-licence.dto';
 import { LicenseService } from './license.service';
 
 @Controller('license')
@@ -9,6 +10,27 @@ export class LicenseController {
   @Get('status')
   getStatus() {
     return this.licenseService.getStatus();
+  }
+
+  @Post('request-file')
+  createRequestFile(@Body() dto: CreateLicenceRequestFileDto) {
+    try {
+      return this.licenseService.createRequestFile({
+        companyName: dto.companyName,
+        requestedPlan: dto.requestedPlan,
+      });
+    } catch (error) {
+      throw new BadRequestException(error instanceof Error ? error.message : 'Could not create request file.');
+    }
+  }
+
+  @Post('import')
+  importLicence(@Body() dto: ImportLicenceDto) {
+    try {
+      return this.licenseService.importCommercialLicence(dto.licenceFileContents);
+    } catch (error) {
+      throw new BadRequestException(error instanceof Error ? error.message : 'Licence import failed.');
+    }
   }
 
   @Post('activate')

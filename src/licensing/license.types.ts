@@ -1,10 +1,16 @@
-import type { LicenseDisplayStatus, LicensePayload, LicensePlan } from '@patrol/license-core';
+import type {
+  LicenceFeatures,
+  LicenceMode,
+  LicenseDisplayStatus,
+  LicensePayload,
+  LicensePlan,
+} from '@patrol/license-core';
 import type { DesktopWorkspaceConfig } from '@/desktop/desktop-config.util';
 
 export * from '@patrol/license-core';
 
-export type LicenseType = 'TRIAL' | 'FULL' | 'MONTHLY' | 'ANNUAL';
-export type LicenseStatus = 'ACTIVE' | 'EXPIRED' | 'INVALID' | 'NOT_ACTIVATED';
+export type LicenseType = 'TRIAL' | 'FULL' | 'MONTHLY' | 'ANNUAL' | 'THREE_YEAR' | 'LIFETIME';
+export type LicenseStatus = 'ACTIVE' | 'TRIAL_ACTIVE' | 'EXPIRED' | 'INVALID' | 'NOT_ACTIVATED';
 
 export interface StoredLicenseRecord {
   licenseKey: string;
@@ -63,6 +69,8 @@ export interface LicenseVerificationResult {
 export interface LicenseStatusResponse {
   status: LicenseDisplayStatus;
   displayMode: 'Trial' | 'Licensed' | 'Not activated';
+  /** User-facing commercial UI state. */
+  uiState?: 'Trial Active' | 'Licensed' | 'Expired' | 'Invalid' | 'Not activated';
   plan: LicensePlan | null;
   companyName: string | null;
   licenseId: string | null;
@@ -72,7 +80,9 @@ export interface LicenseStatusResponse {
   daysRemaining: number;
   maxDevices: number | null;
   features: string[];
+  featureFlags?: LicenceFeatures;
   installationId: string | null;
+  machineFingerprint?: string | null;
   activatedAt: string | null;
   lastSuccessfulValidationAt: string | null;
   legacy: boolean;
@@ -80,4 +90,16 @@ export interface LicenseStatusResponse {
   collectorAllowed: boolean;
   operationsAllowed: boolean;
   requiresActivation: boolean;
+  mode?: LicenceMode;
+  buildId?: string | null;
+  appVersion?: string | null;
+  diagnostics?: {
+    dataRoot: string | null;
+    trialFilePath: string | null;
+    trialMarkerPresent: boolean;
+    licensingDirectoryWritable: boolean | null;
+    lastTrialBootstrapError: string | null;
+    cryptoMode: 'dpapi' | 'test';
+    trialCreationDisabled: boolean;
+  };
 }

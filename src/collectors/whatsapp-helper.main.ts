@@ -1,8 +1,17 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'fs';
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as readline from 'readline';
-import type { Chat, Client, LocalAuth, Message, MessageMedia } from 'whatsapp-web.js';
+import type { Client, LocalAuth, Message, MessageMedia } from 'whatsapp-web.js';
 import { CollectorType } from '@/common/enums/collector-type.enum';
 import {
   CollectorState,
@@ -28,10 +37,33 @@ import {
   buildWhatsAppLaunchConfigSummary,
   buildWhatsAppWebClientOptions,
   formatWhatsAppRuntimeConfigSummary,
+  getWhatsAppWebVersionLogSnapshot,
+  readBrowserExecutableVersion,
+  readWhatsAppRuntimePackageVersions,
   resolveBrowserExecutables,
   type ResolvedBrowserExecutable,
   WHATSAPP_WEB_VERSION,
 } from './whatsapp-web-runtime.config';
+import {
+  acquireHelperMutex,
+  buildProfileLockFailureMessage,
+  detectProfileLock,
+  ensureProfileUnlocked,
+  formatBrowserOwners,
+  isProfileLockErrorMessage,
+  ProfileLockError,
+  readHelperMutex,
+  type HelperMutexHandle,
+} from './browser-profile-lock.util';
+import {
+  buildModuleCompatibilityDetails,
+  extractUnknownWaWebModule,
+  isWwebjsModuleCompatibilitySignal,
+  shouldTreatAsModuleCompatibilityFailure,
+  WWEBJS_MODULE_COMPATIBILITY_ERROR,
+  WWEBJS_MODULE_COMPATIBILITY_USER_MESSAGE,
+  type WwebjsStoreProbeResult,
+} from './wwebjs-compatibility';
 
 type MessageSource = 'live' | 'backfill';
 type MessageProcessingResult = 'imported' | 'duplicate' | 'skipped';
@@ -67,11 +99,19 @@ const LATEST_QR_PATH =
   process.env.PATROL_HELPER_LATEST_QR_PATH?.trim() ||
   path.join(path.dirname(COLLECTOR_LOG_PATH), 'latest-qr.txt');
 const SMOKE_MODE = process.env.PATROL_HELPER_SMOKE === 'true';
+const CHAT_DISCOVERY_SMOKE_MODE = process.env.PATROL_HELPER_CHAT_DISCOVERY_SMOKE === 'true';
+const POST_AUTH_SMOKE_MODE = process.env.PATROL_HELPER_POST_AUTH_SMOKE === 'true';
 const LIVE_DEBUG_MODE = process.env.PATROL_HELPER_LIVE_DEBUG === 'true';
 const BROWSER_DUMP_IO = process.env.PATROL_HELPER_BROWSER_DUMPIO === 'true' || LIVE_DEBUG_MODE;
 const BACKFILL_MESSAGE_LIMIT = Number(process.env.PATROL_HELPER_BACKFILL_MESSAGE_LIMIT ?? 150);
+const COLLECTOR_LOG_MAX_BYTES = Number(process.env.PATROL_HELPER_LOG_MAX_BYTES ?? 20 * 1024 * 1024);
+const COLLECTOR_LOG_KEEP_FILES = Math.max(1, Number(process.env.PATROL_HELPER_LOG_KEEP ?? 3));
+const CHAT_STORE_READY_TIMEOUT_MS = Number(process.env.PATROL_HELPER_CHAT_STORE_READY_TIMEOUT_MS ?? 60_000);
 const TEST_IMAGE_PATH = path.join(os.tmpdir(), 'patrol-evidence-platform', 'whatsapp-test-image.png');
 const DEFAULT_TEST_GROUP_ID = '120363375746387624@g.us';
+const CHAT_STORE_UNAVAILABLE_MESSAGE = WWEBJS_MODULE_COMPATIBILITY_USER_MESSAGE;
+const POST_AUTH_LOGOUT_MESSAGE =
+  'WhatsApp Web logged out while chats were syncing. Session files were preserved — retry linking without resetting unless the phone revoked the device.';
 
 let client: Client | null = null;
 let startupTimeout: NodeJS.Timeout | null = null;
@@ -82,6 +122,18 @@ let browserLaunchCompletedAt: number | null = null;
 let whatsappPageLoadedAt: number | null = null;
 let runtimeModulePromise: Promise<WhatsAppRuntimeModule> | null = null;
 let shutdownRequested = false;
+/** Set only for operator stop / explicit session reset — never for library post_logout. */
+let operatorLogoutRequested = false;
+/** Once authenticated fires for an attempt, QR/browser startup timers must not destroy that client. */
+let authenticationReachedAttemptId: number | null = null;
+/** True after phone appears to have scanned the QR (PAIRING/OPENING or authenticated). */
+let qrScanDetected = false;
+let qrReceivedLoggedForAttempt: number | null = null;
+const recentPageConsoleErrors: string[] = [];
+const RECENT_PAGE_CONSOLE_LIMIT = 40;
+const moduleCompatibilitySignals: string[] = [];
+const MODULE_COMPAT_SIGNAL_LIMIT = 40;
+let moduleCompatibilityFailureReported = false;
 let pageDiagnosticsAttached = false;
 let startupResolve: ((value: StartupGateOutcome) => void) | null = null;
 let startupReject: ((reason?: unknown) => void) | null = null;
@@ -95,6 +147,7 @@ let activeClientInfoWatch: { cancelled: boolean; attemptId: number } | null = nu
 let liveMediaListenersAttached = false;
 let readyHeartbeatInterval: NodeJS.Timeout | null = null;
 let navigationReattachTimer: NodeJS.Timeout | null = null;
+let helperMutex: HelperMutexHandle | null = null;
 const processedMessageIds = new Set<string>();
 const pendingLiveMediaChecks = new Map<string, NodeJS.Timeout>();
 const LIVE_MEDIA_RECHECK_MS = 1_000;
@@ -138,20 +191,58 @@ const status: WhatsAppHelperStatusSnapshot = {
   sessionPathWritable: false,
   sessionCorruptionSuspected: false,
   sessionCorruptionMessage: null,
+  failureCode: null,
   groups: [],
   contacts: [],
 };
+
+function rotateCollectorLogIfNeeded(): void {
+  if (!Number.isFinite(COLLECTOR_LOG_MAX_BYTES) || COLLECTOR_LOG_MAX_BYTES <= 0) {
+    return;
+  }
+
+  try {
+    if (!existsSync(COLLECTOR_LOG_PATH)) {
+      return;
+    }
+
+    const size = statSync(COLLECTOR_LOG_PATH).size;
+    if (size < COLLECTOR_LOG_MAX_BYTES) {
+      return;
+    }
+
+    const oldest = `${COLLECTOR_LOG_PATH}.${COLLECTOR_LOG_KEEP_FILES}`;
+    if (existsSync(oldest)) {
+      unlinkSync(oldest);
+    }
+
+    for (let index = COLLECTOR_LOG_KEEP_FILES - 1; index >= 1; index -= 1) {
+      const fromPath = `${COLLECTOR_LOG_PATH}.${index}`;
+      const toPath = `${COLLECTOR_LOG_PATH}.${index + 1}`;
+      if (existsSync(fromPath)) {
+        renameSync(fromPath, toPath);
+      }
+    }
+
+    renameSync(COLLECTOR_LOG_PATH, `${COLLECTOR_LOG_PATH}.1`);
+  } catch (error) {
+    process.stderr.write(
+      `collector-log-rotate-failed ${error instanceof Error ? error.message : String(error)}\n`,
+    );
+  }
+}
 
 function appendCollectorLog(event: string, details?: string): void {
   const line = `[${new Date().toISOString()}] ${event}${details ? ` ${details}` : ''}`;
   try {
     mkdirSync(path.dirname(COLLECTOR_LOG_PATH), { recursive: true });
+    rotateCollectorLogIfNeeded();
     appendFileSync(COLLECTOR_LOG_PATH, `${line}\n`, 'utf8');
   } catch (error) {
     process.stderr.write(`collector-log-write-failed ${error instanceof Error ? error.message : String(error)}\n`);
   }
 
-  if (LIVE_DEBUG_MODE) {
+  if (LIVE_DEBUG_MODE || CHAT_DISCOVERY_SMOKE_MODE) {
     process.stdout.write(`${line}\n`);
   }
 }
@@ -239,12 +330,134 @@ function isSessionHealthy(): boolean {
   return readinessFinalized && status.state === 'ready' && Boolean(status.connectedAccount?.trim());
 }
 
+function hasReachedAuthenticationPhase(attemptId: number = activeStartupAttemptId): boolean {
+  return authenticationReachedAttemptId !== null && authenticationReachedAttemptId === attemptId;
+}
+
+function isPostAuthStartupProtected(targetClient: Client | null = client): boolean {
+  if (!targetClient || operatorLogoutRequested || shutdownRequested) {
+    return false;
+  }
+
+  if (readinessFinalized && status.state === 'ready') {
+    return false;
+  }
+
+  return (
+    authenticationReachedAttemptId !== null &&
+    authenticationReachedAttemptId === activeStartupAttemptId &&
+    (targetClient === client || client === null)
+  );
+}
+
+function describeClientIdentity(targetClient: Client | null, attemptId: number = activeStartupAttemptId): string {
+  const browserPid = targetClient?.pupBrowser?.process()?.pid;
+  let pageUrl = 'none';
+  try {
+    pageUrl = targetClient?.pupPage?.url() || 'none';
+  } catch {
+    pageUrl = 'unavailable';
+  }
+
+  return [
+    `attemptId=${attemptId}`,
+    `activeAttemptId=${activeStartupAttemptId}`,
+    `authAttemptId=${authenticationReachedAttemptId ?? 'none'}`,
+    `clientMatch=${targetClient !== null && targetClient === client}`,
+    `browserPid=${browserPid ?? 'none'}`,
+    `pageUrl=${pageUrl}`,
+    `state=${status.state}`,
+    `readinessFinalized=${readinessFinalized}`,
+    `operatorLogoutRequested=${operatorLogoutRequested}`,
+  ].join(' ');
+}
+
+function logLifecycleEvent(
+  event:
+    | 'qr'
+    | 'authenticated'
+    | 'change_state'
+    | 'ready'
+    | 'auth_failure'
+    | 'disconnected'
+    | 'client.destroy'
+    | 'client.logout'
+    | 'authStrategy.logout'
+    | 'session-reset'
+    | 'fullyDestroyClientSession'
+    | 'releaseStaleBrowserSession',
+  details?: string,
+  targetClient: Client | null = client,
+  attemptId: number = activeStartupAttemptId,
+): void {
+  appendCollectorLog(
+    `lifecycle-${event}`,
+    `${describeClientIdentity(targetClient, attemptId)}${details ? ` ${details}` : ''}`,
+  );
+}
+
+function logDestructiveAction(
+  action:
+    | 'client.destroy'
+    | 'client.logout'
+    | 'authStrategy.logout'
+    | 'fullyDestroyClientSession'
+    | 'releaseStaleBrowserSession'
+    | 'session-reset',
+  reason: string,
+  targetClient: Client | null = client,
+): void {
+  const stack = new Error(`destructive-action:${action}`).stack ?? 'stack-unavailable';
+  const lifecycleEvent =
+    action === 'client.destroy' || action === 'fullyDestroyClientSession' || action === 'releaseStaleBrowserSession'
+      ? 'DESTROY_CALL_REQUESTED'
+      : action === 'session-reset'
+        ? 'SESSION_DELETE_REQUESTED'
+        : 'LOGOUT_CALL_REQUESTED';
+
+  logAuthLifecycle(
+    lifecycleEvent,
+    `action=${action} reason=${reason} stack=${stack.replace(/\s+/g, ' ')}`,
+    targetClient,
+  );
+  logLifecycleEvent(action, `reason=${reason}`, targetClient);
+  appendCollectorLog(
+    'destructive-action',
+    `action=${action} reason=${reason} pageUrl=${currentPageUrl(targetClient)} collectorState=${status.state} operatorLogoutRequested=${operatorLogoutRequested} pid=${process.pid} ${describeClientIdentity(targetClient)} stack=${stack.replace(/\s+/g, ' ')}`,
+  );
+}
+
+function markAuthenticationReached(attemptId: number, targetClient: Client): void {
+  authenticationReachedAttemptId = attemptId;
+  clearStartupTimeouts();
+  clearQrScanAuthenticatedTimeout();
+  clearReadinessTimers();
+  appendCollectorLog(
+    'post-auth-startup-guards-armed',
+    describeClientIdentity(targetClient, attemptId),
+  );
+}
+
 function isRetryableStartupFailure(outcome: StartupGateOutcome): boolean {
   if (outcome === 'ready' || outcome === 'auth_failure' || outcome === 'disconnected') {
     return false;
   }
 
-  if (status.state === 'authenticated' || status.state === 'waiting-for-client-info' || readinessFinalized) {
+  if (
+    status.failureCode === WWEBJS_MODULE_COMPATIBILITY_ERROR ||
+    moduleCompatibilityFailureReported ||
+    isWwebjsModuleCompatibilitySignal(status.lastError) ||
+    isWwebjsModuleCompatibilitySignal(status.info)
+  ) {
+    return false;
+  }
+
+  if (
+    status.state === 'authenticated' ||
+    status.state === 'waiting-for-client-info' ||
+    readinessFinalized ||
+    authenticationReachedAttemptId === activeStartupAttemptId
+  ) {
     return false;
   }
 
@@ -257,6 +470,67 @@ function isRetryableStartupFailure(outcome: StartupGateOutcome): boolean {
       errorText.includes('browser') ||
       errorText.includes('whatsapp web'))
   );
+}
+
+function rememberModuleCompatibilitySignal(signal: string): void {
+  if (!signal.trim()) {
+    return;
+  }
+  moduleCompatibilitySignals.push(signal);
+  if (moduleCompatibilitySignals.length > MODULE_COMPAT_SIGNAL_LIMIT) {
+    moduleCompatibilitySignals.splice(0, moduleCompatibilitySignals.length - MODULE_COMPAT_SIGNAL_LIMIT);
+  }
+}
+
+function reportModuleCompatibilityFailure(
+  source: string,
+  details?: string,
+  probe?: Partial<WwebjsStoreProbeResult> | null,
+): void {
+  if (moduleCompatibilityFailureReported && status.failureCode === WWEBJS_MODULE_COMPATIBILITY_ERROR) {
+    appendCollectorLog(
+      WWEBJS_MODULE_COMPATIBILITY_ERROR,
+      `duplicate source=${source} ${details ?? ''}`.trim(),
+    );
+    return;
+  }
+
+  moduleCompatibilityFailureReported = true;
+  const missingModule =
+    extractUnknownWaWebModule(details ?? '') ||
+    moduleCompatibilitySignals.map((entry) => extractUnknownWaWebModule(entry)).find(Boolean) ||
+    null;
+  const detailLine = buildModuleCompatibilityDetails({
+    missingModule,
+    probe,
+    source,
+  });
+
+  appendCollectorLog(WWEBJS_MODULE_COMPATIBILITY_ERROR, `${detailLine} ${details ?? ''}`.trim());
+  appendCollectorLog(
+    'module-compat-session-preserved',
+    'LocalAuth session retained — not a logout; do not delete session or retry QR auth for this failure.',
+  );
+
+  updateStatus(
+    {
+      // Stay authenticated when the account linked successfully — this is not a logout.
+      state:
+        status.state === 'ready'
+          ? 'ready'
+          : status.connectedAccount || hasReachedAuthenticationPhase(activeStartupAttemptId)
+            ? 'authenticated'
+            : 'failed',
+      failureCode: WWEBJS_MODULE_COMPATIBILITY_ERROR,
+      info: WWEBJS_MODULE_COMPATIBILITY_USER_MESSAGE,
+      lastError: WWEBJS_MODULE_COMPATIBILITY_USER_MESSAGE,
+      startupStage: 'Incompatible WhatsApp Web',
+      sessionCorruptionSuspected: false,
+    },
+    WWEBJS_MODULE_COMPATIBILITY_ERROR,
+    detailLine,
+  );
+  resolveStartupOnce('failed');
 }
 
 function isSessionCorruptionSignal(text: string): boolean {
@@ -310,6 +584,12 @@ function applyStatusPresentation(): void {
   if (status.state === 'waiting-for-client-info') {
     status.info = 'Finishing WhatsApp sync after scan…';
     status.startupStage = 'Authenticated';
+    return;
+  }
+
+  if (status.failureCode === WWEBJS_MODULE_COMPATIBILITY_ERROR) {
+    status.info = WWEBJS_MODULE_COMPATIBILITY_USER_MESSAGE;
+    status.startupStage = 'Incompatible WhatsApp Web';
     return;
   }
 
@@ -376,6 +656,21 @@ function isConnectedAndFinalized(): boolean {
 function shouldBlockStateRegression(previousState: CollectorState, nextState: CollectorState): boolean {
   if (nextState === 'waiting-for-client-info' && readinessFinalized && !shutdownRequested && client) {
     return true;
+  }
+
+  if (
+    (previousState === 'authenticated' || previousState === 'waiting-for-client-info') &&
+    !shutdownRequested &&
+    authenticationReachedAttemptId === activeStartupAttemptId
+  ) {
+    const regressiveStates: CollectorState[] = [
+      'waiting-for-qr',
+      'qr-ready',
+      'whatsapp-loading',
+      'browser-launching',
+      'starting',
+    ];
+    return regressiveStates.includes(nextState);
   }
 
   if (previousState === 'ready' && !shutdownRequested && client && readinessFinalized) {
@@ -492,12 +787,90 @@ function ensureSessionDirectoryWritable(): void {
 function buildBrowserLaunchPlan(available: ResolvedBrowserExecutable[]): ResolvedBrowserExecutable[] {
   const edge = available.find((browser) => browser.source === 'edge');
   const chrome = available.find((browser) => browser.source === 'chrome');
+  const preference = available.length > 0
+    ? // preference already applied in resolveBrowserExecutables(); keep Edge→Chrome only for auto.
+      (edge && chrome ? [edge, chrome] : available)
+    : [];
 
-  if (edge && chrome) {
+  if (edge && chrome && preference.length === 2) {
     return [edge, chrome];
   }
 
   return available.length > 0 ? [available[0]] : [];
+}
+
+function isDestructiveLifecycleAllowed(): boolean {
+  return operatorLogoutRequested || shutdownRequested;
+}
+
+function hasPassedQrScanPhase(): boolean {
+  return (
+    qrScanDetected ||
+    authenticationReachedAttemptId !== null ||
+    readinessFinalized ||
+    status.state === 'authenticated' ||
+    status.state === 'waiting-for-client-info' ||
+    status.state === 'ready'
+  );
+}
+
+function markQrScanDetected(source: string, targetClient: Client | null = client): void {
+  if (qrScanDetected) {
+    return;
+  }
+
+  qrScanDetected = true;
+  appendCollectorLog(
+    'QR_SCANNED_DETECTED',
+    `source=${source} ${describeClientIdentity(targetClient)} pid=${process.pid}`,
+  );
+}
+
+function rememberPageConsoleError(text: string): void {
+  recentPageConsoleErrors.push(`[${new Date().toISOString()}] ${text}`);
+  while (recentPageConsoleErrors.length > RECENT_PAGE_CONSOLE_LIMIT) {
+    recentPageConsoleErrors.shift();
+  }
+}
+
+function currentPageUrl(targetClient: Client | null = client): string {
+  try {
+    return targetClient?.pupPage?.url() || 'none';
+  } catch {
+    return 'unavailable';
+  }
+}
+
+function logAuthLifecycle(
+  event:
+    | 'QR_RECEIVED'
+    | 'QR_SCANNED_DETECTED'
+    | 'AUTHENTICATED'
+    | 'REMOTE_SESSION_SAVED'
+    | 'READY'
+    | 'DISCONNECTED'
+    | 'NAVIGATION_URL'
+    | 'LOGOUT_CALL_REQUESTED'
+    | 'DESTROY_CALL_REQUESTED'
+    | 'SESSION_DELETE_REQUESTED',
+  details?: string,
+  targetClient: Client | null = client,
+): void {
+  appendCollectorLog(
+    event,
+    [
+      details,
+      `pageUrl=${currentPageUrl(targetClient)}`,
+      `collectorState=${status.state}`,
+      `operatorLogoutRequested=${operatorLogoutRequested}`,
+      `shutdownRequested=${shutdownRequested}`,
+      `qrScanDetected=${qrScanDetected}`,
+      `pid=${process.pid}`,
+      describeClientIdentity(targetClient),
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
 }
 
 function logBrowserLaunchConfiguration(
@@ -611,12 +984,17 @@ async function verifyBrowserLaunch(
 
 function reportBrowserAutomationFailure(reason: string): void {
   appendCollectorLog('browser-automation-failed', reason);
+  const userMessage = isProfileLockErrorMessage(reason)
+    ? reason
+    : reason.trim().length > 0 && !reason.includes(BROWSER_AUTOMATION_FAILED_MESSAGE)
+      ? reason
+      : BROWSER_AUTOMATION_FAILED_MESSAGE;
   updateStatus(
     {
       state: 'failed',
-      startupStage: 'Browser automation failed',
-      lastError: BROWSER_AUTOMATION_FAILED_MESSAGE,
-      info: BROWSER_AUTOMATION_FAILED_MESSAGE,
+      startupStage: isProfileLockErrorMessage(reason) ? 'Browser profile locked' : 'Browser automation failed',
+      lastError: userMessage,
+      info: userMessage,
       lastDisconnectAt: new Date().toISOString(),
     },
     'browser-automation-failed',
@@ -632,12 +1010,22 @@ async function prepareBrowserLaunch(attemptIndex: number): Promise<void> {
     return;
   }
 
-  const hasExistingSession = existsSync(sessionProfileDirectory());
+  const profileDir = sessionProfileDirectory();
+  const hasExistingSession = existsSync(profileDir);
+
+  if (client && !isPostAuthStartupProtected(client)) {
+    await closeBrowserGracefully(client, 'prepareBrowserLaunch');
+    client = null;
+  }
+
+  await ensureProfileUnlocked(profileDir, (event, details) => {
+    appendCollectorLog(event, details);
+  });
 
   if (attemptIndex > 0 && !isSessionHealthy()) {
     await releaseStaleBrowserSession();
   } else if (hasExistingSession) {
-    appendCollectorLog('browser-launch-prep-existing-session', sessionProfileDirectory());
+    appendCollectorLog('browser-launch-prep-existing-session', profileDir);
   } else {
     ensureSessionDirectoryWritable();
   }
@@ -649,14 +1037,36 @@ function sessionProfileDirectory(): string {
   return path.join(SESSION_PATH, SESSION_PROFILE_DIR);
 }
 
-async function closeBrowserGracefully(currentClient: Client | null): Promise<void> {
+async function closeBrowserGracefully(
+  currentClient: Client | null,
+  reason = 'unspecified',
+): Promise<void> {
   if (!currentClient) {
     return;
   }
 
+  logDestructiveAction('client.destroy', reason, currentClient);
+
+  if (hasPassedQrScanPhase() && !isDestructiveLifecycleAllowed()) {
+    appendCollectorLog(
+      'client-destroy-blocked',
+      `reason=${reason} blocked-after-qr-scan ${describeClientIdentity(currentClient)}`,
+    );
+    return;
+  }
+
+  if (isPostAuthStartupProtected(currentClient) && !isDestructiveLifecycleAllowed()) {
+    appendCollectorLog(
+      'client-destroy-blocked',
+      `reason=${reason} ${describeClientIdentity(currentClient)}`,
+    );
+    return;
+  }
+
   try {
-    appendCollectorLog('browser-close-start', 'destroy without logout or session delete');
+    appendCollectorLog('browser-close-start', `destroy without logout or session delete reason=${reason}`);
     await currentClient.destroy();
+    logLifecycleEvent('client.destroy', `completed reason=${reason}`, currentClient);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     appendCollectorLog('browser-close-error', message);
@@ -667,15 +1077,22 @@ async function closeBrowserGracefully(currentClient: Client | null): Promise<voi
 }
 
 async function releaseStaleBrowserSession(): Promise<void> {
-  if (isSessionHealthy()) {
-    appendCollectorLog('browser-reuse-skipped', 'healthy-session');
+  logDestructiveAction('releaseStaleBrowserSession', 'startup-retry-or-fallback', client);
+
+  if (isSessionHealthy() || isPostAuthStartupProtected(client)) {
+    appendCollectorLog(
+      'browser-reuse-skipped',
+      isSessionHealthy() ? 'healthy-session' : `post-auth-protected ${describeClientIdentity(client)}`,
+    );
     return;
   }
 
   appendCollectorLog('browser-reuse-start', `sessionPath=${SESSION_PATH}`);
-  await closeBrowserGracefully(client);
+  await closeBrowserGracefully(client, 'releaseStaleBrowserSession');
   client = null;
-  await sleep(2_000);
+  await ensureProfileUnlocked(sessionProfileDirectory(), (event, details) => {
+    appendCollectorLog(event, details);
+  });
   appendCollectorLog('browser-reuse-finished', `sessionPath=${SESSION_PATH} sessionFilesPreserved=true`);
 }
 
@@ -690,26 +1107,49 @@ function clearReadinessTimers(): void {
   clearQrScanAuthenticatedTimeout();
 }
 
-function scheduleQrScanAuthenticatedTimeout(currentClient: Client): void {
+function scheduleQrScanAuthenticatedTimeout(currentClient: Client, attemptId: number): void {
   clearQrScanAuthenticatedTimeout();
+  if (hasReachedAuthenticationPhase(attemptId) || readinessFinalized) {
+    appendCollectorLog(
+      'qr-scan-timeout-skipped',
+      `already-authenticated ${describeClientIdentity(currentClient, attemptId)}`,
+    );
+    return;
+  }
+
   qrScanAuthenticatedTimeout = setTimeout(() => {
     if (
       shutdownRequested ||
       readinessFinalized ||
+      hasReachedAuthenticationPhase(attemptId) ||
       status.state === 'authenticated' ||
       status.state === 'waiting-for-client-info' ||
-      status.state === 'ready'
+      status.state === 'ready' ||
+      attemptId !== activeStartupAttemptId ||
+      currentClient !== client
     ) {
+      appendCollectorLog(
+        'qr-scan-timeout-ignored',
+        describeClientIdentity(currentClient, attemptId),
+      );
       return;
     }
 
     appendCollectorLog(
       'qr-scan-timeout',
-      `authenticated-event missing after ${QR_SCAN_AUTHENTICATED_TIMEOUT_MS}ms state=${status.state}`,
+      `authenticated-event missing after ${QR_SCAN_AUTHENTICATED_TIMEOUT_MS}ms ${describeClientIdentity(currentClient, attemptId)}`,
     );
 
     void (async () => {
-      await fullyDestroyClientSession(currentClient);
+      if (hasPassedQrScanPhase() && !isDestructiveLifecycleAllowed()) {
+        appendCollectorLog(
+          'qr-scan-timeout-destroy-blocked',
+          describeClientIdentity(currentClient, attemptId),
+        );
+        return;
+      }
+
+      await fullyDestroyClientSession(currentClient, 'qr-scan-timeout');
       updateStatus(
         {
           state: 'failed',
@@ -802,25 +1242,205 @@ async function probeClientAccount(currentClient: Client): Promise<string | null>
 }
 
 async function logLoadedWhatsAppWebVersion(currentClient: Client, trigger: string): Promise<void> {
+  const snapshot = getWhatsAppWebVersionLogSnapshot();
+  appendCollectorLog(
+    'WWEB_VERSION_REQUESTED',
+    `trigger=${trigger} mode=${snapshot.mode} version=${snapshot.requestedVersion}`,
+  );
+  appendCollectorLog(
+    'WWEB_CACHE_MODE',
+    `trigger=${trigger} mode=${snapshot.cacheMode} strict=${snapshot.cacheStrict} htmlExists=${snapshot.htmlExists} htmlPath=${snapshot.htmlPath ?? 'n/a'}`,
+  );
+  appendCollectorLog(
+    'WWEB_HTML_SHA256',
+    `trigger=${trigger} sha256=${snapshot.htmlSha256 ?? 'n/a'} requested=${snapshot.requestedVersion}`,
+  );
+
   try {
     const loadedVersion = await currentClient.pupPage?.evaluate(() => {
       const debugVersion = (window as { Debug?: { VERSION?: string } }).Debug?.VERSION;
       return debugVersion ?? 'unknown';
     });
     appendCollectorLog(
+      'WWEB_VERSION_LOADED',
+      `trigger=${trigger} configured=${snapshot.requestedVersion} loaded=${loadedVersion ?? 'unknown'} pinConfigured=${WHATSAPP_WEB_VERSION}`,
+    );
+    appendCollectorLog(
       'whatsapp-web-version-loaded',
-      `trigger=${trigger} configured=${WHATSAPP_WEB_VERSION} loaded=${loadedVersion ?? 'unknown'}`,
+      `trigger=${trigger} configured=${snapshot.requestedVersion} loaded=${loadedVersion ?? 'unknown'}`,
     );
   } catch (error) {
     appendCollectorLog(
+      'WWEB_VERSION_LOADED',
+      `trigger=${trigger} configured=${snapshot.requestedVersion} error=${error instanceof Error ? error.message : String(error)}`,
+    );
+    appendCollectorLog(
       'whatsapp-web-version-loaded',
-      `trigger=${trigger} configured=${WHATSAPP_WEB_VERSION} error=${error instanceof Error ? error.message : String(error)}`,
+      `trigger=${trigger} configured=${snapshot.requestedVersion} error=${error instanceof Error ? error.message : String(error)}`,
     );
   }
 }
 
 function logWhatsAppRuntimePackages(trigger: string): void {
+  const versions = readWhatsAppRuntimePackageVersions();
+  const browserPath = activeBrowserLaunch?.executablePath ?? status.browserExecutablePath ?? 'unknown';
   appendCollectorLog('whatsapp-runtime-packages', `trigger=${trigger} ${formatWhatsAppRuntimeConfigSummary()}`);
+  appendCollectorLog(
+    'whatsapp-runtime-combo',
+    [
+      `trigger=${trigger}`,
+      `wwebjs=${versions.whatsappWebJs}`,
+      `puppeteer=${versions.puppeteer}`,
+      `puppeteerCore=${versions.puppeteerCore}`,
+      `browserExecutable=${browserPath}`,
+      `browserSource=${status.browserExecutableSource ?? 'unknown'}`,
+      `browserVersion=${browserPath !== 'unknown' ? readBrowserExecutableVersion(browserPath) : 'unknown'}`,
+      formatWhatsAppRuntimeConfigSummary(),
+    ].join(' '),
+  );
+}
+
+async function probePostAuthStoreCompatibility(currentClient: Client): Promise<WwebjsStoreProbeResult> {
+  const result: WwebjsStoreProbeResult = {
+    hasWindowStore: false,
+    hasAuthStore: false,
+    hasChatCollection: false,
+    hasMsgCollection: false,
+    socketModuleId: null,
+    socketStrategy: null,
+    missingDependencies: [],
+    waState: null,
+    getChatsOk: null,
+    getChatsError: null,
+    getChatsCount: null,
+  };
+
+  if (!currentClient.pupPage) {
+    result.missingDependencies.push('pupPage');
+    return result;
+  }
+
+  try {
+    const pageProbe = await currentClient.pupPage.evaluate(() => {
+      const scoped = window as typeof window & {
+        Store?: { Chat?: unknown; Msg?: unknown };
+        AuthStore?: { AppState?: unknown; __socketModuleId?: string; __socketStrategy?: string };
+        WWebJS?: { getChats?: unknown };
+        require?: (id: string) => unknown;
+      };
+
+      const missing: string[] = [];
+      const hasWindowStore = typeof scoped.Store !== 'undefined';
+      const hasAuthStore = typeof scoped.AuthStore !== 'undefined';
+      let hasChatCollection = Boolean(scoped.Store?.Chat);
+      let hasMsgCollection = Boolean(scoped.Store?.Msg);
+
+      if (!hasChatCollection && typeof scoped.require === 'function') {
+        try {
+          const collections = scoped.require('WAWebCollections') as {
+            Chat?: unknown;
+            Msg?: unknown;
+          };
+          hasChatCollection = Boolean(collections?.Chat);
+          hasMsgCollection = Boolean(collections?.Msg);
+        } catch {
+          missing.push('WAWebCollections');
+        }
+      }
+
+      if (!hasWindowStore) {
+        // 1.34.7 no longer always exposes window.Store — collections via require are enough.
+      }
+      if (!hasAuthStore) {
+        missing.push('AuthStore');
+      }
+      if (!hasChatCollection) {
+        missing.push('Chat');
+      }
+      if (!hasMsgCollection) {
+        missing.push('Msg');
+      }
+
+      return {
+        hasWindowStore,
+        hasAuthStore,
+        hasChatCollection,
+        hasMsgCollection,
+        socketModuleId: scoped.AuthStore?.__socketModuleId ?? null,
+        socketStrategy: scoped.AuthStore?.__socketStrategy ?? null,
+        missingDependencies: missing,
+        hasWWebJSGetChats: typeof scoped.WWebJS?.getChats === 'function',
+      };
+    });
+
+    result.hasWindowStore = pageProbe.hasWindowStore;
+    result.hasAuthStore = pageProbe.hasAuthStore;
+    result.hasChatCollection = pageProbe.hasChatCollection;
+    result.hasMsgCollection = pageProbe.hasMsgCollection;
+    result.socketModuleId = pageProbe.socketModuleId;
+    result.socketStrategy = pageProbe.socketStrategy;
+    result.missingDependencies.push(...pageProbe.missingDependencies);
+    if (!pageProbe.hasWWebJSGetChats) {
+      result.missingDependencies.push('WWebJS.getChats');
+    }
+  } catch (error) {
+    result.missingDependencies.push('page-evaluate');
+    result.getChatsError = error instanceof Error ? error.message : String(error);
+  }
+
+  try {
+    result.waState = await currentClient.getState();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    result.missingDependencies.push('getState');
+    if (isWwebjsModuleCompatibilitySignal(message)) {
+      rememberModuleCompatibilitySignal(message);
+    }
+    result.getChatsError = result.getChatsError ?? message;
+  }
+
+  try {
+    const chats = await Promise.race([
+      currentClient.getChats(),
+      new Promise<never>((_resolve, reject) => {
+        setTimeout(() => reject(new Error('getChats-timeout')), 20_000);
+      }),
+    ]);
+    if (Array.isArray(chats)) {
+      result.getChatsOk = true;
+      result.getChatsCount = chats.length;
+    } else {
+      result.getChatsOk = false;
+      result.getChatsError = `getChatsReturned=${typeof chats}`;
+      result.missingDependencies.push('getChats');
+    }
+  } catch (error) {
+    result.getChatsOk = false;
+    result.getChatsError = error instanceof Error ? error.message : String(error);
+    result.missingDependencies.push('getChats');
+    if (isWwebjsModuleCompatibilitySignal(result.getChatsError)) {
+      rememberModuleCompatibilitySignal(result.getChatsError);
+    }
+  }
+
+  appendCollectorLog(
+    'POST_AUTH_COMPAT_PROBE',
+    [
+      `hasStore=${result.hasWindowStore}`,
+      `hasAuthStore=${result.hasAuthStore}`,
+      `hasChat=${result.hasChatCollection}`,
+      `hasMsg=${result.hasMsgCollection}`,
+      `socketModule=${result.socketModuleId ?? 'none'}`,
+      `socketStrategy=${result.socketStrategy ?? 'none'}`,
+      `waState=${result.waState ?? 'unknown'}`,
+      `getChatsOk=${result.getChatsOk}`,
+      `getChatsCount=${result.getChatsCount ?? 'n/a'}`,
+      `missing=${result.missingDependencies.join(',') || 'none'}`,
+      `getChatsError=${result.getChatsError ?? 'none'}`,
+    ].join(' '),
+  );
+
+  return result;
 }
 
 function logMediaListenerCounts(target: Client, trigger: string): void {
@@ -862,8 +1482,10 @@ async function finalizeClientReady(
     return;
   }
 
-  const firstReadyFinalization = !readinessFinalized;
-  setReadinessFinalized(true, context.readySource);
+  if (readinessFinalized && status.state === 'ready') {
+    return;
+  }
+
   cancelClientInfoWatch();
   clearReadinessTimers();
   clearStartupTimeouts();
@@ -878,6 +1500,72 @@ async function finalizeClientReady(
   if (connectedAccount) {
     appendCollectorLog('LINKED_ACCOUNT_DISCOVERED', `account=${connectedAccount}`);
   }
+
+  updateStatus(
+    {
+      state: 'waiting-for-client-info',
+      qrCode: null,
+      qrPayloadLength: null,
+      connectedAccount,
+      lastError: null,
+      info: 'WhatsApp linked — verifying chat store before ready…',
+      startupStage: 'Verifying chat store',
+    },
+    'chat-store-probe-start',
+    `source=${context.readySource} account=${connectedAccount ?? 'unknown'}`,
+  );
+
+  logWhatsAppRuntimePackages(context.readySource);
+  await logLoadedWhatsAppWebVersion(currentClient, context.readySource);
+
+  const compatProbe = await probePostAuthStoreCompatibility(currentClient);
+  const chatStoreReady = await waitForChatDiscoveryReady(currentClient, CHAT_STORE_READY_TIMEOUT_MS, {
+    requireReadinessFinalized: false,
+  });
+  if (!chatStoreReady) {
+    appendCollectorLog(
+      'CHAT_STORE_NOT_READY',
+      `source=${context.readySource} account=${connectedAccount ?? 'unknown'} ${describeClientForDiscovery(currentClient)}`,
+    );
+
+    const treatAsCompat = shouldTreatAsModuleCompatibilityFailure({
+      authenticated: true,
+      ready: false,
+      pageSignals: moduleCompatibilitySignals,
+      chatStoreNotReady: true,
+      lastError: compatProbe.getChatsError,
+    });
+
+    if (treatAsCompat || compatProbe.getChatsOk === false || compatProbe.missingDependencies.length > 0) {
+      reportModuleCompatibilityFailure(
+        'chat-store-not-ready-after-authenticated',
+        `account=${connectedAccount ?? 'unknown'} source=${context.readySource}`,
+        compatProbe,
+      );
+    } else {
+      updateStatus(
+        {
+          state: 'authenticated',
+          connectedAccount,
+          failureCode: WWEBJS_MODULE_COMPATIBILITY_ERROR,
+          info: CHAT_STORE_UNAVAILABLE_MESSAGE,
+          lastError: WWEBJS_MODULE_COMPATIBILITY_USER_MESSAGE,
+        },
+        'chat-store-not-ready',
+        `source=${context.readySource}`,
+      );
+      resolveStartupOnce('failed');
+    }
+
+    if (CHAT_DISCOVERY_SMOKE_MODE) {
+      appendCollectorLog('CHAT_DISCOVERY_SMOKE_FAIL', 'chat-store-not-ready-before-ready');
+      setTimeout(() => void shutdown(1), 500);
+    }
+    return;
+  }
+
+  const firstReadyFinalization = !readinessFinalized;
+  setReadinessFinalized(true, context.readySource);
 
   updateStatus(
     {
@@ -896,8 +1584,6 @@ async function finalizeClientReady(
 
   if (firstReadyFinalization) {
     clearLatestQrPayload();
-    logWhatsAppRuntimePackages('ready-event');
-    await logLoadedWhatsAppWebVersion(currentClient, 'ready-event');
     if (client) {
       logMediaListenerCounts(client, 'ready-event');
     }
@@ -906,6 +1592,21 @@ async function finalizeClientReady(
     startReadyHeartbeat();
     resolveStartupOnce('ready');
     setTimeout(() => verifyAndReattachLiveMediaListeners('post-ready'), 2_000);
+
+    if (CHAT_DISCOVERY_SMOKE_MODE) {
+      void runChatDiscoverySmoke(currentClient)
+        .then((passed) => {
+          setTimeout(() => void shutdown(passed ? 0 : 1), 500);
+        })
+        .catch((error) => {
+          appendCollectorLog(
+            'CHAT_DISCOVERY_SMOKE_FAIL',
+            error instanceof Error ? error.message : String(error),
+          );
+          setTimeout(() => void shutdown(1), 500);
+        });
+      return;
+    }
   }
 
   if (SMOKE_MODE && firstReadyFinalization) {
@@ -978,10 +1679,26 @@ async function watchClientInfoAfterAuthentication(
 
   if (!readinessFinalized && !watch.cancelled) {
     appendCollectorLog('ready-timeout', `ready not reached within ${AUTHENTICATED_READY_TIMEOUT_MS}ms after authenticated-event`);
+
+    const treatAsCompat = shouldTreatAsModuleCompatibilityFailure({
+      authenticated: true,
+      ready: false,
+      pageSignals: moduleCompatibilitySignals,
+      timedOutAfterAuth: true,
+      lastError: status.lastError,
+    });
+
+    if (treatAsCompat) {
+      reportModuleCompatibilityFailure(
+        'authenticated-ready-timeout',
+        `authenticated=true ready=false timeoutMs=${AUTHENTICATED_READY_TIMEOUT_MS}`,
+      );
+      return;
+    }
+
     updateStatus(
       {
-        state: 'failed',
-        connectedAccount: null,
+        state: status.connectedAccount ? 'authenticated' : 'failed',
         info: 'Patrol monitoring could not reach ready state after authentication.',
         lastError: 'WhatsApp authenticated but ready was not reached.',
         lastDisconnectAt: new Date().toISOString(),
@@ -993,18 +1710,42 @@ async function watchClientInfoAfterAuthentication(
   }
 }
 
-async function fullyDestroyClientSession(currentClient: Client | null): Promise<void> {
-  if (isSessionHealthy() && !shutdownRequested) {
-    appendCollectorLog('session-destroy-skipped', 'healthy-session');
+async function fullyDestroyClientSession(
+  currentClient: Client | null,
+  reason = 'unspecified',
+): Promise<void> {
+  logDestructiveAction('fullyDestroyClientSession', reason, currentClient);
+
+  if (hasPassedQrScanPhase() && !isDestructiveLifecycleAllowed()) {
+    appendCollectorLog(
+      'session-destroy-skipped',
+      `blocked-after-qr-scan reason=${reason} ${describeClientIdentity(currentClient)}`,
+    );
+    return;
+  }
+
+  if ((isSessionHealthy() || isPostAuthStartupProtected(currentClient)) && !isDestructiveLifecycleAllowed()) {
+    appendCollectorLog(
+      'session-destroy-skipped',
+      isSessionHealthy()
+        ? 'healthy-session'
+        : `post-auth-protected reason=${reason} ${describeClientIdentity(currentClient)}`,
+    );
     return;
   }
 
   cancelClientInfoWatch();
   clearReadinessTimers();
-  await closeBrowserGracefully(currentClient);
-  client = null;
+  clearStartupTimeouts();
+  await closeBrowserGracefully(currentClient, `fullyDestroyClientSession:${reason}`);
+  if (currentClient && client === currentClient) {
+    client = null;
+  }
   await sleep(2_000);
-  appendCollectorLog('session-destroy-finished', `sessionPath=${SESSION_PATH} sessionFilesPreserved=true`);
+  appendCollectorLog(
+    'session-destroy-finished',
+    `sessionPath=${SESSION_PATH} sessionFilesPreserved=true reason=${reason}`,
+  );
 }
 
 async function loadWhatsAppRuntimeModule(): Promise<WhatsAppRuntimeModule> {
@@ -1104,9 +1845,23 @@ async function attachPageDiagnostics(currentClient: Client): Promise<void> {
 
   page.on('console', (message) => {
     const text = message.text();
-    if (text.includes('Requiring unknown module')) {
+    if (isWwebjsModuleCompatibilitySignal(text) || /Requiring unknown module\s+"?WAWeb/i.test(text)) {
+      rememberModuleCompatibilitySignal(text);
       appendCollectorLog('whatsapp-module-compat-warning', text);
+      appendCollectorLog(WWEBJS_MODULE_COMPATIBILITY_ERROR, `page-console ${text}`);
+      // Do not classify as logout/session corruption.
+      if (
+        hasReachedAuthenticationPhase() &&
+        !readinessFinalized &&
+        !moduleCompatibilityFailureReported
+      ) {
+        reportModuleCompatibilityFailure('page-console', text);
+      }
       return;
+    }
+
+    if (message.type() === 'error' || isSessionCorruptionSignal(text)) {
+      rememberPageConsoleError(`type=${message.type()} ${text}`);
     }
 
     if (isSessionCorruptionSignal(text)) {
@@ -1121,6 +1876,19 @@ async function attachPageDiagnostics(currentClient: Client): Promise<void> {
 
   page.on('pageerror', (error) => {
     const details = formatRuntimeError(error);
+    rememberPageConsoleError(details);
+    if (isWwebjsModuleCompatibilitySignal(details)) {
+      rememberModuleCompatibilitySignal(details);
+      appendCollectorLog(WWEBJS_MODULE_COMPATIBILITY_ERROR, `page-pageerror ${details}`);
+      if (
+        hasReachedAuthenticationPhase() &&
+        !readinessFinalized &&
+        !moduleCompatibilityFailureReported
+      ) {
+        reportModuleCompatibilityFailure('page-pageerror', details);
+      }
+      return;
+    }
     if (isSessionCorruptionSignal(details)) {
       reportSessionCorruption('page-pageerror', details);
     }
@@ -1155,7 +1923,40 @@ async function attachPageDiagnostics(currentClient: Client): Promise<void> {
     if (frame === page.mainFrame()) {
       const url = frame.url();
       const reason = describeFrameNavigation(frame);
-      appendCollectorLog('page-mainframe-navigated', `url=${url} reason=${reason}`);
+      logAuthLifecycle('NAVIGATION_URL', `url=${url} reason=${reason}`, currentClient);
+      appendCollectorLog(
+        'page-mainframe-navigated',
+        `url=${url} reason=${reason} ${describeClientIdentity(currentClient)}`,
+      );
+
+      if (/web\.whatsapp\.com\/?\?.*post_logout=1/i.test(url) || url.includes('post_logout=')) {
+        let logoutReason = 'unknown';
+        try {
+          logoutReason = new URL(url).searchParams.get('logout_reason') || 'unknown';
+        } catch {
+          const match = url.match(/[?&]logout_reason=([^&]+)/i);
+          logoutReason = match?.[1] ? decodeURIComponent(match[1]) : 'unknown';
+        }
+
+        appendCollectorLog(
+          'post-logout-navigation-detected',
+          [
+            `url=${url}`,
+            `logout_reason=${logoutReason}`,
+            `authPhase=${hasReachedAuthenticationPhase()}`,
+            `qrScanDetected=${qrScanDetected}`,
+            `readinessFinalized=${readinessFinalized}`,
+            `operatorLogoutRequested=${operatorLogoutRequested}`,
+            `recentConsoleErrors=${recentPageConsoleErrors.slice(-8).join(' || ') || 'none'}`,
+            describeClientIdentity(currentClient),
+          ].join(' '),
+        );
+
+        if (qrReceivedLoggedForAttempt === activeStartupAttemptId || hasReachedAuthenticationPhase()) {
+          markQrScanDetected('post-logout-navigation', currentClient);
+        }
+      }
+
       scheduleLiveMediaListenerReattachAfterNavigation(url, reason);
     }
   });
@@ -1169,13 +1970,18 @@ async function attachPageDiagnostics(currentClient: Client): Promise<void> {
     const sinceLaunchMs = browserLaunchStartedAt ? whatsappPageLoadedAt - browserLaunchStartedAt : null;
     appendCollectorLog(
       'whatsapp-page-loaded',
-      `url=${page.url()} sinceLaunchMs=${sinceLaunchMs ?? 'unknown'}`,
+      `url=${page.url()} sinceLaunchMs=${sinceLaunchMs ?? 'unknown'} ${describeClientIdentity(currentClient)}`,
     );
     appendCollectorLog('page-load', `url=${page.url()}`);
     clearBrowserLaunchGraceTimeout();
 
     if (readinessFinalized && status.state === 'ready') {
       scheduleLiveMediaListenerReattachAfterNavigation(page.url(), 'load');
+    }
+
+    if (hasReachedAuthenticationPhase() || readinessFinalized) {
+      // Never re-arm QR/browser startup timers after the phone has linked.
+      return;
     }
 
     if (
@@ -1228,11 +2034,33 @@ async function fetchJson(relativePath: string, init?: RequestInit) {
 }
 
 async function fetchRuntimeConfig(): Promise<WhatsAppHelperRuntimeConfig> {
-  const runtimeConfig = (await fetchJson('/collectors/whatsapp/internal/runtime-config')) as WhatsAppHelperRuntimeConfig;
-  status.allowFromMe = runtimeConfig.allowFromMe;
-  emitStatus();
-  appendCollectorLog('runtime-config-loaded', `mappedGroups=${runtimeConfig.mappedGroups.length} allowFromMe=${runtimeConfig.allowFromMe}`);
-  return runtimeConfig;
+  const fallback: WhatsAppHelperRuntimeConfig = {
+    allowFromMe: process.env.PATROL_HELPER_ALLOW_FROM_ME === 'true',
+    pilotGroupName: process.env.PATROL_HELPER_PILOT_GROUP_NAME?.trim() || null,
+    pilotSiteCode: process.env.PATROL_HELPER_PILOT_SITE_CODE?.trim() || null,
+    mappedGroups: [],
+  };
+
+  try {
+    const runtimeConfig = (await fetchJson(
+      '/collectors/whatsapp/internal/runtime-config',
+    )) as WhatsAppHelperRuntimeConfig;
+    status.allowFromMe = runtimeConfig.allowFromMe;
+    emitStatus();
+    appendCollectorLog(
+      'runtime-config-loaded',
+      `mappedGroups=${runtimeConfig.mappedGroups.length} allowFromMe=${runtimeConfig.allowFromMe}`,
+    );
+    return runtimeConfig;
+  } catch (error) {
+    appendCollectorLog(
+      'runtime-config-fallback',
+      `error=${error instanceof Error ? error.message : String(error)} using local defaults`,
+    );
+    status.allowFromMe = fallback.allowFromMe;
+    emitStatus();
+    return fallback;
+  }
 }
 
 async function postIngest(payload: WhatsAppHelperIngestPayload): Promise<void> {
@@ -1910,10 +2738,34 @@ async function processMessage(message: Message, source: MessageSource): Promise<
 
 async function fetchMessagesForChat(currentClient: Client, chatId: string): Promise<Message[]> {
   return withDetachedFrameRetry(async () => {
-    const chat = await (currentClient as unknown as { getChatById(id: string): Promise<Chat> }).getChatById(chatId);
-    return (chat as unknown as {
-      fetchMessages(options?: { limit?: number }): Promise<Message[]>;
-    }).fetchMessages(BACKFILL_MESSAGE_LIMIT === 0 ? { limit: Infinity } : { limit: BACKFILL_MESSAGE_LIMIT });
+    if (typeof currentClient.getChatById !== 'function') {
+      throw new Error('client.getChatById is unavailable on the WhatsApp client');
+    }
+
+    if (currentClient.pupPage) {
+      const hasGetChat = await currentClient.pupPage.evaluate(() => {
+        const scopedWindow = window as typeof window & {
+          WWebJS?: { getChat?: unknown };
+        };
+        return typeof scopedWindow.WWebJS?.getChat === 'function';
+      });
+      if (!hasGetChat) {
+        throw new Error(
+          'window.WWebJS.getChat is unavailable — WhatsApp Web injection/chat store is not ready',
+        );
+      }
+    }
+
+    const chat = await currentClient.getChatById(chatId);
+    if (!chat || typeof chat.fetchMessages !== 'function') {
+      throw new Error(
+        `getChatById(${chatId}) did not return a Chat with fetchMessages (got ${chat ? typeof chat : 'undefined'})`,
+      );
+    }
+
+    return chat.fetchMessages(
+      BACKFILL_MESSAGE_LIMIT === 0 ? { limit: Infinity } : { limit: BACKFILL_MESSAGE_LIMIT },
+    );
   });
 }
 
@@ -2000,43 +2852,73 @@ function describeClientForDiscovery(activeClient: Client | null): string {
 }
 
 async function probeWWebJsGetChatsReady(activeClient: Client): Promise<boolean> {
-  if (!activeClient.pupPage) {
+  if (!activeClient.pupPage || typeof activeClient.getChats !== 'function') {
     return false;
   }
 
   try {
-    return (
-      (await activeClient.pupPage.evaluate(() => {
-        const scopedWindow = window as typeof window & {
-          WWebJS?: { getChats?: unknown };
-        };
-        return (
-          typeof scopedWindow.WWebJS !== 'undefined' &&
-          typeof scopedWindow.WWebJS.getChats === 'function'
-        );
-      })) ?? false
+    const injected = await activeClient.pupPage.evaluate(() => {
+      const scopedWindow = window as typeof window & {
+        WWebJS?: { getChats?: unknown; getChat?: unknown };
+      };
+      return {
+        hasWWebJS: typeof scopedWindow.WWebJS !== 'undefined',
+        hasGetChats: typeof scopedWindow.WWebJS?.getChats === 'function',
+        hasGetChat: typeof scopedWindow.WWebJS?.getChat === 'function',
+      };
+    });
+
+    if (!injected?.hasWWebJS || !injected.hasGetChats || !injected.hasGetChat) {
+      appendCollectorLog(
+        'CHAT_DISCOVERY_WWEBJS_PROBE',
+        `injected=false hasWWebJS=${Boolean(injected?.hasWWebJS)} hasGetChats=${Boolean(injected?.hasGetChats)} hasGetChat=${Boolean(injected?.hasGetChat)}`,
+      );
+      return false;
+    }
+
+    // Require an actual Store-backed getChats() call — typeof checks alone marked ready while chat APIs were broken.
+    const chats = await activeClient.getChats();
+    if (!Array.isArray(chats)) {
+      appendCollectorLog('CHAT_DISCOVERY_WWEBJS_PROBE', `getChatsReturned=${typeof chats}`);
+      return false;
+    }
+
+    appendCollectorLog('CHAT_DISCOVERY_WWEBJS_PROBE', `getChatsOk=true count=${chats.length}`);
+    return true;
+  } catch (error) {
+    appendCollectorLog(
+      'CHAT_DISCOVERY_WWEBJS_PROBE',
+      `getChatsError=${error instanceof Error ? error.message : String(error)}`,
     );
-  } catch {
     return false;
   }
 }
 
-async function waitForChatDiscoveryReady(activeClient: Client, timeoutMs = 45_000): Promise<boolean> {
+async function waitForChatDiscoveryReady(
+  activeClient: Client,
+  timeoutMs = 45_000,
+  options: { requireReadinessFinalized?: boolean } = {},
+): Promise<boolean> {
+  const requireReadinessFinalized = options.requireReadinessFinalized !== false;
   const startedAt = Date.now();
   appendCollectorLog(
     'CHAT_DISCOVERY_WWEBJS_WAIT',
-    `timeoutMs=${timeoutMs} ${describeClientForDiscovery(activeClient)}`,
+    `timeoutMs=${timeoutMs} requireReadinessFinalized=${requireReadinessFinalized} ${describeClientForDiscovery(activeClient)}`,
   );
 
   const deadline = startedAt + timeoutMs;
   let lastWaitLogAt = startedAt;
   while (Date.now() < deadline && !shutdownRequested) {
-    if (!canAttemptChatDiscovery(activeClient)) {
+    if (requireReadinessFinalized && !canAttemptChatDiscovery(activeClient)) {
       await sleep(500);
       continue;
     }
 
-    if (!activeClient.pupPage || typeof activeClient.getChats !== 'function') {
+    if (
+      !activeClient.pupPage ||
+      typeof activeClient.getChats !== 'function' ||
+      (client && activeClient !== client)
+    ) {
       await sleep(500);
       continue;
     }
@@ -2088,6 +2970,63 @@ function canAttemptChatDiscovery(activeClient: Client | null): activeClient is C
       status.state === 'ready' &&
       status.connectedAccount?.trim(),
   );
+}
+
+async function runChatDiscoverySmoke(activeClient: Client): Promise<boolean> {
+  appendCollectorLog('CHAT_DISCOVERY_SMOKE_START', describeClientForDiscovery(activeClient));
+
+  try {
+    if (typeof activeClient.getChats !== 'function') {
+      throw new Error('client.getChats is unavailable');
+    }
+
+    const chats = await activeClient.getChats();
+    if (!Array.isArray(chats)) {
+      throw new Error(`getChats() returned ${typeof chats}`);
+    }
+
+    const { groups, contacts } = mapChatsToDiscoveredSources(chats);
+    appendCollectorLog(
+      'CHAT_DISCOVERY_SMOKE_ENUM',
+      `chats=${chats.length} groups=${groups.length} contacts=${contacts.length}`,
+    );
+
+    if (chats.length === 0) {
+      throw new Error('getChats() returned zero chats — cannot verify getChatById/fetchMessages');
+    }
+
+    const probeChat = chats.find((chat) => Boolean(chat.id?._serialized)) ?? chats[0];
+    const chatId = probeChat.id?._serialized;
+    if (!chatId) {
+      throw new Error('Discovered chat is missing id._serialized');
+    }
+
+    if (typeof activeClient.getChatById !== 'function') {
+      throw new Error('client.getChatById is unavailable');
+    }
+
+    const byId = await activeClient.getChatById(chatId);
+    if (!byId || typeof byId.fetchMessages !== 'function') {
+      throw new Error(`getChatById(${chatId}) did not return a Chat with fetchMessages`);
+    }
+
+    const messages = await byId.fetchMessages({ limit: 1 });
+    if (!Array.isArray(messages)) {
+      throw new Error(`fetchMessages() returned ${typeof messages}`);
+    }
+
+    appendCollectorLog(
+      'CHAT_DISCOVERY_SMOKE_PASS',
+      `chatId=${chatId} groups=${groups.length} contacts=${contacts.length} fetchMessages=${messages.length}`,
+    );
+    return true;
+  } catch (error) {
+    appendCollectorLog(
+      'CHAT_DISCOVERY_SMOKE_FAIL',
+      error instanceof Error ? error.message : String(error),
+    );
+    return false;
+  }
 }
 
 function resolveChatDisplayName(chat: {
@@ -2162,26 +3101,43 @@ function mapChatsToDiscoveredSources(chats: Array<{
   };
 }
 
+async function reportChatDiscoveryFailure(message: string, logEvent = 'CHAT_DISCOVERY_ERROR'): Promise<void> {
+  appendCollectorLog(logEvent, `error=${message}`);
+  updateStatus(
+    {
+      info: `Chat discovery failed: ${message}`,
+      lastError: message,
+      groups: [],
+      contacts: [],
+    },
+    'group-refresh-final-error',
+    message,
+  );
+}
+
 async function refreshDiscoveredChats(): Promise<void> {
   appendCollectorLog('CHAT_DISCOVERY_START', describeClientForDiscovery(client));
 
   const activeClient = client;
   if (!activeClient) {
-    appendCollectorLog('CHAT_DISCOVERY_ERROR', 'error=client missing before getChats');
+    await reportChatDiscoveryFailure('client missing before getChats');
     return;
   }
 
   appendCollectorLog('GROUP_DISCOVERY_CLIENT_OK', describeClientForDiscovery(activeClient));
 
   if (!canAttemptChatDiscovery(activeClient)) {
-    appendCollectorLog(
-      'CHAT_DISCOVERY_ERROR',
-      `error=discovery prerequisites missing ${describeClientForDiscovery(activeClient)}`,
+    await reportChatDiscoveryFailure(
+      `discovery prerequisites missing ${describeClientForDiscovery(activeClient)}`,
     );
     return;
   }
 
   if (!(await waitForChatDiscoveryReady(activeClient))) {
+    await reportChatDiscoveryFailure(
+      'WhatsApp chat store did not become ready for getChats() — groups and contacts cannot be listed.',
+      'CHAT_DISCOVERY_WWEBJS_TIMEOUT',
+    );
     return;
   }
 
@@ -2189,9 +3145,8 @@ async function refreshDiscoveredChats(): Promise<void> {
 
   for (let attempt = 1; attempt <= 8; attempt += 1) {
     if (!canAttemptChatDiscovery(activeClient)) {
-      appendCollectorLog(
-        'CHAT_DISCOVERY_ERROR',
-        `error=discovery aborted session changed attempt=${attempt} ${describeClientForDiscovery(activeClient)}`,
+      await reportChatDiscoveryFailure(
+        `discovery aborted session changed attempt=${attempt} ${describeClientForDiscovery(activeClient)}`,
       );
       return;
     }
@@ -2215,11 +3170,24 @@ async function refreshDiscoveredChats(): Promise<void> {
 
       status.groups = groups;
       status.contacts = contacts;
+      if (status.lastError?.toLowerCase().includes('chat discovery')) {
+        status.lastError = null;
+      }
       appendCollectorLog(
         'group-refresh-success',
         `source=client.getChats groups=${groups.length} contacts=${contacts.length} attempt=${attempt}`,
       );
-      emitStatus();
+      updateStatus(
+        {
+          info:
+            groups.length + contacts.length > 0
+              ? `Discovered ${groups.length} group${groups.length === 1 ? '' : 's'} and ${contacts.length} contact${contacts.length === 1 ? '' : 's'}.`
+              : 'Chat discovery succeeded, but no groups or contacts were returned yet.',
+          lastError: null,
+        },
+        'group-refresh-success',
+        `groups=${groups.length} contacts=${contacts.length}`,
+      );
       return;
     } catch (error) {
       lastError = error;
@@ -2237,10 +3205,12 @@ async function refreshDiscoveredChats(): Promise<void> {
   }
 
   if (lastError) {
-    appendCollectorLog(
-      'group-refresh-final-error',
+    await reportChatDiscoveryFailure(
       lastError instanceof Error ? lastError.message : String(lastError),
+      'group-refresh-final-error',
     );
+  } else {
+    await reportChatDiscoveryFailure('Chat discovery failed after multiple getChats() attempts.');
   }
 }
 
@@ -2301,17 +3271,26 @@ function clearStartupTimeouts(): void {
 
 function scheduleBrowserLaunchGraceTimeout(startupAttemptId: number, edgeExecutablePath: string): void {
   clearBrowserLaunchGraceTimeout();
+  if (hasReachedAuthenticationPhase(startupAttemptId) || readinessFinalized) {
+    return;
+  }
+
   browserLaunchGraceTimeout = setTimeout(() => {
     if (
       shutdownRequested ||
       startupAttemptId !== activeStartupAttemptId ||
       readinessFinalized ||
+      hasReachedAuthenticationPhase(startupAttemptId) ||
       status.state === 'authenticated' ||
       status.state === 'waiting-for-client-info' ||
       status.state === 'ready' ||
       status.qrCode ||
       whatsappPageLoadedAt
     ) {
+      appendCollectorLog(
+        'edge-startup-timeout-ignored',
+        describeClientIdentity(client, startupAttemptId),
+      );
       return;
     }
 
@@ -2339,17 +3318,30 @@ function scheduleQrWaitTimeout(startupAttemptId: number, edgeExecutablePath: str
     return;
   }
 
+  if (hasReachedAuthenticationPhase(startupAttemptId) || readinessFinalized) {
+    appendCollectorLog(
+      'qr-wait-timeout-skipped',
+      `post-auth ${describeClientIdentity(client, startupAttemptId)}`,
+    );
+    return;
+  }
+
   clearQrWaitTimeout();
   qrWaitTimeout = setTimeout(() => {
     if (
       shutdownRequested ||
       startupAttemptId !== activeStartupAttemptId ||
       readinessFinalized ||
+      hasReachedAuthenticationPhase(startupAttemptId) ||
       status.state === 'authenticated' ||
       status.state === 'waiting-for-client-info' ||
       status.state === 'ready' ||
       status.qrCode
     ) {
+      appendCollectorLog(
+        'qr-wait-timeout-ignored',
+        describeClientIdentity(client, startupAttemptId),
+      );
       return;
     }
 
@@ -2358,6 +3350,7 @@ function scheduleQrWaitTimeout(startupAttemptId: number, edgeExecutablePath: str
       `waitMs=${QR_AFTER_PAGE_LOAD_TIMEOUT_MS} state=${status.state} browser=${edgeExecutablePath}`,
     );
 
+    // Never destroy an authenticated/syncing client from a QR wait timeout.
     updateStatus(
       {
         state: 'failed',
@@ -2419,8 +3412,13 @@ function scheduleChatDiscoveryAfterReady(reason: string): void {
   );
 }
 
-async function shutdown(exitCode = 0): Promise<void> {
+async function shutdown(exitCode = 0, options?: { operatorLogout?: boolean }): Promise<void> {
   shutdownRequested = true;
+  if (options?.operatorLogout) {
+    operatorLogoutRequested = true;
+    logDestructiveAction('client.logout', 'operator-shutdown', client);
+  }
+
   clearStartupTimeouts();
   clearReadinessTimers();
   clearNavigationReattachTimer();
@@ -2431,10 +3429,16 @@ async function shutdown(exitCode = 0): Promise<void> {
 
   const currentClient = client;
   client = null;
-  await closeBrowserGracefully(currentClient);
+  await closeBrowserGracefully(currentClient, 'shutdown');
 
   clearLatestQrPayload();
   updateStatus({ state: 'idle', startupStage: 'Stopped', info: 'Patrol monitoring stopped.' }, 'collector-stop');
+  try {
+    helperMutex?.release();
+  } catch {
+    // ignore mutex release errors during shutdown
+  }
+  helperMutex = null;
   process.exit(exitCode);
 }
 
@@ -2459,7 +3463,7 @@ function wireCommands(): void {
     }
 
     if (command.type === 'stop') {
-      await shutdown(0);
+      await shutdown(0, { operatorLogout: true });
       return;
     }
 
@@ -2527,13 +3531,28 @@ async function initializeClientSafely(currentClient: Client): Promise<void> {
       throw error;
     }
 
-    appendCollectorLog('initialize-recoverable-error', formatRuntimeError(error));
+    // Never call initialize() twice on the same Client — a second initialize during/after
+    // QR scan can force WhatsApp Web into post_logout during chat synchronisation.
+    appendCollectorLog(
+      'initialize-recoverable-error',
+      `${formatRuntimeError(error)} action=wait-without-reinitialize ${describeClientIdentity(currentClient)}`,
+    );
     await sleep(NAVIGATION_REATTACH_DELAY_MS);
-    await currentClient.initialize();
+    if (!currentClient.pupPage || !currentClient.pupBrowser) {
+      throw error;
+    }
   }
 }
 
 function registerProcessGuards(): void {
+  process.on('exit', () => {
+    try {
+      helperMutex?.release();
+    } catch {
+      // ignore
+    }
+    helperMutex = null;
+  });
   process.on('SIGTERM', () => {
     void shutdown(0);
   });
@@ -2560,7 +3579,33 @@ function registerProcessGuards(): void {
     );
   });
   process.on('unhandledRejection', (reason) => {
-    appendCollectorLog('unhandledRejection', formatRuntimeError(reason));
+    const details = formatRuntimeError(reason);
+    appendCollectorLog('unhandledRejection', details);
+
+    const looksLikeAuthTimeout = /auth timeout/i.test(details);
+    if (
+      looksLikeAuthTimeout &&
+      hasReachedAuthenticationPhase() &&
+      shouldTreatAsModuleCompatibilityFailure({
+        authenticated: true,
+        ready: readinessFinalized,
+        pageSignals: moduleCompatibilitySignals,
+        timedOutAfterAuth: true,
+        lastError: details,
+      })
+    ) {
+      reportModuleCompatibilityFailure('unhandledRejection-auth-timeout', details);
+      return;
+    }
+
+    if (isWwebjsModuleCompatibilitySignal(details)) {
+      rememberModuleCompatibilitySignal(details);
+      if (hasReachedAuthenticationPhase() && !readinessFinalized) {
+        reportModuleCompatibilityFailure('unhandledRejection', details);
+      }
+      return;
+    }
+
     if (isRecoverableContextError(reason)) {
       appendCollectorLog('recoverable-unhandled-rejection', 'continuing-after-navigation-context-loss');
       scheduleLiveMediaListenerReattachAfterNavigation('unhandledRejection', 'execution-context');
@@ -2573,16 +3618,38 @@ async function runBrowserAttempt(
   browserSource: ResolvedBrowserExecutable['source'],
   attemptIndex: number,
 ): Promise<StartupGateOutcome> {
+  // Exactly one Client / Edge process: never create a second instance while post-auth sync is active.
+  if (client && isPostAuthStartupProtected(client)) {
+    appendCollectorLog(
+      'browser-attempt-aborted-post-auth-protected',
+      `refusing-second-client ${describeClientIdentity(client)}`,
+    );
+    if (readinessFinalized && status.state === 'ready') {
+      return 'ready';
+    }
+    return status.state === 'disconnected' ? 'disconnected' : 'failed';
+  }
+
+  if (client) {
+    const previousClient = client;
+    client = null;
+    await closeBrowserGracefully(previousClient, `runBrowserAttempt-replace-attempt-${attemptIndex + 1}`);
+  }
+
   const startupAttemptId = (activeStartupAttemptId += 1);
+  authenticationReachedAttemptId = null;
   activeBrowserLaunch = { executablePath, headless: BROWSER_HEADLESS };
   logBrowserLaunchConfiguration(executablePath, browserSource);
   pageDiagnosticsAttached = false;
+  moduleCompatibilitySignals.length = 0;
+  moduleCompatibilityFailureReported = false;
   setReadinessFinalized(false, 'browser-attempt-restart');
   liveMediaListenersAttached = false;
   resetLiveMessageListenerState();
   clearReadyHeartbeat();
   cancelClientInfoWatch();
   clearStartupTimeouts();
+  clearQrScanAuthenticatedTimeout();
   clearGroupDiscoveryTimers();
   startupGateResolved = false;
   startupResolve = null;
@@ -2590,16 +3657,42 @@ async function runBrowserAttempt(
   browserLaunchStartedAt = Date.now();
   browserLaunchCompletedAt = null;
   whatsappPageLoadedAt = null;
+  qrScanDetected = false;
+  qrReceivedLoggedForAttempt = null;
+  recentPageConsoleErrors.length = 0;
+  authenticationReachedAttemptId = null;
 
   const { Client, LocalAuth } = await loadWhatsAppRuntimeModule();
 
   logWhatsAppRuntimePackages('client-create');
 
+  const authStrategy = new LocalAuth({
+    clientId: LOCAL_AUTH_CLIENT_ID,
+    dataPath: SESSION_PATH,
+  });
+  const originalLocalAuthLogout = authStrategy.logout.bind(authStrategy);
+  authStrategy.logout = (async () => {
+    logDestructiveAction('authStrategy.logout', 'whatsapp-web.js-or-client-logout', client);
+
+    // After QR scan / auth, never delete LocalAuth unless the operator explicitly logs out or the app is shutting down.
+    if (!isDestructiveLifecycleAllowed()) {
+      appendCollectorLog(
+        'localauth-logout-suppressed',
+        `reason=post-qr-lifecycle-protection qrScanDetected=${qrScanDetected} readinessFinalized=${readinessFinalized} ${describeClientIdentity(client, startupAttemptId)}`,
+      );
+      return;
+    }
+
+    appendCollectorLog(
+      'localauth-logout-allowed',
+      `operatorLogoutRequested=${operatorLogoutRequested} shutdownRequested=${shutdownRequested}`,
+    );
+    logAuthLifecycle('SESSION_DELETE_REQUESTED', 'authStrategy.logout-allowed', client);
+    await originalLocalAuthLogout();
+  }) as typeof authStrategy.logout;
+
   const nextClient = new Client({
-    authStrategy: new LocalAuth({
-      clientId: LOCAL_AUTH_CLIENT_ID,
-      dataPath: SESSION_PATH,
-    }),
+    authStrategy,
     ...buildWhatsAppWebClientOptions({
       headless: BROWSER_HEADLESS,
       executablePath,
@@ -2610,12 +3703,20 @@ async function runBrowserAttempt(
   const startupGate = createStartupGate();
 
   nextClient.on('qr', (qr: string) => {
+    if (startupAttemptId !== activeStartupAttemptId || nextClient !== client) {
+      appendCollectorLog('qr-ignored-stale-attempt', describeClientIdentity(nextClient, startupAttemptId));
+      return;
+    }
+
     clearStartupTimeouts();
     const qrRenderMs = whatsappPageLoadedAt
       ? Date.now() - whatsappPageLoadedAt
       : browserLaunchStartedAt
         ? Date.now() - browserLaunchStartedAt
         : 0;
+    qrReceivedLoggedForAttempt = startupAttemptId;
+    logLifecycleEvent('qr', `length=${qr.length} ms=${qrRenderMs}`, nextClient, startupAttemptId);
+    logAuthLifecycle('QR_RECEIVED', `length=${qr.length} ms=${qrRenderMs}`, nextClient);
     appendCollectorLog(
       'qr-render-time',
       `ms=${qrRenderMs} sincePageLoad=${Boolean(whatsappPageLoadedAt)} length=${qr.length} attempt=${attemptIndex + 1}`,
@@ -2650,15 +3751,26 @@ async function runBrowserAttempt(
         error instanceof Error ? error.message : String(error),
       );
     }
-    scheduleQrScanAuthenticatedTimeout(nextClient);
-    if (SMOKE_MODE) {
+    scheduleQrScanAuthenticatedTimeout(nextClient, startupAttemptId);
+    if (SMOKE_MODE && !POST_AUTH_SMOKE_MODE && !CHAT_DISCOVERY_SMOKE_MODE) {
       setTimeout(() => void shutdown(0), 2_000);
     }
   });
 
   nextClient.on('authenticated', () => {
-    clearStartupTimeouts();
-    clearQrScanAuthenticatedTimeout();
+    if (startupAttemptId !== activeStartupAttemptId) {
+      appendCollectorLog(
+        'authenticated-ignored-stale-attempt',
+        describeClientIdentity(nextClient, startupAttemptId),
+      );
+      return;
+    }
+
+    markQrScanDetected('authenticated-event', nextClient);
+    markAuthenticationReached(startupAttemptId, nextClient);
+    logLifecycleEvent('authenticated', `browser=${executablePath}`, nextClient, startupAttemptId);
+    logAuthLifecycle('AUTHENTICATED', `browser=${executablePath} source=${browserSource}`, nextClient);
+    logAuthLifecycle('REMOTE_SESSION_SAVED', 'localauth-session-persisted-after-authenticated', nextClient);
 
     if (readinessFinalized || status.state === 'ready') {
       appendCollectorLog(
@@ -2674,12 +3786,28 @@ async function runBrowserAttempt(
         lastError: null,
       },
       'authenticated-event',
-      `browser=${executablePath} source=${browserSource}`,
+      `browser=${executablePath} source=${browserSource} ${describeClientIdentity(nextClient, startupAttemptId)}`,
     );
     void watchClientInfoAfterAuthentication(nextClient, executablePath, startupAttemptId);
   });
 
+  nextClient.on('change_state', (state: string) => {
+    logLifecycleEvent('change_state', `waState=${state}`, nextClient, startupAttemptId);
+    if (/pairing|opening|connected|syncing/i.test(state)) {
+      markQrScanDetected(`change_state:${state}`, nextClient);
+    }
+  });
+
   nextClient.on('ready', async () => {
+    if (startupAttemptId !== activeStartupAttemptId || nextClient !== client) {
+      appendCollectorLog('ready-ignored-stale-attempt', describeClientIdentity(nextClient, startupAttemptId));
+      return;
+    }
+
+    markQrScanDetected('ready-event', nextClient);
+    markAuthenticationReached(startupAttemptId, nextClient);
+    logLifecycleEvent('ready', `browser=${executablePath}`, nextClient, startupAttemptId);
+    logAuthLifecycle('READY', `browser=${executablePath} source=${browserSource}`, nextClient);
     appendCollectorLog('client-info-detected', `source=library-ready-event browser=${executablePath}`);
     cancelClientInfoWatch();
     attachLiveMediaListenersOnce(nextClient);
@@ -2688,6 +3816,11 @@ async function runBrowserAttempt(
       browserPath: executablePath,
       readySource: 'ready-event',
     });
+
+    if (POST_AUTH_SMOKE_MODE) {
+      appendCollectorLog('POST_AUTH_SMOKE_PASS', describeClientIdentity(nextClient, startupAttemptId));
+      setTimeout(() => void shutdown(0), 1_000);
+    }
   });
 
   nextClient.on('disconnected', (reason: string) => {
@@ -2697,16 +3830,36 @@ async function runBrowserAttempt(
 
     const normalizedReason = reason?.trim() || 'unknown';
     const wasHealthy = isSessionHealthy();
+    const postAuthIncomplete =
+      normalizedReason === 'LOGOUT' &&
+      !operatorLogoutRequested &&
+      !readinessFinalized &&
+      authenticationReachedAttemptId === startupAttemptId;
+
+    logLifecycleEvent(
+      'disconnected',
+      `reason=${normalizedReason} wasHealthy=${wasHealthy} postAuthIncomplete=${postAuthIncomplete} operatorLogoutRequested=${operatorLogoutRequested}`,
+      nextClient,
+      startupAttemptId,
+    );
+    logAuthLifecycle(
+      'DISCONNECTED',
+      `reason=${normalizedReason} wasHealthy=${wasHealthy} postAuthIncomplete=${postAuthIncomplete}`,
+      nextClient,
+    );
     appendCollectorLog(
       'disconnected-event',
-      `reason=${normalizedReason} wasHealthy=${wasHealthy} sessionPreserved=true logoutNotRequested=true`,
+      `reason=${normalizedReason} wasHealthy=${wasHealthy} sessionPreserved=true logoutNotRequested=${!operatorLogoutRequested} ${describeClientIdentity(nextClient, startupAttemptId)}`,
     );
 
     if (isSessionCorruptionSignal(normalizedReason)) {
       reportSessionCorruption('disconnected-event', normalizedReason);
     }
 
-    client = null;
+    // Do not logout/delete LocalAuth here. Session files are preserved unless the operator resets.
+    if (client === nextClient) {
+      client = null;
+    }
     setReadinessFinalized(false, 'disconnected-event');
 
     updateStatus(
@@ -2715,9 +3868,12 @@ async function runBrowserAttempt(
         connectedAccount: status.connectedAccount,
         info: status.sessionCorruptionSuspected
           ? SESSION_CORRUPTION_USER_MESSAGE
-          : `WhatsApp disconnected (${normalizedReason}). Session files preserved.`,
-        lastError:
-          normalizedReason === 'LOGOUT'
+          : postAuthIncomplete
+            ? POST_AUTH_LOGOUT_MESSAGE
+            : `WhatsApp disconnected (${normalizedReason}). Session files preserved.`,
+        lastError: postAuthIncomplete
+          ? POST_AUTH_LOGOUT_MESSAGE
+          : normalizedReason === 'LOGOUT'
             ? 'WhatsApp logged out on the phone or session ended.'
             : normalizedReason,
         lastDisconnectAt: new Date().toISOString(),
@@ -2725,6 +3881,11 @@ async function runBrowserAttempt(
       'disconnected-event',
       normalizedReason,
     );
+
+    if (POST_AUTH_SMOKE_MODE && postAuthIncomplete) {
+      appendCollectorLog('POST_AUTH_SMOKE_FAIL', `reason=${normalizedReason}`);
+      setTimeout(() => void shutdown(1), 500);
+    }
 
     if (!startupGateResolved) {
       resolveStartupOnce('disconnected');
@@ -2734,6 +3895,7 @@ async function runBrowserAttempt(
   nextClient.on('auth_failure', (message: string) => {
     clearStartupTimeouts();
     clearReadinessTimers();
+    logLifecycleEvent('auth_failure', message, nextClient, startupAttemptId);
     updateStatus(
       {
         state: 'failed',
@@ -2854,12 +4016,45 @@ async function startCollector(): Promise<void> {
     return;
   }
 
+  try {
+    const existingHelper = readHelperMutex(SESSION_PATH);
+    if (existingHelper && existingHelper.pid !== process.pid) {
+      appendCollectorLog(
+        'EXISTING_HELPER_FOUND',
+        `pid=${existingHelper.pid} startedAt=${existingHelper.startedAt}`,
+      );
+    }
+    helperMutex = acquireHelperMutex(SESSION_PATH);
+    appendCollectorLog('helper-mutex-acquired', `pid=${helperMutex.pid} path=${helperMutex.path}`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    appendCollectorLog('EXISTING_HELPER_FOUND', message);
+    updateStatus(
+      {
+        state: 'failed',
+        startupStage: 'Helper already running',
+        lastError: message,
+        info: message,
+        lastDisconnectAt: new Date().toISOString(),
+      },
+      'helper-mutex-error',
+      message,
+    );
+    return;
+  }
+
   const runtimeConfig = await fetchRuntimeConfig();
   status.allowFromMe = runtimeConfig.allowFromMe;
 
   const browserResolution = resolveBrowserExecutables();
   const launchPlan = buildBrowserLaunchPlan(browserResolution.available);
   const primaryBrowser = launchPlan[0] ?? null;
+
+  appendCollectorLog(
+    'browser-selection',
+    `preference=${browserResolution.preference} browserSource=${primaryBrowser?.source ?? 'none'} executable=${primaryBrowser?.executablePath ?? 'none'} plan=${launchPlan.map((b) => b.source).join(',') || 'none'}`,
+  );
+  appendCollectorLog('whatsapp-web-runtime-mode', formatWhatsAppRuntimeConfigSummary());
 
   updateStatus(
     {
@@ -2916,7 +4111,14 @@ async function startCollector(): Promise<void> {
         );
 
         if (client) {
-          await fullyDestroyClientSession(client);
+          if (isPostAuthStartupProtected(client)) {
+            appendCollectorLog(
+              'startup-retry-blocked-post-auth',
+              describeClientIdentity(client),
+            );
+            return;
+          }
+          await fullyDestroyClientSession(client, 'startup-retry');
         }
 
         hydrateCachedQrForStartup();
@@ -2929,15 +4131,74 @@ async function startCollector(): Promise<void> {
 
       for (let browserIndex = 0; browserIndex < launchPlan.length; browserIndex += 1) {
         const browser = launchPlan[browserIndex];
+        const profileDir = sessionProfileDirectory();
+
+        // Never start a second browser against a locked/in-use profile.
+        const lockBeforeLaunch = detectProfileLock(profileDir);
+        if (lockBeforeLaunch.locked) {
+          appendCollectorLog(
+            'PROFILE_LOCK_DETECTED',
+            `before-launch source=${browser.source} owners=${formatBrowserOwners(lockBeforeLaunch.owners)} lockFiles=${lockBeforeLaunch.lockFilesPresent.join(',') || 'none'}`,
+          );
+          if (lockBeforeLaunch.owners.length > 0) {
+            appendCollectorLog('EXISTING_BROWSER_FOUND', formatBrowserOwners(lockBeforeLaunch.owners));
+          }
+
+          try {
+            await ensureProfileUnlocked(profileDir, (event, details) => {
+              appendCollectorLog(event, details);
+            });
+          } catch (unlockError) {
+            const message =
+              unlockError instanceof ProfileLockError
+                ? unlockError.message
+                : unlockError instanceof Error
+                  ? unlockError.message
+                  : String(unlockError);
+            throw new ProfileLockError(
+              message,
+              profileDir,
+              unlockError instanceof ProfileLockError ? unlockError.owners : lockBeforeLaunch.owners,
+            );
+          }
+        }
 
         if (browserIndex > 0) {
+          // Fallback is only allowed once the prior browser fully released the shared profile.
+          const lockAfterPrimary = detectProfileLock(profileDir);
+          if (lockAfterPrimary.locked) {
+            appendCollectorLog(
+              'browser-launch-fallback-blocked-profile-lock',
+              `refusing ${browser.source} while profile still locked owners=${formatBrowserOwners(lockAfterPrimary.owners)}`,
+            );
+            throw new ProfileLockError(
+              buildProfileLockFailureMessage(
+                profileDir,
+                lockAfterPrimary.owners,
+                `${launchPlan[0].source} failed and the shared profile is still locked — not launching ${browser.source} against the same userDataDir.`,
+              ),
+              profileDir,
+              lockAfterPrimary.owners,
+            );
+          }
+
           appendCollectorLog(
             'browser-launch-fallback',
             `primary=${launchPlan[0].source} failed=${primaryLaunchError?.message ?? 'unknown'}; trying ${browser.source} executable=${browser.executablePath}`,
           );
 
           if (client) {
-            await fullyDestroyClientSession(client);
+            if (isPostAuthStartupProtected(client)) {
+              appendCollectorLog(
+                'browser-fallback-blocked-post-auth',
+                describeClientIdentity(client),
+              );
+              break;
+            }
+            await fullyDestroyClientSession(client, 'browser-launch-fallback');
+            await ensureProfileUnlocked(profileDir, (event, details) => {
+              appendCollectorLog(event, details);
+            });
           }
         }
 
@@ -2947,14 +4208,35 @@ async function startCollector(): Promise<void> {
           break;
         } catch (error) {
           const launchError = error instanceof Error ? error : new Error(String(error));
+          const lockAfterFailure = detectProfileLock(profileDir);
 
           appendCollectorLog(
             'browser-launch-failed',
-            `source=${browser.source} executable=${browser.executablePath} error=${formatRuntimeError(launchError)}`,
+            `source=${browser.source} executable=${browser.executablePath} error=${formatRuntimeError(launchError)} profileLocked=${lockAfterFailure.locked} owners=${formatBrowserOwners(lockAfterFailure.owners)}`,
           );
 
           if (browserIndex === 0) {
             primaryLaunchError = launchError;
+          }
+
+          if (isProfileLockErrorMessage(launchError.message) || lockAfterFailure.locked) {
+            if (lockAfterFailure.owners.length > 0) {
+              appendCollectorLog('EXISTING_BROWSER_FOUND', formatBrowserOwners(lockAfterFailure.owners));
+            }
+            appendCollectorLog(
+              'PROFILE_LOCK_DETECTED',
+              `after-launch-failure source=${browser.source} owners=${formatBrowserOwners(lockAfterFailure.owners)}`,
+            );
+            // Do not fall back to another browser using the same userDataDir.
+            throw new ProfileLockError(
+              buildProfileLockFailureMessage(
+                profileDir,
+                lockAfterFailure.owners,
+                launchError.message,
+              ),
+              profileDir,
+              lockAfterFailure.owners,
+            );
           }
 
           if (browserIndex < launchPlan.length - 1) {
@@ -2995,24 +4277,48 @@ async function startCollector(): Promise<void> {
       await sleep(2_500);
     }
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     appendCollectorLog(
       'collector-attempt-error',
       `browser=${status.browserExecutablePath ?? 'unknown'} error=${error instanceof Error ? error.stack || error.message : String(error)}`,
     );
-    updateStatus(
-      {
-        state: 'failed',
-        info: BROWSER_AUTOMATION_FAILED_MESSAGE,
-        lastError: BROWSER_AUTOMATION_FAILED_MESSAGE,
-        lastDisconnectAt: new Date().toISOString(),
-      },
-      'puppeteer-launch-error',
-      error instanceof Error ? error.stack || error.message : String(error),
-    );
+
+    if (error instanceof ProfileLockError || isProfileLockErrorMessage(message)) {
+      reportBrowserAutomationFailure(message);
+    } else {
+      updateStatus(
+        {
+          state: 'failed',
+          info: BROWSER_AUTOMATION_FAILED_MESSAGE,
+          lastError: message || BROWSER_AUTOMATION_FAILED_MESSAGE,
+          lastDisconnectAt: new Date().toISOString(),
+        },
+        'puppeteer-launch-error',
+        error instanceof Error ? error.stack || error.message : String(error),
+      );
+    }
+
     if (SMOKE_MODE && !shutdownRequested) {
       process.exitCode = 1;
     }
   }
 }
 
-void startCollector();
+void startCollector().catch((error) => {
+  appendCollectorLog(
+    'collector-start-fatal',
+    error instanceof Error ? error.stack || error.message : String(error),
+  );
+  updateStatus(
+    {
+      state: 'failed',
+      lastError: error instanceof Error ? error.message : String(error),
+      info: 'Patrol monitoring failed to start.',
+      lastDisconnectAt: new Date().toISOString(),
+    },
+    'collector-start-fatal',
+  );
+  if (!shutdownRequested) {
+    process.exitCode = 1;
+  }
+});

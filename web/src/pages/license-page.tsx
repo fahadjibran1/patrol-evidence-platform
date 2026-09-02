@@ -14,7 +14,8 @@ export function LicensePage(): JSX.Element {
   const { token } = useAuth();
   const desktop = isDesktopApp();
   const [status, setStatus] = useState<LicenseStatusResponse | null>(null);
-  const [licenseKey, setLicenseKey] = useState('');
+  const [companyName, setCompanyName] = useState('');
+  const [requestedPlan, setRequestedPlan] = useState<'annual' | 'three_year' | 'lifetime'>('annual');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -24,6 +25,9 @@ export function LicensePage(): JSX.Element {
   const loadStatus = useCallback(async () => {
     const next = await apiRequest<LicenseStatusResponse>('/license/status', {}, token ?? undefined);
     setStatus(next);
+    if (next.companyName) {
+      setCompanyName(next.companyName);
+    }
     return next;
   }, [token]);
 
@@ -33,26 +37,54 @@ export function LicensePage(): JSX.Element {
     });
   }, [loadStatus]);
 
-  async function handleActivate(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
+  async function handleExportRequest(): Promise<void> {
+    setIsSubmitting(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const result = await apiRequest<{ fileName: string; contents: string }>(
+        '/license/request-file',
+        {
+          method: 'POST',
+          body: JSON.stringify({ companyName: companyName.trim(), requestedPlan }),
+        },
+        token ?? undefined,
+      );
+
+      const blob = new Blob([result.contents], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = result.fileName;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      setSuccess('Licence request file (.tgreq) downloaded. Send it to your supplier.');
+    } catch (exportError) {
+      setError(exportError instanceof Error ? exportError.message : 'Could not export request file.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleImportAndActivate(raw: string): Promise<void> {
     setIsSubmitting(true);
     setError(null);
     setSuccess(null);
 
     try {
       const next = await apiRequest<LicenseStatusResponse>(
-        '/license/activate',
+        '/license/import',
         {
           method: 'POST',
-          body: JSON.stringify({ licenseKey: licenseKey.trim() }),
+          body: JSON.stringify({ licenceFileContents: raw }),
         },
         token ?? undefined,
       );
       setStatus(next);
-      setLicenseKey('');
-      setSuccess(next.status === 'ACTIVE' ? 'Licence activated successfully.' : next.message);
-    } catch (activateError) {
-      setError(activateError instanceof Error ? activateError.message : 'Licence activation failed.');
+      setSuccess(next.uiState === 'Licensed' ? 'Commercial licence imported successfully.' : next.message);
+    } catch (importError) {
+      setError(importError instanceof Error ? importError.message : 'Licence import failed.');
     } finally {
       setIsSubmitting(false);
     }
@@ -60,7 +92,7 @@ export function LicensePage(): JSX.Element {
 
   async function handleDeactivate(): Promise<void> {
     const confirmed = window.confirm(
-      'Deactivate this licence on this workstation? Your evidence, sites, mappings, and WhatsApp session will be kept.',
+      'Deactivate the commercial licence on this workstation? Evidence, configuration, database and images will be kept.',
     );
     if (!confirmed) {
       return;
@@ -77,7 +109,7 @@ export function LicensePage(): JSX.Element {
         token ?? undefined,
       );
       setStatus(next);
-      setSuccess('Licence deactivated. Enter a new licence key to restore full operation.');
+      setSuccess('Commercial licence deactivated. Existing data was preserved.');
     } catch (deactivateError) {
       setError(deactivateError instanceof Error ? deactivateError.message : 'Could not deactivate licence.');
     } finally {
@@ -115,11 +147,21 @@ export function LicensePage(): JSX.Element {
         return;
       }
 
-      setLicenseKey(result.key);
-      setSuccess('Licence file loaded. Review the key, then select Activate licence.');
+      await handleImportAndActivate(result.key);
     } catch {
       setError('Could not read the selected licence file.');
     }
+  }
+
+  function handleManualImport(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    const textarea = (event.currentTarget.elements.namedItem('licenceJson') as HTMLTextAreaElement | null)
+      ?.value;
+    if (!textarea?.trim()) {
+      setError('Paste a .tglic JSON licence or use Import licence file.');
+      return;
+    }
+    void handleImportAndActivate(textarea.trim());
   }
 
   if (!desktop) {
@@ -131,6 +173,8 @@ export function LicensePage(): JSX.Element {
     );
   }
 
+  const uiState = status?.uiState ?? status?.displayMode ?? 'Loading';
+
   return (
     <div className="page-shell narrow">
       <div className="page-header">
@@ -138,11 +182,11 @@ export function LicensePage(): JSX.Element {
           <p className="eyebrow">Commercial Licence</p>
           <h1>Workstation licence</h1>
           <p className="muted-text">
-            Activate, review, or deactivate the signed offline licence for this installation. Evidence and configuration
-            are kept when a licence expires or is deactivated.
+            Offline licensing for this installation. Evidence, configuration, database and images are always preserved
+            when a trial or licence expires.
           </p>
         </div>
-        <StatusBadge value={status?.status ?? 'Loading'} />
+        <StatusBadge value={uiState} />
       </div>
 
       <section className="panel-grid">
@@ -150,12 +194,12 @@ export function LicensePage(): JSX.Element {
           <h2>Current status</h2>
           <dl className="detail-list">
             <div>
-              <dt>Status</dt>
-              <dd>{status?.status ?? '—'}</dd>
+              <dt>State</dt>
+              <dd>{uiState}</dd>
             </div>
             <div>
-              <dt>Mode</dt>
-              <dd>{status?.displayMode ?? '—'}</dd>
+              <dt>Status</dt>
+              <dd>{status?.status ?? '—'}</dd>
             </div>
             <div>
               <dt>Licensed company</dt>
@@ -175,19 +219,43 @@ export function LicensePage(): JSX.Element {
             </div>
             <div>
               <dt>Expiry date</dt>
-              <dd>{status?.expiresAt ?? '—'}</dd>
+              <dd>{status?.expiresAt ?? (status?.uiState === 'Licensed' ? 'Lifetime' : '—')}</dd>
             </div>
             <div>
               <dt>Days remaining</dt>
-              <dd>{status?.status === 'ACTIVE' ? status.daysRemaining : '—'}</dd>
+              <dd>
+                {status?.status === 'ACTIVE' || status?.status === 'TRIAL_ACTIVE'
+                  ? status.expiresAt
+                    ? status.daysRemaining
+                    : 'Lifetime'
+                  : '—'}
+              </dd>
             </div>
-            {status?.legacy ? (
-              <div>
-                <dt>Legacy key</dt>
-                <dd>Yes — migrate to a TG1 commercial licence before legacy support ends.</dd>
-              </div>
-            ) : null}
+            <div>
+              <dt>Build</dt>
+              <dd>
+                {status?.appVersion ?? '—'}
+                {status?.buildId ? ` (${status.buildId})` : ''}
+              </dd>
+            </div>
           </dl>
+          <p className="muted-text">{status?.message}</p>
+          {status?.diagnostics?.lastTrialBootstrapError ? (
+            <div className="frontend-diagnostics-log" style={{ marginTop: 12 }}>
+              <p className="muted-text">Licence bootstrap diagnostic</p>
+              <pre>{status.diagnostics.lastTrialBootstrapError}</pre>
+              <pre>
+                {[
+                  `dataRoot=${status.diagnostics.dataRoot ?? 'null'}`,
+                  `trialFile=${status.diagnostics.trialFilePath ?? 'null'}`,
+                  `markerPresent=${status.diagnostics.trialMarkerPresent}`,
+                  `writable=${String(status.diagnostics.licensingDirectoryWritable)}`,
+                  `crypto=${status.diagnostics.cryptoMode}`,
+                  `trialCreationDisabled=${status.diagnostics.trialCreationDisabled}`,
+                ].join('\n')}
+              </pre>
+            </div>
+          ) : null}
         </article>
 
         <article className="panel">
@@ -215,16 +283,43 @@ export function LicensePage(): JSX.Element {
       </section>
 
       <section className="panel">
-        <h2>Activate licence</h2>
-        <form className="stack-form" onSubmit={(event) => void handleActivate(event)}>
+        <h2>Export licence request</h2>
+        <p className="muted-text">
+          Creates a `.tgreq` file with installation ID and machine fingerprint only — no secrets.
+        </p>
+        <div className="stack-form">
           <label>
-            Licence key
-            <textarea
-              rows={4}
-              value={licenseKey}
-              onChange={(event) => setLicenseKey(event.target.value)}
-              placeholder="TG1...."
-            />
+            Company name
+            <input value={companyName} onChange={(event) => setCompanyName(event.target.value)} />
+          </label>
+          <label>
+            Requested plan
+            <select
+              value={requestedPlan}
+              onChange={(event) => setRequestedPlan(event.target.value as typeof requestedPlan)}
+            >
+              <option value="annual">Annual</option>
+              <option value="three_year">Three year</option>
+              <option value="lifetime">Lifetime</option>
+            </select>
+          </label>
+          <button
+            type="button"
+            className="primary-button"
+            disabled={isSubmitting || companyName.trim().length < 2}
+            onClick={() => void handleExportRequest()}
+          >
+            Export request file (.tgreq)
+          </button>
+        </div>
+      </section>
+
+      <section className="panel">
+        <h2>Import commercial licence</h2>
+        <form className="stack-form" onSubmit={handleManualImport}>
+          <label>
+            Paste `.tglic` JSON
+            <textarea name="licenceJson" rows={6} placeholder='{"payload":{...},"signature":"..."}' />
           </label>
           <input
             ref={fileInputRef}
@@ -236,8 +331,8 @@ export function LicensePage(): JSX.Element {
           {error ? <p className="form-error">{error}</p> : null}
           {success ? <p className="muted-text">{success}</p> : null}
           <div className="button-row">
-            <button type="submit" className="primary-button" disabled={isSubmitting || !licenseKey.trim()}>
-              {isSubmitting ? 'Working…' : 'Activate licence'}
+            <button type="submit" className="primary-button" disabled={isSubmitting}>
+              {isSubmitting ? 'Working…' : 'Import pasted licence'}
             </button>
             <button
               type="button"
@@ -245,15 +340,15 @@ export function LicensePage(): JSX.Element {
               disabled={isSubmitting}
               onClick={() => fileInputRef.current?.click()}
             >
-              Import licence file
+              Import .tglic file
             </button>
             <button
               type="button"
               className="secondary-button"
-              disabled={isSubmitting || status?.status === 'NOT_ACTIVATED'}
+              disabled={isSubmitting || status?.mode !== 'commercial'}
               onClick={() => void handleDeactivate()}
             >
-              Deactivate licence
+              Deactivate commercial licence
             </button>
             <a className="secondary-button" href={SUPPLIER_CONTACT}>
               Contact supplier

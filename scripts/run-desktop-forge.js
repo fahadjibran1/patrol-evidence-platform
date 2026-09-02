@@ -147,8 +147,7 @@ if (!internalScriptByMode[mode]) {
   fail(`Unknown desktop forge mode "${mode}". Use "package" or "make".`);
 }
 
-if (process.platform === 'win32') {
-  runWindowsForge(internalScriptByMode[mode]);
-} else {
-  runDefaultForge(internalScriptByMode[mode]);
-}
+// Build from the real project path.
+// Running Vite through a subst drive causes Rollup to receive an
+// absolute C:\ path for web/index.html while the build runs from P:\.
+runDefaultForge(internalScriptByMode[mode]);

@@ -1,0 +1,48 @@
+name: Deploy (prepare)
+
+# Preparation-only workflow. Wire secrets and environment targets before enabling auto-deploy.
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      confirm:
+        description: Type deploy to confirm
+        required: true
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Confirm
+        run: |
+          if [ "${{ inputs.confirm }}" != "deploy" ]; then
+            echo "Confirmation failed — type 'deploy' to proceed"
+            exit 1
+          fi
+
+      - name: Build images (local docker)
+        run: |
+          docker compose -f docker-compose.${{ inputs.environment == 'production' && 'production' || 'staging' }}.yml build
+        continue-on-error: true
+
+      - name: Print deploy checklist
+        run: |
+          cat <<'EOF'
+          Deploy prepare complete.
+          Next manual steps:
+          1. Ensure .env.staging / .env.production secrets are loaded in the host/orchestrator
+          2. Run database backup
+          3. Run prisma migrate deploy
+          4. Roll out api → worker → portals → nginx
+          5. Verify /health/ready and /system/version
+          6. Smoke-test admin login + customer login
+          EOF

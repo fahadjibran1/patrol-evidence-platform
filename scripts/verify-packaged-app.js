@@ -182,6 +182,7 @@ ensureNonEmptyDirectory(frontendAssetsDir, 'Built frontend assets directory');
 const {
   resolvePackagedPublicKeyPath,
   validatePublicKeyFile,
+  findPrivateKeyViolations,
 } = require('./lib/license-public-key.util');
 const packagedPublicKeyPath = resolvePackagedPublicKeyPath(packagedAppDir);
 if (!packagedPublicKeyPath) {
@@ -192,6 +193,74 @@ if (!packagedPublicKeyPath) {
     pass(`Packaged licence public key found at ${packagedPublicKeyPath}`);
   } catch (error) {
     fail(error instanceof Error ? error.message : String(error));
+  }
+}
+
+const privateKeyHits = findPrivateKeyViolations(packagedAppDir);
+if (privateKeyHits.length > 0) {
+  fail(`Private key material found in packaged output:\n${privateKeyHits.join('\n')}`);
+} else {
+  pass('No private key material found under packaged output');
+}
+
+const licenseCorePackage = path.join(appRoot, 'node_modules', '@patrol', 'license-core', 'package.json');
+const licenseCoreDist = path.join(appRoot, 'node_modules', '@patrol', 'license-core', 'dist', 'index.js');
+const licenseCoreLocalDist = path.join(appRoot, 'packages', 'license-core', 'dist', 'index.js');
+if (fs.existsSync(licenseCoreDist) || fs.existsSync(licenseCoreLocalDist) || fs.existsSync(path.join(appRoot, 'dist', 'licensing', 'license.service.js'))) {
+  pass('Licensing runtime is present in packaged app');
+} else if (fs.existsSync(licenseCorePackage)) {
+  pass(`license-core package present at ${licenseCorePackage}`);
+} else {
+  // Nest bundles compiled licensing into dist/licensing
+  const licensingEntry = path.join(appRoot, 'dist', 'licensing', 'license.controller.js');
+  if (!ensureExists(licensingEntry, 'Compiled licensing controller')) {
+    fail('license-core / licensing runtime missing from packaged app');
+  }
+}
+
+const buildInfoCandidates = [
+  path.join(appRoot, 'build-info.json'),
+  path.join(appRoot, 'dist', 'build-info.json'),
+  path.join(projectRoot, 'build-info.json'),
+];
+const buildInfoPath = buildInfoCandidates.find((candidate) => fs.existsSync(candidate));
+if (buildInfoPath) {
+  const buildInfo = JSON.parse(fs.readFileSync(buildInfoPath, 'utf8'));
+  pass(`Build metadata found at ${buildInfoPath}`);
+  if (buildInfo.displayBuild) {
+    pass(`displayBuild=${buildInfo.displayBuild}`);
+  }
+  if (buildInfo.windowsBuild) {
+    const windowsParts = String(buildInfo.windowsBuild).split('.');
+    if (windowsParts.length < 1 || windowsParts.length > 4) {
+      fail(`windowsBuild must have 1–4 components, got ${buildInfo.windowsBuild}`);
+    } else {
+      pass(`windowsBuild=${buildInfo.windowsBuild}`);
+    }
+  }
+} else {
+  pass('Build metadata file not required in older packages (generate-build-metadata runs on package)');
+}
+
+const packagedPackageJsonPath = path.join(appRoot, 'package.json');
+if (fs.existsSync(packagedPackageJsonPath)) {
+  const packagedPackageJson = JSON.parse(fs.readFileSync(packagedPackageJsonPath, 'utf8'));
+  if (packagedPackageJson.version !== '1.0.0' && !/^\d+\.\d+\.\d+/.test(String(packagedPackageJson.version))) {
+    fail(`Packaged package.json version looks invalid: ${packagedPackageJson.version}`);
+  } else {
+    pass(`Packaged product version=${packagedPackageJson.version}`);
+  }
+  const packagedWindowsBuild = packagedPackageJson.windowsBuild;
+  if (packagedWindowsBuild && String(packagedWindowsBuild).split('.').length > 4) {
+    fail(`Packaged windowsBuild has too many components for Electron: ${packagedWindowsBuild}`);
+  }
+  if (packagedPackageJson.buildId && String(packagedPackageJson.buildId).split('.').length > 4) {
+    // buildId/displayBuild may be 6-part; ensure it is not also used as windowsBuild.
+    if (packagedPackageJson.buildId === packagedPackageJson.windowsBuild) {
+      fail('display buildId must not equal windowsBuild when it has more than 4 components');
+    } else {
+      pass('Packaged display buildId is separate from windowsBuild');
+    }
   }
 }
 

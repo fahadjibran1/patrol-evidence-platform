@@ -179,4 +179,25 @@ describe('Pagination contract and settings signing-key (HTTP)', () => {
     expect(serialized).not.toMatch(/privateKey|publicKeyPem|LICENSE_PRIVATE|encryptionKey|pemPath/i);
     expect(Object.keys(response.body).sort()).toEqual(['algorithm', 'keyId', 'ready']);
   });
+
+  it('returns safe SMTP settings metadata without credentials', async () => {
+    const response = await request(app.getHttpServer())
+      .get('/admin/settings/smtp')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(typeof response.body.configured).toBe('boolean');
+    expect(Object.keys(response.body).sort()).toEqual([
+      'configured',
+      'fromEmail',
+      'fromName',
+      'host',
+      'port',
+      'secure',
+    ]);
+
+    const serialized = JSON.stringify(response.body);
+    expect(serialized).not.toMatch(/SMTP_PASSWORD/);
+    expect(serialized).not.toContain('"password"');
+  });
 });

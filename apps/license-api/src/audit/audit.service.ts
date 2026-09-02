@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma/prisma.service';
 
 const SENSITIVE_KEY_PATTERN =
-  /password|token|secret|signedLicense|privateKey|authorization|refresh/i;
+  /password|token|secret|signedLicense|fullLicense|licenseKey|privateKey|authorization|refresh|smtp/i;
 
 @Injectable()
 export class AuditService {
@@ -11,6 +11,7 @@ export class AuditService {
 
   async record(input: {
     actorAdminId?: string | null;
+    actorCustomerUserId?: string | null;
     action: string;
     entityType: string;
     entityId?: string | null;
@@ -23,6 +24,7 @@ export class AuditService {
     await this.prisma.auditLog.create({
       data: {
         actorAdminId: input.actorAdminId ?? null,
+        actorCustomerUserId: input.actorCustomerUserId ?? null,
         action: input.action,
         entityType: input.entityType,
         entityId: input.entityId ?? null,

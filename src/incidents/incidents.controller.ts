@@ -10,30 +10,36 @@ import { CreateIncidentDto } from './dto/create-incident.dto';
 import { UpdateIncidentStatusDto } from './dto/update-incident-status.dto';
 import { Incident } from './entities/incident.entity';
 
+import { LicenceFeatureGuard, RequireLicenceFeature } from '@/licensing/licence-feature.guard';
+
 @Controller('incidents')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, LicenceFeatureGuard)
 export class IncidentsController {
   constructor(private readonly incidentsService: IncidentsService) {}
 
   @Post()
+  @RequireLicenceFeature('incidents')
   @Roles(UserRole.ADMIN, UserRole.COMPANY_ADMIN, UserRole.GUARD)
   create(@Body() dto: CreateIncidentDto, @CurrentUser() user: AuthenticatedUser): Promise<Incident> {
     return this.incidentsService.create(dto, user);
   }
 
   @Get()
+  @RequireLicenceFeature('incidents')
   @Roles(UserRole.ADMIN, UserRole.COMPANY_ADMIN, UserRole.GUARD)
   findAll(@CurrentUser() user: AuthenticatedUser): Promise<Incident[]> {
     return this.incidentsService.findAll(user);
   }
 
   @Get(':id')
+  @RequireLicenceFeature('incidents')
   @Roles(UserRole.ADMIN, UserRole.COMPANY_ADMIN, UserRole.GUARD)
   findOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser): Promise<Incident> {
     return this.incidentsService.findOne(id, user);
   }
 
   @Patch(':id/status')
+  @RequireLicenceFeature('incidents')
   @Roles(UserRole.ADMIN, UserRole.COMPANY_ADMIN)
   updateStatus(
     @Param('id') id: string,

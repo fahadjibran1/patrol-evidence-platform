@@ -1220,10 +1220,21 @@ export function DesktopSetupPage(): JSX.Element {
                   </button>
                 </Card>
               ) : null}
-              {collectorStatus.lastError || showQrTimeoutPanel ? (
+              {collectorStatus.lastError || collectorStatus.failureCode || showQrTimeoutPanel ? (
                 <Card className="wizard-card">
-                  <h3>{showQrTimeoutPanel ? 'QR is taking longer than expected' : 'Connection issue'}</h3>
-                  <p className="muted-text">{collectorStatus.lastError ?? 'Retry Connect WhatsApp.'}</p>
+                  <h3>
+                    {collectorStatus.failureCode === 'WWEBJS_MODULE_COMPATIBILITY_ERROR'
+                      ? 'WhatsApp Web compatibility'
+                      : showQrTimeoutPanel
+                        ? 'QR is taking longer than expected'
+                        : 'Connection issue'}
+                  </h3>
+                  <p className="muted-text">
+                    {collectorStatus.failureCode === 'WWEBJS_MODULE_COMPATIBILITY_ERROR' ||
+                    collectorStatus.lastError?.toLowerCase().includes('not compatible')
+                      ? 'WhatsApp connected, but this WhatsApp Web version is not compatible with the installed collector runtime.'
+                      : (collectorStatus.lastError ?? 'Retry Connect WhatsApp.')}
+                  </p>
                 </Card>
               ) : null}
               {collectorStatus.qrCode ? (

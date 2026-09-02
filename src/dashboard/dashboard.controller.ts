@@ -14,8 +14,10 @@ import { CurrentUser } from '@/auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '@/auth/interfaces/authenticated-request.interface';
 import { Response } from 'express';
 
+import { LicenceFeatureGuard, RequireLicenceFeature } from '@/licensing/licence-feature.guard';
+
 @Controller('dashboard')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, LicenceFeatureGuard)
 @Roles(UserRole.ADMIN, UserRole.COMPANY_ADMIN)
 export class DashboardController {
   constructor(private readonly dashboardService: DashboardService) {}
@@ -49,6 +51,7 @@ export class DashboardController {
   }
 
   @Get('hourly-safety/export')
+  @RequireLicenceFeature('exports')
   async exportHourlySafety(
     @CurrentUser() user: AuthenticatedUser,
     @Query('date') date: string | undefined,
@@ -68,6 +71,7 @@ export class DashboardController {
   }
 
   @Get('hourly-guard-status')
+  @RequireLicenceFeature('guardSafe')
   async hourlyGuardStatus(
     @CurrentUser() user: AuthenticatedUser,
     @Query('date') date?: string,
@@ -89,6 +93,7 @@ export class DashboardController {
   }
 
   @Get('hourly-guard-status/export')
+  @RequireLicenceFeature('exports')
   async exportHourlyGuardStatus(
     @CurrentUser() user: AuthenticatedUser,
     @Query('date') date: string | undefined,

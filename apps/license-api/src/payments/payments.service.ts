@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { AdminRole, PaymentStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma/prisma.service';
 import { AuditService } from '@/audit/audit.service';
@@ -6,12 +6,16 @@ import { ApiException } from '@/common/exceptions/api.exception';
 import { ERROR_CODES } from '@/common/constants/error-codes';
 import { AuthenticatedAdmin } from '@/auth/interfaces/authenticated-admin.interface';
 import { CreatePaymentDto, UpdatePaymentDto } from './dto/payment.dto';
+import { EventBus } from '@/domain-events/event-bus.service';
+import { createDomainEvent } from '@/domain-events/domain-event';
+import { DOMAIN_EVENTS } from '@/domain-events/domain-event.types';
 
 @Injectable()
 export class PaymentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    @Optional() private readonly eventBus?: EventBus,
   ) {}
 
   async list(query: {
@@ -74,6 +78,14 @@ export class PaymentsService {
       licenceId: payment.licenceId ?? undefined,
       metadata: { amountPence: payment.amountPence, paymentStatus: payment.paymentStatus },
     });
+    await this.eventBus?.publish(
+      createDomainEvent(DOMAIN_EVENTS.PaymentRecorded, {
+        paymentId: payment.id,
+        customerId: payment.customerId,
+        licenceId: payment.licenceId,
+        amountPence: payment.amountPence,
+      }),
+    );
 
     return payment;
   }

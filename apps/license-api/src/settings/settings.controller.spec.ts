@@ -1,5 +1,6 @@
 import { SettingsController } from './settings.controller';
 import { SigningService } from '@/signing/signing.service';
+import { EmailProvider } from '@/notifications/providers/email.provider';
 
 describe('SettingsController', () => {
   it('returns only safe signing-key metadata', () => {
@@ -10,8 +11,9 @@ describe('SettingsController', () => {
         algorithm: 'Ed25519' as const,
       }),
     } as Pick<SigningService, 'getSigningKeyStatus'>;
+    const emailProvider = {} as EmailProvider;
 
-    const controller = new SettingsController(signingService as SigningService);
+    const controller = new SettingsController(signingService as SigningService, emailProvider);
     const status = controller.getSigningKeyStatus();
 
     expect(status).toEqual({

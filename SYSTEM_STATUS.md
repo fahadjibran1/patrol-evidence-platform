@@ -35,7 +35,7 @@ These versions are **intentionally pinned**. Do not bump without a full regressi
 | `whatsapp-web.js` | **1.34.7** (exact, not caret) | `package.json` |
 | `puppeteer` (transitive via wwebjs) | **24.38.0** | `package-lock.json` |
 | `puppeteer-core` | **24.38.0** | `package-lock.json` |
-| WhatsApp Web HTML version | **2.3000.1039703269-alpha** | `src/collectors/whatsapp-web-runtime.config.ts` |
+| WhatsApp Web HTML version | **2.3000.1040111714-alpha** (local strict cache) | `src/collectors/whatsapp-web-runtime.config.ts` + `src/collectors/wa-web-cache/` |
 | WA version cache | **remote** (`wppconnect-team/wa-version`) | same file |
 
 Runtime summary is logged at helper startup via `formatWhatsAppRuntimeConfigSummary()`.

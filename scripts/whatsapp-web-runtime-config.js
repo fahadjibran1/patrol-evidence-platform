@@ -2,15 +2,71 @@ const { existsSync, readFileSync } = require('fs');
 const path = require('path');
 
 const WHATSAPP_WEB_VERSION =
-  process.env.PATROL_WHATSAPP_WEB_VERSION?.trim() || '2.3000.1039703269-alpha';
+  process.env.PATROL_WHATSAPP_WEB_VERSION?.trim() || '2.3000.1040111714-alpha';
 
-const WHATSAPP_WEB_VERSION_CACHE = {
-  type: 'remote',
-  remotePath:
-    process.env.PATROL_WHATSAPP_WEB_VERSION_CACHE_URL?.trim() ||
-    'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/{version}.html',
-  strict: process.env.PATROL_WHATSAPP_WEB_VERSION_STRICT === 'true',
-};
+function candidateWhatsAppWebVersionCacheDirs() {
+  const fromEnv = process.env.PATROL_WHATSAPP_WEB_VERSION_CACHE_PATH?.trim();
+  const resourcesPath = process.env.PATROL_RESOURCES_PATH?.trim();
+  const appPath = process.env.PATROL_APP_PATH?.trim();
+
+  return [
+    fromEnv,
+    path.join(__dirname, '..', 'dist', 'collectors', 'wa-web-cache'),
+    path.join(__dirname, '..', 'src', 'collectors', 'wa-web-cache'),
+    path.join(__dirname, '..', 'resources', 'whatsapp-web-cache'),
+    path.join(__dirname, '..', 'resources', 'wa-web-cache'),
+    resourcesPath ? path.join(resourcesPath, 'wa-web-cache') : '',
+    resourcesPath ? path.join(resourcesPath, 'whatsapp-web-cache') : '',
+    appPath ? path.join(appPath, 'resources', 'wa-web-cache') : '',
+    appPath ? path.join(appPath, 'resources', 'whatsapp-web-cache') : '',
+    path.join(process.cwd(), 'dist', 'collectors', 'wa-web-cache'),
+    path.join(process.cwd(), 'src', 'collectors', 'wa-web-cache'),
+    path.join(process.cwd(), 'resources', 'whatsapp-web-cache'),
+    path.join(process.cwd(), 'resources', 'wa-web-cache'),
+  ].filter(Boolean);
+}
+
+function resolveWhatsAppWebVersionCacheDir() {
+  const versionFile = `${WHATSAPP_WEB_VERSION}.html`;
+  for (const candidate of candidateWhatsAppWebVersionCacheDirs()) {
+    if (existsSync(path.join(candidate, versionFile))) {
+      return candidate;
+    }
+  }
+  return null;
+}
+
+function resolveWhatsAppWebVersionCache() {
+  const forceRemote = process.env.PATROL_WHATSAPP_WEB_VERSION_CACHE_TYPE?.trim() === 'remote';
+  if (forceRemote) {
+    return {
+      type: 'remote',
+      remotePath:
+        process.env.PATROL_WHATSAPP_WEB_VERSION_CACHE_URL?.trim() ||
+        'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/{version}.html',
+      strict: process.env.PATROL_WHATSAPP_WEB_VERSION_STRICT !== 'false',
+    };
+  }
+
+  const localPath = resolveWhatsAppWebVersionCacheDir();
+  if (!localPath) {
+    throw new Error(
+      `WhatsApp Web version cache missing for ${WHATSAPP_WEB_VERSION}. ` +
+        `Expected ${WHATSAPP_WEB_VERSION}.html under src/collectors/wa-web-cache or resources/whatsapp-web-cache. ` +
+        `Set PATROL_WHATSAPP_WEB_VERSION_CACHE_PATH to override.`,
+    );
+  }
+
+  return {
+    type: 'local',
+    path: localPath,
+    strict: process.env.PATROL_WHATSAPP_WEB_VERSION_STRICT !== 'false',
+  };
+}
+
+function getWhatsAppWebVersionCache() {
+  return resolveWhatsAppWebVersionCache();
+}
 
 function readWhatsAppRuntimePackageVersions() {
   const readVersion = (packageName) => {
@@ -87,26 +143,31 @@ function resolveBrowserExecutable() {
 function buildWhatsAppWebClientOptions({ headless, executablePath }) {
   return {
     webVersion: WHATSAPP_WEB_VERSION,
-    webVersionCache: WHATSAPP_WEB_VERSION_CACHE,
+    webVersionCache: getWhatsAppWebVersionCache(),
     puppeteer: buildWhatsAppPuppeteerOptions({ headless, executablePath }),
   };
 }
 
 function formatWhatsAppRuntimeConfigSummary() {
   const versions = readWhatsAppRuntimePackageVersions();
+  const cache = getWhatsAppWebVersionCache();
+  const cachePath = cache.type === 'local' ? cache.path : 'remote';
   return [
     `wwebjs=${versions.whatsappWebJs}`,
     `puppeteer=${versions.puppeteer}`,
     `puppeteerCore=${versions.puppeteerCore}`,
     `webVersion=${WHATSAPP_WEB_VERSION}`,
-    `webVersionCache=${WHATSAPP_WEB_VERSION_CACHE.type}`,
-    `webVersionCacheStrict=${WHATSAPP_WEB_VERSION_CACHE.strict}`,
+    `webVersionCache=${cache.type}`,
+    `webVersionCachePath=${cachePath}`,
+    `webVersionCacheStrict=${cache.strict}`,
   ].join(' ');
 }
 
 module.exports = {
   WHATSAPP_WEB_VERSION,
-  WHATSAPP_WEB_VERSION_CACHE,
+  get WHATSAPP_WEB_VERSION_CACHE() {
+    return getWhatsAppWebVersionCache();
+  },
   WHATSAPP_PUPPETEER_ARGS,
   readWhatsAppRuntimePackageVersions,
   buildWhatsAppPuppeteerOptions,
@@ -114,4 +175,6 @@ module.exports = {
   formatWhatsAppRuntimeConfigSummary,
   resolveBrowserExecutableCandidates,
   resolveBrowserExecutable,
+  resolveWhatsAppWebVersionCacheDir,
+  getWhatsAppWebVersionCache,
 };
