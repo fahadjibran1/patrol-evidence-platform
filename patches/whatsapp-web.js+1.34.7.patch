@@ -119,14 +119,13 @@ diff --git a/node_modules/whatsapp-web.js/src/util/Injected/AuthStore/AuthStore.
 index 9c4644d..7ef6e71 100644
 --- a/node_modules/whatsapp-web.js/src/util/Injected/AuthStore/AuthStore.js
 +++ b/node_modules/whatsapp-web.js/src/util/Injected/AuthStore/AuthStore.js
-@@ -1,8 +1,75 @@
+@@ -1,8 +1,73 @@
  'use strict';
  
-+/**
-+ * Resolve WhatsApp Web Socket / AppState across module renames.
-+ * Throws a tagged error when no compatible module is available.
-+ */
-+function resolveWaSocket() {
+ exports.ExposeAuthStore = () => {
++    // Keep this helper inside the serialized function: Puppeteer evaluates
++    // ExposeAuthStore in the page without its Node module closure.
++    const resolveWaSocket = () => {
 +    const tryRequire = (moduleId) => {
 +        try {
 +            return window.require(moduleId);
@@ -184,9 +183,8 @@ index 9c4644d..7ef6e71 100644
 +    throw new Error(
 +        'WWEBJS_MODULE_COMPATIBILITY_ERROR: missing WAWebSocketModel (and no Socket fallback)',
 +    );
-+}
++    };
 +
- exports.ExposeAuthStore = () => {
 +    const resolved = resolveWaSocket();
      window.AuthStore = {};
 -    window.AuthStore.AppState = window.require('WAWebSocketModel').Socket;

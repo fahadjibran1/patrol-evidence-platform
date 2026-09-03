@@ -6,6 +6,36 @@ import {
 } from './wwebjs-compatibility';
 
 describe('wwebjs-compatibility', () => {
+  it('keeps the patched auth-store socket resolver inside the Puppeteer-serialized function', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { ExposeAuthStore } = require('whatsapp-web.js/src/util/Injected/AuthStore/AuthStore');
+    const modules: Record<string, unknown> = {
+      WAWebSocketModel: { Socket: { on: jest.fn(), state: 'UNLAUNCHED' } },
+      WAWebCmd: { Cmd: {} },
+      WAWebConnModel: { Conn: {} },
+      WAWebOfflineHandler: { OfflineMessageHandler: {} },
+      WAWebAltDeviceLinkingApi: {},
+      WABase64: {},
+      WAWebCompanionRegClientUtils: {},
+      WAWebAdvSignatureApi: {},
+      WAWebUserPrefsInfoStore: {},
+      WAWebSignalStoreApi: {},
+    };
+    const pageWindow = {
+      require: (moduleId: string) => modules[moduleId],
+    } as { require(moduleId: string): unknown; AuthStore?: { AppState: unknown } };
+
+    const serializedExposeAuthStore = new Function(
+      'window',
+      `return (${ExposeAuthStore.toString()})();`,
+    );
+
+    expect(() => serializedExposeAuthStore(pageWindow)).not.toThrow();
+    expect(pageWindow.AuthStore?.AppState).toBe(
+      (modules.WAWebSocketModel as { Socket: unknown }).Socket,
+    );
+  });
+
   it('detects WAWebSocketModel unknown module errors', () => {
     const text = 'Requiring unknown module "WAWebSocketModel"';
     expect(isWwebjsModuleCompatibilitySignal(text)).toBe(true);
