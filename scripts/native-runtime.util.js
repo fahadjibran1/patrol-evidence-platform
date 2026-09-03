@@ -58,6 +58,15 @@ function spawnElectronScript(scriptPath) {
   });
 }
 
+function spawnNodeScript(scriptPath) {
+  return spawnSync(process.execPath, [scriptPath], {
+    cwd: projectRoot,
+    encoding: 'utf8',
+    windowsHide: true,
+    env: process.env,
+  });
+}
+
 function getElectronRuntimeInfo() {
   const probePath = path.join(projectRoot, 'scripts', '.tmp-electron-runtime-probe.js');
   const probeSource = `
@@ -119,22 +128,9 @@ try {
   fs.writeFileSync(probePath, probeSource, 'utf8');
 
   try {
-    if (runtime === 'node') {
-      try {
-        const Database = require('better-sqlite3');
-        const database = new Database(':memory:');
-        const result = database.prepare('SELECT 1 AS value').get();
-        database.close();
-        if (result?.value !== 1) {
-          throw new Error('Unexpected SQLite query result');
-        }
-        return { ok: true, error: null };
-      } catch (error) {
-        return { ok: false, error };
-      }
-    }
-
-    const result = spawnElectronScript(probePath);
+    // Keep native bindings out of this long-lived process. On Windows a loaded
+    // .node file cannot be replaced by the electron-rebuild child process.
+    const result = runtime === 'node' ? spawnNodeScript(probePath) : spawnElectronScript(probePath);
 
     if (result.status === 0 && String(result.stdout || '').trim() === 'OK') {
       return { ok: true, error: null };
