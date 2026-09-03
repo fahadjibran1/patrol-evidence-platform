@@ -29,6 +29,11 @@ import {
   WhatsAppHelperStatusSnapshot,
   WHATSAPP_HELPER_EVENT_PREFIX,
 } from './whatsapp-helper.types';
+import {
+  QR_ONLY_CERTIFICATION_PROCESS_MARKER,
+  UNEXPECTED_AUTHENTICATION,
+  isQrOnlyCertificationMode,
+} from './whatsapp-certification-guard';
 
 export type { WhatsAppCollectorContact, WhatsAppCollectorGroup } from './whatsapp-helper.types';
 
@@ -63,6 +68,7 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
   private pilotSiteCode?: string;
   private stoppingHelper = false;
   private chatDiscoveryRefreshCooldownUntil = 0;
+  private certificationTerminal = false;
   private helperStatus: WhatsAppHelperStatusSnapshot;
 
   constructor(
@@ -177,6 +183,10 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       return this.getStatus();
     }
 
+    if (this.certificationTerminal) {
+      return this.getStatus();
+    }
+
     this.licensingService.assertCollectorStartAllowed();
 
     if (this.isHelperRunning()) {
@@ -197,6 +207,7 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
 
   async stop(): Promise<WhatsAppCollectorStatus> {
     await this.stopHelperProcess();
+    this.certificationTerminal = false;
     this.helperStatus = this.buildDefaultStatus({
       state: this.enabled ? 'idle' : 'disabled',
       info: 'Patrol monitoring stopped.',
@@ -561,6 +572,9 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
 
     const helperEnv = this.buildHelperEnv();
     const helperArgs = [this.helperEntryPath];
+    if (isQrOnlyCertificationMode()) {
+      helperArgs.push(QR_ONLY_CERTIFICATION_PROCESS_MARKER);
+    }
     this.appendCollectorLog(
       'helper-start',
       `command=${process.execPath} ${helperArgs.join(' ')} api=${helperEnv.PATROL_HELPER_API_BASE_URL} chrome=${helperEnv.PATROL_HELPER_CHROME_PATH || 'auto'}`,
@@ -603,6 +617,10 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       this.helperProcess = null;
       if (this.stoppingHelper) {
         this.stoppingHelper = false;
+        return;
+      }
+
+      if (this.certificationTerminal || this.helperStatus.state === UNEXPECTED_AUTHENTICATION) {
         return;
       }
 
@@ -711,6 +729,17 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
           contacts: [...event.payload.contacts],
           browserCandidatesTried: [...event.payload.browserCandidatesTried],
         };
+        if (this.helperStatus.state === UNEXPECTED_AUTHENTICATION) {
+          this.certificationTerminal = true;
+          this.helperStatus = {
+            ...this.helperStatus,
+            connected: false,
+            ready: false,
+            connectedAccount: null,
+            groups: [],
+            contacts: [],
+          };
+        }
         const nextConnectedAccount = this.helperStatus.connectedAccount?.trim() || null;
         if (nextConnectedAccount && nextConnectedAccount !== previousConnectedAccount) {
           void this.syncLinkedWhatsAppAccount(nextConnectedAccount);
@@ -730,6 +759,9 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
   }
 
   sendHelperCommand(command: WhatsAppHelperCommand): void {
+    if (this.certificationTerminal && command.type !== 'stop') {
+      return;
+    }
     if (!this.helperProcess || this.helperProcess.stdin.destroyed) {
       return;
     }

@@ -351,4 +351,53 @@ describe('WhatsAppCollectorService', () => {
 
     await expect(rejectingService.start()).rejects.toThrow('Trial expired');
   });
+
+  it('preserves and redacts the unexpected-authentication terminal state', async () => {
+    const service = createService();
+    const { write } = attachRunningHelper(service);
+    const accountIdentifier = '447700999999@c.us';
+    emitHelperStatus(
+      service,
+      readyStatus({
+        state: 'UNEXPECTED_AUTHENTICATION',
+        connected: true,
+        ready: true,
+        connectedAccount: accountIdentifier,
+        groups: [{ id: 'private-group', name: 'Private', isGroup: true, sourceType: 'group', isReadOnly: false, unreadCount: 1 }],
+        contacts: [{ id: 'private-contact', name: 'Private', isGroup: false, sourceType: 'contact', unreadCount: 1 }],
+        failureCode: 'UNEXPECTED_AUTHENTICATION',
+      }),
+    );
+
+    const status = await service.getStatus();
+    expect(status.state).toBe('UNEXPECTED_AUTHENTICATION');
+    expect(status.connected).toBe(false);
+    expect(status.ready).toBe(false);
+    expect(status.connectedAccount).toBeNull();
+    await expect(service.listGroups()).resolves.toEqual([]);
+    await expect(service.listContacts()).resolves.toEqual([]);
+    await service.refreshDiscoveredChats();
+    await service.manualBackfill(1);
+    await service.sendTestImage();
+    await service.probeAuthReadyLifecycle();
+    expect(write).not.toHaveBeenCalled();
+    expect(whatsAppSourceMappingService.persistLinkedWhatsAppAccount).not.toHaveBeenCalledWith(accountIdentifier);
+  });
+
+  it('does not start or auto-recover after an unexpected-authentication terminal state', async () => {
+    const service = createService();
+    (service as unknown as { certificationTerminal: boolean }).certificationTerminal = true;
+    (service as unknown as { helperStatus: WhatsAppHelperStatusSnapshot }).helperStatus = readyStatus({
+      state: 'UNEXPECTED_AUTHENTICATION',
+      connected: false,
+      ready: false,
+      connectedAccount: null,
+      failureCode: 'UNEXPECTED_AUTHENTICATION',
+    });
+    const startInternal = jest.spyOn(service as never, 'startInternal');
+
+    const status = await service.start();
+    expect(status.state).toBe('UNEXPECTED_AUTHENTICATION');
+    expect(startInternal).not.toHaveBeenCalled();
+  });
 });

@@ -25,6 +25,13 @@ import {
   WhatsAppHelperStatusSnapshot,
   WHATSAPP_HELPER_EVENT_PREFIX,
 } from './whatsapp-helper.types';
+import {
+  type AccountBoundSignal,
+  QrOnlyCertificationGuard,
+  UNEXPECTED_AUTHENTICATION,
+  isQrOnlyCertificationMode,
+  redactQrOnlyCertificationLog,
+} from './whatsapp-certification-guard';
 import { PatrolSourceType } from '@/common/enums/patrol-source-type.enum';
 import {
   getMessageSourceId,
@@ -102,6 +109,7 @@ const SMOKE_MODE = process.env.PATROL_HELPER_SMOKE === 'true';
 const CHAT_DISCOVERY_SMOKE_MODE = process.env.PATROL_HELPER_CHAT_DISCOVERY_SMOKE === 'true';
 const POST_AUTH_SMOKE_MODE = process.env.PATROL_HELPER_POST_AUTH_SMOKE === 'true';
 const LIVE_DEBUG_MODE = process.env.PATROL_HELPER_LIVE_DEBUG === 'true';
+const qrOnlyCertificationGuard = new QrOnlyCertificationGuard(isQrOnlyCertificationMode());
 const BROWSER_DUMP_IO = process.env.PATROL_HELPER_BROWSER_DUMPIO === 'true' || LIVE_DEBUG_MODE;
 const BACKFILL_MESSAGE_LIMIT = Number(process.env.PATROL_HELPER_BACKFILL_MESSAGE_LIMIT ?? 150);
 const COLLECTOR_LOG_MAX_BYTES = Number(process.env.PATROL_HELPER_LOG_MAX_BYTES ?? 20 * 1024 * 1024);
@@ -145,6 +153,7 @@ let activeBrowserLaunch: { executablePath: string; headless: boolean } | null = 
 let readinessFinalized = false;
 let activeClientInfoWatch: { cancelled: boolean; attemptId: number } | null = null;
 let liveMediaListenersAttached = false;
+let unexpectedAuthenticationShutdownStarted = false;
 let readyHeartbeatInterval: NodeJS.Timeout | null = null;
 let navigationReattachTimer: NodeJS.Timeout | null = null;
 let helperMutex: HelperMutexHandle | null = null;
@@ -233,7 +242,11 @@ function rotateCollectorLogIfNeeded(): void {
 }
 
 function appendCollectorLog(event: string, details?: string): void {
-  const line = `[${new Date().toISOString()}] ${event}${details ? ` ${details}` : ''}`;
+  const safeDetails =
+    qrOnlyCertificationGuard.currentState === 'DISABLED' || !details
+      ? details
+      : redactQrOnlyCertificationLog(details);
+  const line = `[${new Date().toISOString()}] ${event}${safeDetails ? ` ${safeDetails}` : ''}`;
   try {
     mkdirSync(path.dirname(COLLECTOR_LOG_PATH), { recursive: true });
     rotateCollectorLogIfNeeded();
@@ -766,6 +779,41 @@ function updateStatus(partial: Partial<WhatsAppHelperStatusSnapshot>, logEvent?:
     appendCollectorLog(logEvent, logDetails);
   }
   emitStatus();
+}
+
+function stopForUnexpectedAuthentication(signal: AccountBoundSignal): boolean {
+  if (!qrOnlyCertificationGuard.detectAccountBoundSignal(signal)) {
+    return false;
+  }
+
+  unexpectedAuthenticationShutdownStarted = true;
+  cancelClientInfoWatch();
+  clearReadinessTimers();
+  clearStartupTimeouts();
+  clearGroupDiscoveryTimers();
+  resetLiveMessageListenerState();
+  updateStatus(
+    {
+      state: UNEXPECTED_AUTHENTICATION,
+      connected: false,
+      ready: false,
+      connectedAccount: null,
+      groups: [],
+      contacts: [],
+      backfillRunning: false,
+      failureCode: UNEXPECTED_AUTHENTICATION,
+      info: 'Unexpected authenticated WhatsApp state detected during QR-only certification; collector stopped before account discovery.',
+      startupStage: 'QR-only certification stopped',
+      lastError: 'Unexpected authentication during QR-only certification.',
+      qrCode: null,
+      qrPayloadLength: null,
+    },
+    UNEXPECTED_AUTHENTICATION,
+    `signal=${signal}`,
+  );
+  resolveStartupOnce('failed');
+  setImmediate(() => void shutdown(2, { preserveTerminalState: true }));
+  return true;
 }
 
 function canWriteToSessionPath(): boolean {
@@ -1478,6 +1526,9 @@ async function finalizeClientReady(
     readySource: 'ready-event' | 'client-info-detected';
   },
 ): Promise<void> {
+  if (stopForUnexpectedAuthentication('client-identity')) {
+    return;
+  }
   if (shutdownRequested) {
     return;
   }
@@ -3412,7 +3463,10 @@ function scheduleChatDiscoveryAfterReady(reason: string): void {
   );
 }
 
-async function shutdown(exitCode = 0, options?: { operatorLogout?: boolean }): Promise<void> {
+async function shutdown(
+  exitCode = 0,
+  options?: { operatorLogout?: boolean; preserveTerminalState?: boolean },
+): Promise<void> {
   shutdownRequested = true;
   if (options?.operatorLogout) {
     operatorLogoutRequested = true;
@@ -3432,7 +3486,22 @@ async function shutdown(exitCode = 0, options?: { operatorLogout?: boolean }): P
   await closeBrowserGracefully(currentClient, 'shutdown');
 
   clearLatestQrPayload();
-  updateStatus({ state: 'idle', startupStage: 'Stopped', info: 'Patrol monitoring stopped.' }, 'collector-stop');
+  if (options?.preserveTerminalState && unexpectedAuthenticationShutdownStarted) {
+    updateStatus(
+      {
+        state: UNEXPECTED_AUTHENTICATION,
+        connected: false,
+        ready: false,
+        connectedAccount: null,
+        groups: [],
+        contacts: [],
+        failureCode: UNEXPECTED_AUTHENTICATION,
+      },
+      'certification-terminal-stop',
+    );
+  } else {
+    updateStatus({ state: 'idle', startupStage: 'Stopped', info: 'Patrol monitoring stopped.' }, 'collector-stop');
+  }
   try {
     helperMutex?.release();
   } catch {
@@ -3766,6 +3835,10 @@ async function runBrowserAttempt(
       return;
     }
 
+    if (stopForUnexpectedAuthentication('authenticated')) {
+      return;
+    }
+
     markQrScanDetected('authenticated-event', nextClient);
     markAuthenticationReached(startupAttemptId, nextClient);
     logLifecycleEvent('authenticated', `browser=${executablePath}`, nextClient, startupAttemptId);
@@ -3792,6 +3865,9 @@ async function runBrowserAttempt(
   });
 
   nextClient.on('change_state', (state: string) => {
+    if (/^CONNECTED$/i.test(state) && stopForUnexpectedAuthentication('CONNECTED')) {
+      return;
+    }
     logLifecycleEvent('change_state', `waState=${state}`, nextClient, startupAttemptId);
     if (/pairing|opening|connected|syncing/i.test(state)) {
       markQrScanDetected(`change_state:${state}`, nextClient);
@@ -3801,6 +3877,10 @@ async function runBrowserAttempt(
   nextClient.on('ready', async () => {
     if (startupAttemptId !== activeStartupAttemptId || nextClient !== client) {
       appendCollectorLog('ready-ignored-stale-attempt', describeClientIdentity(nextClient, startupAttemptId));
+      return;
+    }
+
+    if (stopForUnexpectedAuthentication('ready')) {
       return;
     }
 

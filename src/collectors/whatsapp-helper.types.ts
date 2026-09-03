@@ -9,6 +9,7 @@ export type CollectorState =
   | 'authenticated'
   | 'waiting-for-client-info'
   | 'ready'
+  | 'UNEXPECTED_AUTHENTICATION'
   | 'disconnected'
   | 'failed';
 
