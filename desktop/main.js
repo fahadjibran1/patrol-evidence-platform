@@ -10,6 +10,7 @@ const {
   getApiBaseUrlArgument,
   normalizeBackendPort,
 } = require('./runtime-contract');
+const { createDesktopProcessLifecycle } = require('./process-lifecycle');
 const { pathToFileURL } = require('url');
 const { Client } = require('pg');
 
@@ -58,6 +59,8 @@ const POSTGRES_ISSUE_CODES = {
 
 let mainWindow = null;
 let backendProcess = null;
+let backendStopOperation = null;
+const processLifecycle = createDesktopProcessLifecycle();
 let backendState = {
   status: 'stopped',
   startedAt: null,
@@ -83,6 +86,10 @@ let backendRestartInProgress = false;
 let backendPortRecoveryInProgress = false;
 let backendListeningDetected = false;
 let backendHealthCheckGeneration = 0;
+
+function notifyDesktopState() {
+  return processLifecycle.notifyRenderer(mainWindow, 'desktop:backend-status', getDesktopState());
+}
 
 const DEFAULT_BACKEND_HEALTH_TIMEOUT_MS = 30_000;
 const MIN_PACKAGED_BACKEND_HEALTH_TIMEOUT_MS = 90_000;
@@ -892,7 +899,7 @@ async function adoptExistingHealthyBackendIfAvailable() {
     lastExitAt: backendState.lastExitAt,
     pid: existingPid ?? backendProcess?.pid ?? null,
   };
-  mainWindow?.webContents.send('desktop:backend-status', getDesktopState());
+  notifyDesktopState();
   return true;
 }
 
@@ -1632,7 +1639,7 @@ function scheduleBackendRecoveryProbe(deadlineMs = BACKEND_RECOVERY_WINDOW_MS) {
           ...backendState,
           status: 'ready',
         };
-        mainWindow?.webContents.send('desktop:backend-status', getDesktopState());
+        notifyDesktopState();
         if (isShowingFrontendFallback) {
           reloadFrontendAfterBackendRecovery(getSetupRecoveryRouteHash());
         }
@@ -2044,7 +2051,7 @@ async function startBackend() {
         pid: null,
       };
       backendExitDetails = { code: 1, signal: null };
-      mainWindow?.webContents.send('desktop:backend-status', getDesktopState());
+      notifyDesktopState();
       renderStartupFailurePage(
         'Patrol Evidence Platform – Frontend Load Failed',
         'failed-to-start-local-backend',
@@ -2094,7 +2101,7 @@ async function startBackend() {
     lastExitAt: backendState.lastExitAt,
     pid: backendProcess.pid ?? null,
   };
-  mainWindow?.webContents.send('desktop:backend-status', getDesktopState());
+  notifyDesktopState();
 
   const healthTimeoutMs = resolveBackendHealthTimeoutMs();
   void waitForBackendReady(healthTimeoutMs, healthCheckGeneration)
@@ -2110,7 +2117,7 @@ async function startBackend() {
         status: 'ready',
         pid: backendProcess?.pid ?? backendState.pid,
       };
-      mainWindow?.webContents.send('desktop:backend-status', getDesktopState());
+      notifyDesktopState();
 
       if (backendRestartInProgress && isShowingFrontendFallback) {
         reloadFrontendAfterBackendRecovery(getSetupRecoveryRouteHash());
@@ -2133,7 +2140,7 @@ async function startBackend() {
         ...backendState,
         status: 'error',
       };
-      mainWindow?.webContents.send('desktop:backend-status', getDesktopState());
+      notifyDesktopState();
       if (app.isPackaged && !backendRestartInProgress) {
         renderBackendFailurePage('backend-health-check-failed', error instanceof Error ? error.message : String(error));
         scheduleBackendRecoveryProbe();
@@ -2180,7 +2187,11 @@ function attachBackendProcessHandlers(child, healthCheckGeneration) {
   });
 
   child.on('exit', (code, signal) => {
-    const isCurrentProcess = backendProcess === child;
+    const exitDisposition = processLifecycle.classifyChildExit(child, backendProcess, {
+      restarting: backendRestartInProgress,
+      recoveringPort: backendPortRecoveryInProgress,
+    });
+    const isCurrentProcess = exitDisposition.current;
     appendDesktopLog(
       'Backend process exited',
       `pid=${child.pid ?? 'unknown'} code=${code} signal=${signal} current=${isCurrentProcess} restarting=${backendRestartInProgress}`,
@@ -2207,12 +2218,12 @@ function attachBackendProcessHandlers(child, healthCheckGeneration) {
       pid: null,
     };
     backendProcess = null;
-    mainWindow?.webContents.send('desktop:backend-status', getDesktopState());
+    notifyDesktopState();
 
-    if (backendRestartInProgress || backendPortRecoveryInProgress) {
+    if (exitDisposition.expected) {
       appendDesktopLog(
-        'backend-process-exit-ignored-during-restart',
-        `pid=${child.pid ?? 'unknown'} code=${code} signal=${signal}`,
+        'backend-process-exit-expected',
+        `pid=${child.pid ?? 'unknown'} code=${code} signal=${signal} quitting=${processLifecycle.isQuitting()}`,
       );
       return;
     }
@@ -2257,6 +2268,11 @@ function stopBackend() {
   }
 
   const child = backendProcess;
+  if (backendStopOperation?.child === child) {
+    return backendStopOperation.promise;
+  }
+
+  processLifecycle.expectChildExit(child);
   backendState = {
     status: 'stopped',
     startedAt: backendState.startedAt,
@@ -2264,7 +2280,7 @@ function stopBackend() {
     pid: child.pid ?? null,
   };
 
-  return new Promise((resolve) => {
+  const promise = new Promise((resolve) => {
     let settled = false;
 
     const finish = () => {
@@ -2282,6 +2298,9 @@ function stopBackend() {
         lastExitAt: new Date().toISOString(),
         pid: null,
       };
+      if (backendStopOperation?.child === child) {
+        backendStopOperation = null;
+      }
       resolve();
     };
 
@@ -2300,6 +2319,8 @@ function stopBackend() {
 
     child.kill();
   });
+  backendStopOperation = { child, promise };
+  return promise;
 }
 
 async function restartBackend() {
@@ -2310,7 +2331,7 @@ async function restartBackend() {
     status: 'starting',
     pid: null,
   };
-  mainWindow?.webContents.send('desktop:backend-status', getDesktopState());
+  notifyDesktopState();
 
   if (app.isPackaged) {
     renderBackendRestartingPage();
@@ -2510,7 +2531,8 @@ if (handleSquirrelEvent()) {
 
   app.on('before-quit', () => {
     appendDesktopLog('Electron before-quit');
-    stopBackend();
+    processLifecycle.beginQuit();
+    void stopBackend();
   });
 
   ipcMain.handle('desktop:get-state', async () => getDesktopState());
@@ -2578,7 +2600,7 @@ if (handleSquirrelEvent()) {
     return getDesktopState();
   });
   ipcMain.handle('desktop:stop-backend', async () => {
-    stopBackend();
+    await stopBackend();
     return getDesktopState();
   });
   ipcMain.handle('desktop:open-external', async (_event, targetUrl) => {
