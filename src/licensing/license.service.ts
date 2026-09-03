@@ -133,6 +133,7 @@ export class LicenseService {
     saveCommercialLicence(licence);
     // Clear legacy TG1 store so commercial evaluation takes priority cleanly.
     clearActivatedLicense();
+    this.evaluationService.invalidate();
     this.logger.log(
       `LICENSE_IMPORT_SUCCESS licenceId=${verification.payload.licenceId} plan=${verification.payload.plan}`,
     );
@@ -167,6 +168,7 @@ export class LicenseService {
 
     clearCommercialLicence();
     clearActivatedLicense();
+    this.evaluationService.invalidate();
     this.logger.log('LICENSE_DEACTIVATED');
     return this.getStatus();
   }
@@ -186,6 +188,7 @@ export class LicenseService {
     }
 
     this.trialService.resetTrialForDevelopment();
+    this.evaluationService.invalidate();
     return { ok: true };
   }
 

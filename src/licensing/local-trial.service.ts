@@ -10,6 +10,8 @@ import { InstallationIdentityService } from './installation-identity.service';
 const TRIAL_FILE_NAME = 'trial.dpapi';
 const TRIAL_DAYS = 30;
 const CLOCK_ROLLBACK_MS = 24 * 60 * 60 * 1000;
+/** Limits disk/DPAPI writes while losing at most five minutes of rollback history on abrupt shutdown. */
+export const TRIAL_LAST_SEEN_PERSIST_INTERVAL_MS = 5 * 60 * 1000;
 const REGISTRY_KEY = 'HKCU\\Software\\TechGuard\\PatrolEvidencePlatform';
 const REGISTRY_VALUE = 'TrialMarker';
 
@@ -27,6 +29,11 @@ export interface TrialBootstrapDiagnostics {
 export class LocalTrialService {
   private readonly logger = new Logger(LocalTrialService.name);
   private lastBootstrapError: string | null = null;
+  private cachedTrialRecord: LocalTrialRecord | null = null;
+  private cachedTrialPath: string | null = null;
+  private lastObservedAtMs = 0;
+  private persistedLastSeenAtMs = 0;
+  private stateRevision = 0;
 
   constructor(private readonly identityService: InstallationIdentityService) {}
 
@@ -37,6 +44,10 @@ export class LocalTrialService {
 
   getLastBootstrapError(): string | null {
     return this.lastBootstrapError;
+  }
+
+  getStateRevision(): number {
+    return this.stateRevision;
   }
 
   getDiagnostics(): TrialBootstrapDiagnostics {
@@ -155,10 +166,19 @@ export class LocalTrialService {
       return null;
     }
 
+    if (this.cachedTrialRecord && this.cachedTrialPath === filePath) {
+      return { ...this.cachedTrialRecord };
+    }
+
     try {
       const encrypted = readFileSync(filePath);
       const plain = this.decrypt(encrypted);
-      return JSON.parse(plain.toString('utf8')) as LocalTrialRecord;
+      const record = JSON.parse(plain.toString('utf8')) as LocalTrialRecord;
+      this.cachedTrialPath = filePath;
+      this.cachedTrialRecord = { ...record };
+      this.persistedLastSeenAtMs = Date.parse(record.lastSeenAt) || 0;
+      this.lastObservedAtMs = Math.max(this.lastObservedAtMs, this.persistedLastSeenAtMs);
+      return { ...record };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.lastBootstrapError = `Failed to read trial record: ${message}`;
@@ -195,7 +215,7 @@ export class LocalTrialService {
   }
 
   detectClockRollback(record: LocalTrialRecord, now = new Date()): boolean {
-    const lastSeen = Date.parse(record.lastSeenAt);
+    const lastSeen = Math.max(Date.parse(record.lastSeenAt), this.lastObservedAtMs);
     if (!Number.isFinite(lastSeen)) {
       return false;
     }
@@ -227,6 +247,11 @@ export class LocalTrialService {
     }
 
     this.deleteRegistryTrialMarker();
+    this.cachedTrialRecord = null;
+    this.cachedTrialPath = null;
+    this.lastObservedAtMs = 0;
+    this.persistedLastSeenAtMs = 0;
+    this.stateRevision += 1;
     this.lastBootstrapError = null;
     this.logger.warn('LOCAL_TRIAL_DEV_RESET');
   }
@@ -250,11 +275,19 @@ export class LocalTrialService {
       return record;
     }
 
+    const now = Date.now();
+    this.lastObservedAtMs = Math.max(this.lastObservedAtMs, now);
     const updated: LocalTrialRecord = {
       ...record,
-      lastSeenAt: new Date().toISOString(),
+      lastSeenAt: new Date(now).toISOString(),
     };
-    this.persistTrialRecord(updated);
+    const persistedAt = this.persistedLastSeenAtMs || Date.parse(record.lastSeenAt);
+    if (!Number.isFinite(persistedAt) || now - persistedAt >= TRIAL_LAST_SEEN_PERSIST_INTERVAL_MS) {
+      this.persistTrialRecord(updated);
+    } else {
+      this.cachedTrialRecord = { ...updated };
+      this.cachedTrialPath = this.getTrialFilePath();
+    }
     return updated;
   }
 
@@ -267,6 +300,11 @@ export class LocalTrialService {
     mkdirSync(path.dirname(filePath), { recursive: true });
     const encrypted = this.encrypt(Buffer.from(JSON.stringify(record), 'utf8'));
     writeFileSync(filePath, encrypted);
+    this.cachedTrialPath = filePath;
+    this.cachedTrialRecord = { ...record };
+    this.persistedLastSeenAtMs = Date.parse(record.lastSeenAt) || 0;
+    this.lastObservedAtMs = Math.max(this.lastObservedAtMs, this.persistedLastSeenAtMs);
+    this.stateRevision += 1;
   }
 
   private encrypt(plain: Buffer): Buffer {

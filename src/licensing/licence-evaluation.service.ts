@@ -17,12 +17,45 @@ import { verifyCommercialLicence } from '@patrol/license-core';
 
 @Injectable()
 export class LicenceEvaluationService {
+  static readonly CACHE_TTL_MS = 2_000;
+  private cachedEvaluation: { value: LicenceEvaluation; expiresAt: number; trialRevision: number } | null = null;
+
   constructor(
     private readonly identityService: InstallationIdentityService,
     private readonly trialService: LocalTrialService,
   ) {}
 
   evaluate(options?: {
+    commercial?: SignedCommercialLicence | null;
+    skipTrialCreation?: boolean;
+  }): LicenceEvaluation {
+    const cacheable = options === undefined;
+    const now = Date.now();
+    if (
+      cacheable &&
+      this.cachedEvaluation &&
+      now < this.cachedEvaluation.expiresAt &&
+      this.cachedEvaluation.trialRevision === this.trialService.getStateRevision()
+    ) {
+      return this.cachedEvaluation.value;
+    }
+
+    const evaluation = this.evaluateUncached(options);
+    if (cacheable) {
+      this.cachedEvaluation = {
+        value: evaluation,
+        expiresAt: Date.now() + LicenceEvaluationService.CACHE_TTL_MS,
+        trialRevision: this.trialService.getStateRevision(),
+      };
+    }
+    return evaluation;
+  }
+
+  invalidate(): void {
+    this.cachedEvaluation = null;
+  }
+
+  private evaluateUncached(options?: {
     commercial?: SignedCommercialLicence | null;
     skipTrialCreation?: boolean;
   }): LicenceEvaluation {

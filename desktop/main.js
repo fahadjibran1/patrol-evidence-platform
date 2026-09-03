@@ -4,6 +4,12 @@ const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const crypto = require('crypto');
+const {
+  DEFAULT_BACKEND_PORT,
+  getApiBaseUrl: formatApiBaseUrl,
+  getApiBaseUrlArgument,
+  normalizeBackendPort,
+} = require('./runtime-contract');
 const { pathToFileURL } = require('url');
 const { Client } = require('pg');
 
@@ -32,7 +38,6 @@ const PRODUCT_METADATA = {
   supportEmail: packageMetadata.supportEmail || 'support@techguardsecurity.com',
 };
 
-const DEFAULT_BACKEND_PORT = 3001;
 const DEFAULT_WEB_URL = 'http://localhost:5173';
 const BACKEND_HEALTH_PATH = '/health';
 const CONFIG_FILE_NAME = 'workspace-config.json';
@@ -633,11 +638,11 @@ function writeWorkspaceConfig(nextConfig) {
 
 function getBackendPort() {
   const config = readWorkspaceConfig();
-  return Number(config.backendPort || DEFAULT_BACKEND_PORT);
+  return normalizeBackendPort(config.backendPort);
 }
 
 function getApiBaseUrl() {
-  return `http://localhost:${getBackendPort()}`;
+  return formatApiBaseUrl(getBackendPort());
 }
 
 function getBackendHealthUrl() {
@@ -2018,7 +2023,8 @@ async function startBackend() {
     `mode=${app.isPackaged ? 'packaged' : 'dev'} port=${env.PORT} cwd=${cwd} dbType=${env.DB_TYPE} sqlite=${env.SQLITE_DB_PATH} storage=${env.STORAGE_ROOT_PATH} whatsappSession=${env.WHATSAPP_SESSION_PATH}`,
   );
 
-  if (app.isPackaged) {
+  const useCompiledBackend = app.isPackaged || process.env.DESKTOP_DEV !== 'true';
+  if (useCompiledBackend) {
     const backendResolution = resolveBackendEntryDetails();
     const entryPoint = backendResolution.resolved;
     backendEntryPoint = entryPoint;
@@ -2042,7 +2048,7 @@ async function startBackend() {
       renderStartupFailurePage(
         'Patrol Evidence Platform – Frontend Load Failed',
         'failed-to-start-local-backend',
-        'Packaged backend entry file was not found. Expected resources/app/dist/main.js (Nest production build).',
+        'Compiled backend entry file was not found. Run npm run build before launching the desktop application.',
       );
       return;
     }
@@ -2353,6 +2359,7 @@ async function createMainWindow() {
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
+      additionalArguments: [getApiBaseUrlArgument(getBackendPort())],
       contextIsolation: true,
       nodeIntegration: false,
     },

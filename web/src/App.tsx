@@ -74,6 +74,18 @@ export function App(): JSX.Element {
       return;
     }
 
+    const onSetupCompleted = (): void => {
+      setBootstrapStatus((current) => current ? { ...current, setupCompleted: true } : current);
+    };
+    window.addEventListener('patrol:desktop-setup-completed', onSetupCompleted);
+    return () => window.removeEventListener('patrol:desktop-setup-completed', onSetupCompleted);
+  }, []);
+
+  useEffect(() => {
+    if (!isDesktopApp()) {
+      return;
+    }
+
     const timeout = window.setTimeout(() => {
       setStartupTimeoutReached(true);
     }, 10_000);
@@ -247,13 +259,13 @@ export function App(): JSX.Element {
   }
 
   const setupCompleted = bootstrapStatus?.setupCompleted === true;
-  const shouldForceDesktopSetup = isDesktopApp() && !token && !setupCompleted;
+  const shouldForceDesktopSetup = isDesktopApp() && !setupCompleted;
 
   return (
     <Routes>
       <Route
         path="/desktop/setup"
-        element={token ? <Navigate to="/" replace /> : <DesktopSetupPage />}
+        element={setupCompleted && token ? <Navigate to="/" replace /> : <DesktopSetupPage />}
       />
       <Route path="/license" element={<LicensePage />} />
       <Route
@@ -263,13 +275,17 @@ export function App(): JSX.Element {
       <Route
         path="/"
         element={
-          <ProtectedRoute token={token}>
-            <LicenseRouteGate>
-              <MonitoringProvider>
-                <AppLayout />
-              </MonitoringProvider>
-            </LicenseRouteGate>
-          </ProtectedRoute>
+          shouldForceDesktopSetup ? (
+            <Navigate to="/desktop/setup" replace />
+          ) : (
+            <ProtectedRoute token={token}>
+              <LicenseRouteGate>
+                <MonitoringProvider>
+                  <AppLayout />
+                </MonitoringProvider>
+              </LicenseRouteGate>
+            </ProtectedRoute>
+          )
         }
       >
         <Route index element={<DashboardPage />} />

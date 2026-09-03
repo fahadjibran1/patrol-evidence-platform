@@ -1,8 +1,11 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+const apiBaseUrlArgument = process.argv.find((value) => value.startsWith('--patrol-api-base-url='));
+const apiBaseUrl = apiBaseUrlArgument?.slice('--patrol-api-base-url='.length) || 'http://localhost:3001';
+
 contextBridge.exposeInMainWorld('desktopBridge', {
   isDesktop: true,
-  apiBaseUrl: 'http://localhost:3001',
+  apiBaseUrl,
   getState: () => ipcRenderer.invoke('desktop:get-state'),
   chooseStoragePath: () => ipcRenderer.invoke('desktop:choose-storage-path'),
   saveConfig: (partialConfig) => ipcRenderer.invoke('desktop:save-config', partialConfig),

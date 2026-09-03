@@ -194,6 +194,64 @@ export function AuthProvider({ children }: PropsWithChildren): JSX.Element {
     };
   }, []);
 
+  const refresh = useCallback(async (): Promise<void> => {
+    const access = sessionRef.current?.accessToken ?? token;
+    const currentRefresh = sessionRef.current?.refreshToken ?? refreshToken;
+    if (!access && !currentRefresh) {
+      setUser(null);
+      return;
+    }
+
+    try {
+      if (access) {
+        const refreshedUser = await apiRequest<AuthUser>('/auth/me', {}, access, { skipRefresh: true });
+        setUser(refreshedUser);
+        setConnectionState('online');
+        if (sessionRef.current) {
+          await persistSession({ ...sessionRef.current, user: refreshedUser });
+        }
+        return;
+      }
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401 && currentRefresh) {
+        try {
+          const nextAccess = await refreshAccessToken();
+          if (!nextAccess) {
+            return;
+          }
+          const refreshedUser = await apiRequest<AuthUser>('/auth/me', {}, nextAccess, { skipRefresh: true });
+          setUser(refreshedUser);
+          setConnectionState('online');
+          return;
+        } catch (refreshError) {
+          if (isTemporaryFailure(refreshError)) {
+            setConnectionState('reconnecting');
+            return;
+          }
+          throw refreshError;
+        }
+      }
+
+      if (isTemporaryFailure(error)) {
+        console.warn('[auth] AUTH_REFRESH_TEMPORARY_FAILURE');
+        setConnectionState('reconnecting');
+        return;
+      }
+
+      if (isPermanentAuthFailure(error)) {
+        if (error instanceof ApiError && error.status === 403) {
+          console.warn('[auth] AUTH_ACCOUNT_DISABLED');
+        }
+        await clearSession('AUTH_SESSION_REVOKED');
+      }
+      return;
+    }
+
+    if (currentRefresh) {
+      await refreshAccessToken();
+    }
+  }, [clearSession, persistSession, refreshAccessToken, refreshToken, token]);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
@@ -235,63 +293,7 @@ export function AuthProvider({ children }: PropsWithChildren): JSX.Element {
         console.info('[auth] AUTH_EXPLICIT_LOGOUT');
         await clearSession('AUTH_EXPLICIT_LOGOUT');
       },
-      async refresh() {
-        const access = sessionRef.current?.accessToken ?? token;
-        const currentRefresh = sessionRef.current?.refreshToken ?? refreshToken;
-        if (!access && !currentRefresh) {
-          setUser(null);
-          return;
-        }
-
-        try {
-          if (access) {
-            const refreshedUser = await apiRequest<AuthUser>('/auth/me', {}, access, { skipRefresh: true });
-            setUser(refreshedUser);
-            setConnectionState('online');
-            if (sessionRef.current) {
-              await persistSession({ ...sessionRef.current, user: refreshedUser });
-            }
-            return;
-          }
-        } catch (error) {
-          if (error instanceof ApiError && error.status === 401 && currentRefresh) {
-            try {
-              const nextAccess = await refreshAccessToken();
-              if (!nextAccess) {
-                return;
-              }
-              const refreshedUser = await apiRequest<AuthUser>('/auth/me', {}, nextAccess, { skipRefresh: true });
-              setUser(refreshedUser);
-              setConnectionState('online');
-              return;
-            } catch (refreshError) {
-              if (isTemporaryFailure(refreshError)) {
-                setConnectionState('reconnecting');
-                return;
-              }
-              throw refreshError;
-            }
-          }
-
-          if (isTemporaryFailure(error)) {
-            console.warn('[auth] AUTH_REFRESH_TEMPORARY_FAILURE');
-            setConnectionState('reconnecting');
-            return;
-          }
-
-          if (isPermanentAuthFailure(error)) {
-            if (error instanceof ApiError && error.status === 403) {
-              console.warn('[auth] AUTH_ACCOUNT_DISABLED');
-            }
-            await clearSession('AUTH_SESSION_REVOKED');
-          }
-          return;
-        }
-
-        if (currentRefresh) {
-          await refreshAccessToken();
-        }
-      },
+      refresh,
       async ensureFreshAccessToken() {
         const access = sessionRef.current?.accessToken ?? token;
         if (access) {
@@ -307,6 +309,7 @@ export function AuthProvider({ children }: PropsWithChildren): JSX.Element {
       isLoading,
       persistSession,
       refreshAccessToken,
+      refresh,
       refreshToken,
       token,
       user,

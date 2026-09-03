@@ -6,6 +6,7 @@ import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { validateSqliteNativeModule } from './config/validate-sqlite-native';
+import { resolveBackendListenConfig } from './config/backend-listen.config';
 
 /** Binary patrol images up to 25MB need ~34MB+ as base64 inside JSON. */
 const PATROL_IMAGE_MAX_BYTES = 25 * 1024 * 1024;
@@ -89,8 +90,13 @@ async function bootstrap(): Promise<void> {
   app.enableShutdownHooks();
   writeBackendRuntimeLog('bootstrap:pipes-ready');
 
-  await app.listen(process.env.PORT ?? 3000);
-  writeBackendRuntimeLog('bootstrap:listening', `port=${process.env.PORT ?? 3000}`);
+  const listen = resolveBackendListenConfig();
+  if (listen.host) {
+    await app.listen(listen.port, listen.host);
+  } else {
+    await app.listen(listen.port);
+  }
+  writeBackendRuntimeLog('bootstrap:listening', `host=${listen.host ?? 'default'} port=${listen.port}`);
 }
 
 void bootstrap();

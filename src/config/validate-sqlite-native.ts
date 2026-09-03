@@ -21,7 +21,13 @@ export function validateSqliteNativeModule(): void {
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    require('better-sqlite3');
+    const Database = require('better-sqlite3');
+    const database = new Database(':memory:');
+    const result = database.prepare('SELECT 1 AS value').get() as { value?: number };
+    database.close();
+    if (result.value !== 1) {
+      throw new Error('Native SQLite validation returned an unexpected query result.');
+    }
   } catch (error) {
     if (isNativeModuleMismatchError(error)) {
       const runtimeModules = process.versions.modules;

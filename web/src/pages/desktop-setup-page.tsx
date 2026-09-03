@@ -915,7 +915,7 @@ export function DesktopSetupPage(): JSX.Element {
     }
   }
 
-  async function finishSetup(): Promise<void> {
+  async function finishSetup(requireMonitoringConfiguration = true): Promise<void> {
     if (!token) {
       return;
     }
@@ -924,11 +924,11 @@ export function DesktopSetupPage(): JSX.Element {
     setError(null);
 
     try {
-      if (!hasMappedSources) {
+      if (requireMonitoringConfiguration && !hasMappedSources) {
         throw new Error('Map at least one WhatsApp group or contact before finishing setup.');
       }
 
-      if (schedules.length === 0) {
+      if (requireMonitoringConfiguration && schedules.length === 0) {
         throw new Error('Save a patrol schedule before finishing setup.');
       }
 
@@ -946,6 +946,7 @@ export function DesktopSetupPage(): JSX.Element {
       sessionStorage.removeItem(DESKTOP_SETUP_STEP_KEY);
       sessionStorage.removeItem(DESKTOP_SETUP_STORAGE_APPLIED_KEY);
       setSuccess('Setup complete. Opening dashboard…');
+      window.dispatchEvent(new Event('patrol:desktop-setup-completed'));
       navigate('/');
     } catch (finishError) {
       setError(finishError instanceof Error ? finishError.message : 'Failed to complete setup');
@@ -1198,6 +1199,14 @@ export function DesktopSetupPage(): JSX.Element {
                   onClick={() => void openDesktopPath(collectorStatus.collectorLogPath)}
                 >
                   Open debug log
+                </button>
+                <button
+                  type="button"
+                  className="secondary-button setup-action-button"
+                  disabled={isBusy}
+                  onClick={() => void finishSetup(false)}
+                >
+                  Set up WhatsApp later
                 </button>
                 <button type="button" className="secondary-button setup-action-button" onClick={() => setStep('site-setup')}>
                   Continue to site &amp; mapping
@@ -1723,7 +1732,7 @@ export function DesktopSetupPage(): JSX.Element {
               <button type="button" className="primary-button" disabled={isBusy} onClick={() => void runConfigurationTest()}>
                 Send test / check configuration
               </button>
-              <button type="button" className="secondary-button" disabled={isBusy} onClick={() => void finishSetup()}>
+              <button type="button" className="secondary-button" disabled={isBusy} onClick={() => void finishSetup(true)}>
                 Finish setup and open dashboard
               </button>
             </div>

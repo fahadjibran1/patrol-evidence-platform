@@ -102,7 +102,13 @@ function probeBetterSqlite3Load(runtime = 'electron') {
   const probePath = path.join(projectRoot, 'scripts', '.tmp-sqlite-load-probe.js');
   const probeSource = `
 try {
-  require('better-sqlite3');
+  const Database = require('better-sqlite3');
+  const database = new Database(':memory:');
+  const result = database.prepare('SELECT 1 AS value').get();
+  database.close();
+  if (result?.value !== 1) {
+    throw new Error('Unexpected SQLite query result');
+  }
   console.log('OK');
 } catch (error) {
   console.log(error instanceof Error ? error.message : String(error));
@@ -115,7 +121,13 @@ try {
   try {
     if (runtime === 'node') {
       try {
-        require('better-sqlite3');
+        const Database = require('better-sqlite3');
+        const database = new Database(':memory:');
+        const result = database.prepare('SELECT 1 AS value').get();
+        database.close();
+        if (result?.value !== 1) {
+          throw new Error('Unexpected SQLite query result');
+        }
         return { ok: true, error: null };
       } catch (error) {
         return { ok: false, error };

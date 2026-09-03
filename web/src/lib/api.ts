@@ -1,5 +1,6 @@
 import type { ApiErrorPayload } from '../types';
 import { getDesktopApiBaseUrl } from './desktop';
+import { createTimedSignal, LOCAL_API_TIMEOUT_MS } from './api-timeout';
 
 export class ApiError extends Error {
   status: number;
@@ -87,13 +88,23 @@ export async function apiRequest<T>(
   }
 
   let response: Response;
+  const timedSignal = createTimedSignal(init.signal);
   try {
     response = await fetch(`${getApiBaseUrl()}${path}`, {
       ...init,
       headers,
+      signal: timedSignal.signal,
     });
   } catch (error) {
+    if (timedSignal.didTimeout()) {
+      throw new ApiError(
+        `The local Patrol Evidence service did not respond within ${LOCAL_API_TIMEOUT_MS / 1000} seconds. Retry after the desktop backend is ready.`,
+        408,
+      );
+    }
     throw new ApiError(error instanceof Error ? error.message : 'Network request failed', 0);
+  } finally {
+    timedSignal.cleanup();
   }
 
   if (response.status === 401 && token && !options?.skipRefresh && !path.includes('/auth/refresh') && !path.includes('/auth/login')) {
