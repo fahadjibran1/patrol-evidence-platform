@@ -5,7 +5,7 @@ describe('desktop auth refresh contract', () => {
   it('keeps refresh outside the context value and memoizes its identity', () => {
     const source = readFileSync(path.join(process.cwd(), 'web', 'src', 'state', 'auth.tsx'), 'utf8');
     expect(source).toMatch(/const refresh = useCallback\(/);
-    expect(source).toMatch(/\n\s+refresh,\n/);
+    expect(source).toMatch(/\r?\n\s+refresh,\r?\n/);
     expect(source).not.toMatch(/async refresh\(\)\s*\{/);
   });
 
