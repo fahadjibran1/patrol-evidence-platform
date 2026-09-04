@@ -1,4 +1,12 @@
-import { BadRequestException, Injectable, Logger, OnModuleDestroy, OnModuleInit, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  OnModuleDestroy,
+  OnModuleInit,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { SimulateLiveImageIngestDto } from './dto/simulate-live-image-ingest.dto';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
@@ -33,6 +41,7 @@ import {
   QR_ONLY_CERTIFICATION_PROCESS_MARKER,
   UNEXPECTED_AUTHENTICATION,
   isQrOnlyCertificationMode,
+  redactQrOnlyCertificationLog,
 } from './whatsapp-certification-guard';
 
 export type { WhatsAppCollectorContact, WhatsAppCollectorGroup } from './whatsapp-helper.types';
@@ -41,6 +50,11 @@ export interface WhatsAppCollectorStatus extends Omit<WhatsAppHelperStatusSnapsh
   collectorLogTail: string[];
   mappedGroupsCount: number;
   pilotGroupName: string | null;
+}
+
+export interface WhatsAppCertificationAuthorizationResult {
+  authorized: boolean;
+  state: 'DISABLED' | 'EXPECTING_QR_ONLY' | 'AUTHENTICATION_AUTHORIZED' | typeof UNEXPECTED_AUTHENTICATION;
 }
 
 @Injectable()
@@ -69,6 +83,18 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
   private stoppingHelper = false;
   private chatDiscoveryRefreshCooldownUntil = 0;
   private certificationTerminal = false;
+  private certificationAuthorizationRequested = false;
+  private certificationAuthorizationState:
+    | 'DISABLED'
+    | 'EXPECTING_QR_ONLY'
+    | 'AUTHENTICATION_AUTHORIZED'
+    | typeof UNEXPECTED_AUTHENTICATION = isQrOnlyCertificationMode() ? 'EXPECTING_QR_ONLY' : 'DISABLED';
+  private pendingCertificationAuthorization:
+    | {
+        resolve: (result: WhatsAppCertificationAuthorizationResult) => void;
+        timer: NodeJS.Timeout;
+      }
+    | null = null;
   private helperStatus: WhatsAppHelperStatusSnapshot;
 
   constructor(
@@ -208,6 +234,9 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
   async stop(): Promise<WhatsAppCollectorStatus> {
     await this.stopHelperProcess();
     this.certificationTerminal = false;
+    this.clearPendingCertificationAuthorization();
+    this.certificationAuthorizationRequested = false;
+    this.certificationAuthorizationState = isQrOnlyCertificationMode() ? 'EXPECTING_QR_ONLY' : 'DISABLED';
     this.helperStatus = this.buildDefaultStatus({
       state: this.enabled ? 'idle' : 'disabled',
       info: 'Patrol monitoring stopped.',
@@ -219,6 +248,44 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       contacts: [],
     });
     return this.getStatus();
+  }
+
+  async authorizeCertificationAuthentication(): Promise<WhatsAppCertificationAuthorizationResult> {
+    if (!isQrOnlyCertificationMode()) {
+      throw new NotFoundException('WhatsApp certification authorization is unavailable.');
+    }
+    if (
+      this.certificationTerminal ||
+      this.certificationAuthorizationState === UNEXPECTED_AUTHENTICATION ||
+      this.helperStatus.state === UNEXPECTED_AUTHENTICATION
+    ) {
+      throw new BadRequestException('The certification session is terminal and cannot be authorized.');
+    }
+    if (!this.isHelperRunning() || this.helperStatus.state !== 'qr-ready') {
+      throw new BadRequestException('A QR-ready certification helper session is required.');
+    }
+    if (
+      this.certificationAuthorizationRequested ||
+      this.certificationAuthorizationState !== 'EXPECTING_QR_ONLY'
+    ) {
+      throw new BadRequestException('Certification authentication authorization is not available in the current state.');
+    }
+
+    this.certificationAuthorizationRequested = true;
+    this.appendCollectorLog('WHATSAPP_CERTIFICATION_AUTHORIZATION_REQUESTED');
+    const resultPromise = new Promise<WhatsAppCertificationAuthorizationResult>((resolve) => {
+      const timer = setTimeout(() => {
+        this.pendingCertificationAuthorization = null;
+        this.certificationAuthorizationRequested = false;
+        resolve({ authorized: false, state: this.certificationAuthorizationState });
+      }, 2_000);
+      this.pendingCertificationAuthorization = { resolve, timer };
+    });
+    this.sendHelperCommand({
+      type: 'authorize-certification-authentication',
+      explicitOperatorAuthorization: true,
+    });
+    return resultPromise;
   }
 
   async resetSession(): Promise<WhatsAppCollectorStatus> {
@@ -545,6 +612,9 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async startInternal(): Promise<WhatsAppCollectorStatus> {
+    this.clearPendingCertificationAuthorization();
+    this.certificationAuthorizationRequested = false;
+    this.certificationAuthorizationState = isQrOnlyCertificationMode() ? 'EXPECTING_QR_ONLY' : 'DISABLED';
     this.helperStatus = this.buildDefaultStatus({
       state: 'starting',
       info: 'Patrol monitoring starting...',
@@ -612,6 +682,7 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
     });
 
     child.on('exit', (code, signal) => {
+      this.clearPendingCertificationAuthorization();
       this.stopHelperProcessStreams();
       this.appendCollectorLog('helper-exit', `code=${code} signal=${signal}`);
       this.helperProcess = null;
@@ -720,6 +791,25 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
     const payloadText = trimmed.slice(WHATSAPP_HELPER_EVENT_PREFIX.length);
     try {
       const event = JSON.parse(payloadText) as WhatsAppHelperEvent;
+      if (event.type === 'certification-authorization-result') {
+        this.certificationAuthorizationState = event.payload.state;
+        this.certificationAuthorizationRequested = false;
+        if (event.payload.authorized) {
+          this.appendCollectorLog('WHATSAPP_CERTIFICATION_AUTHORIZED');
+        } else {
+          this.appendCollectorLog('WHATSAPP_CERTIFICATION_AUTHORIZATION_REJECTED');
+        }
+        const pending = this.pendingCertificationAuthorization;
+        this.pendingCertificationAuthorization = null;
+        if (pending) {
+          clearTimeout(pending.timer);
+          pending.resolve({
+            authorized: event.payload.authorized,
+            state: event.payload.state,
+          });
+        }
+        return;
+      }
       if (event.type === 'status') {
         const previousQr = this.helperStatus.qrCode;
         const previousConnectedAccount = this.helperStatus.connectedAccount?.trim() || null;
@@ -731,6 +821,8 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
         };
         if (this.helperStatus.state === UNEXPECTED_AUTHENTICATION) {
           this.certificationTerminal = true;
+          this.certificationAuthorizationState = UNEXPECTED_AUTHENTICATION;
+          this.clearPendingCertificationAuthorization();
           this.helperStatus = {
             ...this.helperStatus,
             connected: false,
@@ -1051,12 +1143,23 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
   }
 
   private appendCollectorLog(event: string, details?: string): void {
-    const line = `[${new Date().toISOString()}] ${event}${details ? ` ${details}` : ''}`;
+    const safeDetails =
+      details && isQrOnlyCertificationMode() ? redactQrOnlyCertificationLog(details) : details;
+    const line = `[${new Date().toISOString()}] ${event}${safeDetails ? ` ${safeDetails}` : ''}`;
     try {
       mkdirSync(path.dirname(this.collectorLogPath), { recursive: true });
       appendFileSync(this.collectorLogPath, `${line}\n`, 'utf8');
     } catch (error) {
       this.logger.warn(`Unable to write collector log: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  private clearPendingCertificationAuthorization(): void {
+    const pending = this.pendingCertificationAuthorization;
+    this.pendingCertificationAuthorization = null;
+    if (pending) {
+      clearTimeout(pending.timer);
+      pending.resolve({ authorized: false, state: this.certificationAuthorizationState });
     }
   }
 

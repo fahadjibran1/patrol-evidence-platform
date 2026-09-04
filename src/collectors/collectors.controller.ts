@@ -4,6 +4,7 @@ import {
   WhatsAppCollectorGroup,
   WhatsAppCollectorService,
   WhatsAppCollectorStatus,
+  WhatsAppCertificationAuthorizationResult,
 } from './whatsapp-collector.service';
 import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '@/auth/guards/roles.guard';
@@ -46,6 +47,12 @@ export class CollectorsController {
   @Post('stop')
   stop(): Promise<WhatsAppCollectorStatus> {
     return this.whatsAppCollectorService.stop();
+  }
+
+  @Post('certification/authorize-authentication')
+  @RequireLicenceFeature('whatsappMonitoring')
+  authorizeCertificationAuthentication(): Promise<WhatsAppCertificationAuthorizationResult> {
+    return this.whatsAppCollectorService.authorizeCertificationAuthentication();
   }
 
   @Post('reset-session')

@@ -8,6 +8,7 @@ const {
   DEFAULT_BACKEND_PORT,
   getApiBaseUrl: formatApiBaseUrl,
   getApiBaseUrlArgument,
+  getBackendProcessArguments,
   normalizeBackendPort,
 } = require('./runtime-contract');
 const { createDesktopProcessLifecycle } = require('./process-lifecycle');
@@ -2069,7 +2070,7 @@ async function startBackend() {
     delete packagedBackendEnv.PATROL_SMOKE_BACKEND_ONLY;
     delete packagedBackendEnv[BACKEND_CHILD_ENV_FLAG];
     // Run Nest directly under Electron's Node ABI (matches native modules).
-    const child = spawn(process.execPath, [entryPoint], {
+    const child = spawn(process.execPath, getBackendProcessArguments(entryPoint, env, process.argv), {
       cwd,
       env: packagedBackendEnv,
       stdio: ['ignore', 'pipe', 'pipe'],

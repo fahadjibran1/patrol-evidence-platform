@@ -4,6 +4,7 @@ const runtimeContract = require('../../desktop/runtime-contract') as {
   getApiBaseUrl(port: number): string;
   getApiBaseUrlArgument(port: number): string;
   normalizeBackendPort(value: unknown): number;
+  getBackendProcessArguments(entryPoint: string, environment: NodeJS.ProcessEnv, argv: string[]): string[];
 };
 
 describe('desktop runtime contract', () => {
@@ -23,5 +24,24 @@ describe('desktop runtime contract', () => {
   it('rejects invalid or non-local port values', () => {
     expect(runtimeContract.normalizeBackendPort('not-a-port')).toBe(3001);
     expect(runtimeContract.normalizeBackendPort(70000)).toBe(3001);
+  });
+
+  it('forwards the certification marker only when both activation factors are present', () => {
+    const marker = '--patrol-certification-qr-only';
+    expect(
+      runtimeContract.getBackendProcessArguments('dist/main.js', {
+        PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED: 'true',
+      }, ['electron']),
+    ).toEqual(['dist/main.js']);
+    expect(runtimeContract.getBackendProcessArguments('dist/main.js', {}, ['electron', marker])).toEqual([
+      'dist/main.js',
+    ]);
+    expect(
+      runtimeContract.getBackendProcessArguments(
+        'dist/main.js',
+        { PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED: 'true' },
+        ['electron', marker],
+      ),
+    ).toEqual(['dist/main.js', marker]);
   });
 });

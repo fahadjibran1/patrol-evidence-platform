@@ -43,6 +43,21 @@ describe('QR-only WhatsApp certification guard', () => {
     expect(guard.authorizeAuthentication(true)).toBe(true);
     expect(guard.currentState).toBe('AUTHENTICATION_AUTHORIZED');
     expect(guard.detectAccountBoundSignal('authenticated')).toBe(false);
+    expect(guard.authorizeAuthentication(true)).toBe(false);
+    expect(guard.currentState).toBe('AUTHENTICATION_AUTHORIZED');
+  });
+
+  it('cannot authorize a terminal certification session retroactively', () => {
+    const guard = new QrOnlyCertificationGuard(true);
+    expect(guard.detectAccountBoundSignal('authenticated')).toBe(true);
+    expect(guard.authorizeAuthentication(true)).toBe(false);
+    expect(guard.currentState).toBe(UNEXPECTED_AUTHENTICATION);
+  });
+
+  it('starts each helper process without persisted authorization', () => {
+    const firstProcess = new QrOnlyCertificationGuard(true);
+    expect(firstProcess.authorizeAuthentication(true)).toBe(true);
+    expect(new QrOnlyCertificationGuard(true).currentState).toBe('EXPECTING_QR_ONLY');
   });
 
   it('leaves normal production authentication unchanged when inactive', () => {

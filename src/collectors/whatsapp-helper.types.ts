@@ -104,6 +104,12 @@ export interface WhatsAppHelperStatusSnapshot {
 export type WhatsAppHelperEvent = {
   type: 'status';
   payload: WhatsAppHelperStatusSnapshot;
+} | {
+  type: 'certification-authorization-result';
+  payload: {
+    authorized: boolean;
+    state: 'EXPECTING_QR_ONLY' | 'AUTHENTICATION_AUTHORIZED' | 'UNEXPECTED_AUTHENTICATION' | 'DISABLED';
+  };
 };
 
 export type WhatsAppHelperCommand =
@@ -123,6 +129,10 @@ export type WhatsAppHelperCommand =
     }
   | {
       type: 'refresh-discovered-chats';
+    }
+  | {
+      type: 'authorize-certification-authentication';
+      explicitOperatorAuthorization: true;
     };
 
 export const WHATSAPP_HELPER_EVENT_PREFIX = 'PATROL_COLLECTOR_EVENT ';

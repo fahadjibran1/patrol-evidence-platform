@@ -10,6 +10,10 @@ describe('WhatsApp QR-only certification runtime contract', () => {
     path.join(process.cwd(), 'src', 'collectors', 'whatsapp-collector.service.ts'),
     'utf8',
   );
+  const controllerSource = readFileSync(
+    path.join(process.cwd(), 'src', 'collectors', 'collectors.controller.ts'),
+    'utf8',
+  );
 
   function handlerBody(startMarker: string, endMarker: string): string {
     const start = helperSource.indexOf(startMarker);
@@ -63,6 +67,30 @@ describe('WhatsApp QR-only certification runtime contract', () => {
     expect(supervisorSource).toContain('if (this.certificationTerminal)');
     expect(supervisorSource).toContain(
       'this.certificationTerminal || this.helperStatus.state === UNEXPECTED_AUTHENTICATION',
+    );
+  });
+
+  it('routes explicit authorization over the private helper command channel', () => {
+    expect(controllerSource).toContain("@Post('certification/authorize-authentication')");
+    expect(supervisorSource).toContain("type: 'authorize-certification-authentication'");
+    expect(helperSource).toContain("command.type === 'authorize-certification-authentication'");
+    expect(helperSource).toContain('qrOnlyCertificationGuard.authorizeAuthentication(true)');
+    expect(helperSource).toContain('isQrOnlyCertificationMode()');
+  });
+
+  it('keeps authorization process-local and out of persistent stores', () => {
+    const commandStart = helperSource.indexOf("command.type === 'authorize-certification-authentication'");
+    const commandEnd = helperSource.indexOf("command.type === 'manual-backfill'", commandStart);
+    const commandBody = helperSource.slice(commandStart, commandEnd);
+    expect(commandBody).not.toContain('writeFileSync');
+    expect(commandBody).not.toContain('LocalAuth');
+    expect(commandBody).not.toContain('workspace');
+    expect(commandBody).not.toContain('sqlite');
+  });
+
+  it('redacts supervisor log details throughout an active certification runtime', () => {
+    expect(supervisorSource).toContain(
+      'details && isQrOnlyCertificationMode() ? redactQrOnlyCertificationLog(details) : details',
     );
   });
 });

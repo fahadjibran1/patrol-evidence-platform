@@ -140,6 +140,18 @@ describe('WhatsAppCollectorService', () => {
     (service as unknown as { handleHelperStdoutLine(line: string): void }).handleHelperStdoutLine(line);
   }
 
+  function emitAuthorizationResult(
+    service: WhatsAppCollectorService,
+    authorized: boolean,
+    state: 'EXPECTING_QR_ONLY' | 'AUTHENTICATION_AUTHORIZED' | 'UNEXPECTED_AUTHENTICATION' | 'DISABLED',
+  ): void {
+    const line = `${WHATSAPP_HELPER_EVENT_PREFIX}${JSON.stringify({
+      type: 'certification-authorization-result',
+      payload: { authorized, state },
+    })}`;
+    (service as unknown as { handleHelperStdoutLine(line: string): void }).handleHelperStdoutLine(line);
+  }
+
   function ingestPayload(overrides?: Partial<WhatsAppHelperIngestPayload>): WhatsAppHelperIngestPayload {
     return {
       siteCode: 'SWI01',
@@ -399,5 +411,100 @@ describe('WhatsAppCollectorService', () => {
     const status = await service.start();
     expect(status.state).toBe('UNEXPECTED_AUTHENTICATION');
     expect(startInternal).not.toHaveBeenCalled();
+  });
+
+  it('authorizes a QR-ready dual-factor certification helper exactly once', async () => {
+    const originalArgv = process.argv;
+    const originalEnvironment = process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED;
+    process.argv = [...process.argv, '--patrol-certification-qr-only'];
+    process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED = 'true';
+    try {
+      const service = createService();
+      const { write } = attachRunningHelper(service);
+      (service as unknown as { helperStatus: WhatsAppHelperStatusSnapshot }).helperStatus = readyStatus({
+        state: 'qr-ready',
+        connected: false,
+        ready: false,
+        connectedAccount: null,
+      });
+
+      const authorization = service.authorizeCertificationAuthentication();
+      expect(write).toHaveBeenCalledWith(
+        `${JSON.stringify({
+          type: 'authorize-certification-authentication',
+          explicitOperatorAuthorization: true,
+        })}\n`,
+      );
+      emitAuthorizationResult(service, true, 'AUTHENTICATION_AUTHORIZED');
+      await expect(authorization).resolves.toEqual({
+        authorized: true,
+        state: 'AUTHENTICATION_AUTHORIZED',
+      });
+      await expect(service.authorizeCertificationAuthentication()).rejects.toThrow(
+        'Certification authentication authorization is not available in the current state.',
+      );
+    } finally {
+      process.argv = originalArgv;
+      if (originalEnvironment === undefined) {
+        delete process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED;
+      } else {
+        process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED = originalEnvironment;
+      }
+    }
+  });
+
+  it('fails closed when either certification activation factor is absent', async () => {
+    const originalArgv = process.argv;
+    const originalEnvironment = process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED;
+    try {
+      process.argv = process.argv.filter((value) => value !== '--patrol-certification-qr-only');
+      process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED = 'true';
+      const environmentOnly = createService();
+      attachRunningHelper(environmentOnly);
+      await expect(environmentOnly.authorizeCertificationAuthentication()).rejects.toThrow(
+        'WhatsApp certification authorization is unavailable.',
+      );
+
+      delete process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED;
+      process.argv = [...process.argv, '--patrol-certification-qr-only'];
+      const markerOnly = createService();
+      attachRunningHelper(markerOnly);
+      await expect(markerOnly.authorizeCertificationAuthentication()).rejects.toThrow(
+        'WhatsApp certification authorization is unavailable.',
+      );
+    } finally {
+      process.argv = originalArgv;
+      if (originalEnvironment === undefined) {
+        delete process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED;
+      } else {
+        process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED = originalEnvironment;
+      }
+    }
+  });
+
+  it('rejects authorization outside a QR-ready active helper session', async () => {
+    const originalArgv = process.argv;
+    const originalEnvironment = process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED;
+    process.argv = [...process.argv, '--patrol-certification-qr-only'];
+    process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED = 'true';
+    try {
+      const service = createService();
+      attachRunningHelper(service);
+      await expect(service.authorizeCertificationAuthentication()).rejects.toThrow(
+        'A QR-ready certification helper session is required.',
+      );
+
+      (service as unknown as { certificationTerminal: boolean }).certificationTerminal = true;
+      await expect(service.authorizeCertificationAuthentication()).rejects.toThrow(
+        'The certification session is terminal and cannot be authorized.',
+      );
+    } finally {
+      process.argv = originalArgv;
+      if (originalEnvironment === undefined) {
+        delete process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED;
+      } else {
+        process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED = originalEnvironment;
+      }
+    }
   });
 });

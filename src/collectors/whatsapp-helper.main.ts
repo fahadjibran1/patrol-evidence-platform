@@ -662,6 +662,17 @@ function emitStatus(): void {
   process.stdout.write(`${WHATSAPP_HELPER_EVENT_PREFIX}${JSON.stringify(payload)}\n`);
 }
 
+function emitCertificationAuthorizationResult(authorized: boolean): void {
+  const payload: WhatsAppHelperEvent = {
+    type: 'certification-authorization-result',
+    payload: {
+      authorized,
+      state: qrOnlyCertificationGuard.currentState,
+    },
+  };
+  process.stdout.write(`${WHATSAPP_HELPER_EVENT_PREFIX}${JSON.stringify(payload)}\n`);
+}
+
 function isConnectedAndFinalized(): boolean {
   return readinessFinalized && Boolean(status.connectedAccount?.trim());
 }
@@ -3533,6 +3544,21 @@ function wireCommands(): void {
 
     if (command.type === 'stop') {
       await shutdown(0, { operatorLogout: true });
+      return;
+    }
+
+    if (command.type === 'authorize-certification-authentication') {
+      appendCollectorLog('WHATSAPP_CERTIFICATION_AUTHORIZATION_REQUESTED');
+      const authorized =
+        isQrOnlyCertificationMode() &&
+        command.explicitOperatorAuthorization === true &&
+        qrOnlyCertificationGuard.authorizeAuthentication(true);
+      if (authorized) {
+        appendCollectorLog('WHATSAPP_CERTIFICATION_AUTHORIZED');
+      } else {
+        appendCollectorLog('WHATSAPP_CERTIFICATION_AUTHORIZATION_REJECTED');
+      }
+      emitCertificationAuthorizationResult(authorized);
       return;
     }
 
