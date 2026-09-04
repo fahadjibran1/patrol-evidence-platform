@@ -133,7 +133,7 @@ let shutdownRequested = false;
 let operatorLogoutRequested = false;
 /** Once authenticated fires for an attempt, QR/browser startup timers must not destroy that client. */
 let authenticationReachedAttemptId: number | null = null;
-/** True after phone appears to have scanned the QR (PAIRING/OPENING or authenticated). */
+/** True only after positive account-bound evidence (authenticated/CONNECTED/ready). */
 let qrScanDetected = false;
 let qrReceivedLoggedForAttempt: number | null = null;
 const recentPageConsoleErrors: string[] = [];
@@ -141,7 +141,7 @@ const RECENT_PAGE_CONSOLE_LIMIT = 40;
 const moduleCompatibilitySignals: string[] = [];
 const MODULE_COMPAT_SIGNAL_LIMIT = 40;
 let moduleCompatibilityFailureReported = false;
-let pageDiagnosticsAttached = false;
+const diagnosedPages = new WeakSet<object>();
 let startupResolve: ((value: StartupGateOutcome) => void) | null = null;
 let startupReject: ((reason?: unknown) => void) | null = null;
 let activeStartupAttemptId = 0;
@@ -302,6 +302,10 @@ function hasReachedAuthenticationPhase(attemptId: number = activeStartupAttemptI
   return authenticationReachedAttemptId !== null && authenticationReachedAttemptId === attemptId;
 }
 
+function isActiveClientGeneration(targetClient: Client, attemptId: number): boolean {
+  return !shutdownRequested && attemptId === activeStartupAttemptId && targetClient === client;
+}
+
 function isPostAuthStartupProtected(targetClient: Client | null = client): boolean {
   if (!targetClient || operatorLogoutRequested || shutdownRequested) {
     return false;
@@ -407,7 +411,11 @@ function markAuthenticationReached(attemptId: number, targetClient: Client): voi
 }
 
 function isRetryableStartupFailure(outcome: StartupGateOutcome): boolean {
-  if (outcome === 'ready' || outcome === 'auth_failure' || outcome === 'disconnected') {
+  if (outcome === 'disconnected') {
+    return !hasPassedQrScanPhase() && !operatorLogoutRequested && !shutdownRequested;
+  }
+
+  if (outcome === 'ready' || outcome === 'auth_failure') {
     return false;
   }
 
@@ -1832,10 +1840,6 @@ function formatConsoleArgs(values: unknown[]): string {
 }
 
 async function attachPageDiagnostics(currentClient: Client): Promise<void> {
-  if (pageDiagnosticsAttached) {
-    return;
-  }
-
   const startedAt = Date.now();
   while (!currentClient.pupPage && Date.now() - startedAt < 30_000) {
     await sleep(250);
@@ -1849,6 +1853,10 @@ async function attachPageDiagnostics(currentClient: Client): Promise<void> {
     return;
   }
 
+  if (diagnosedPages.has(page)) {
+    return;
+  }
+
   if (!browserLaunchCompletedAt) {
     browserLaunchCompletedAt = Date.now();
     appendCollectorLog(
@@ -1857,7 +1865,7 @@ async function attachPageDiagnostics(currentClient: Client): Promise<void> {
     );
   }
 
-  pageDiagnosticsAttached = true;
+  diagnosedPages.add(page);
   appendCollectorLog('page-diagnostics-attached', 'Puppeteer page listeners registered.');
 
   page.on('console', (message) => {
@@ -1969,9 +1977,8 @@ async function attachPageDiagnostics(currentClient: Client): Promise<void> {
           ].join(' '),
         );
 
-        if (qrReceivedLoggedForAttempt === activeStartupAttemptId || hasReachedAuthenticationPhase()) {
-          markQrScanDetected('post-logout-navigation', currentClient);
-        }
+        // A post_logout navigation is also produced by QR expiry and is not
+        // evidence that the phone accepted the current QR.
       }
 
       scheduleLiveMediaListenerReattachAfterNavigation(url, reason);
@@ -3690,7 +3697,6 @@ async function runBrowserAttempt(
   authenticationReachedAttemptId = null;
   activeBrowserLaunch = { executablePath, headless: BROWSER_HEADLESS };
   logBrowserLaunchConfiguration(executablePath, browserSource);
-  pageDiagnosticsAttached = false;
   moduleCompatibilitySignals.length = 0;
   moduleCompatibilityFailureReported = false;
   setReadinessFinalized(false, 'browser-attempt-restart');
@@ -3711,6 +3717,18 @@ async function runBrowserAttempt(
   qrReceivedLoggedForAttempt = null;
   recentPageConsoleErrors.length = 0;
   authenticationReachedAttemptId = null;
+  clearLatestQrPayload();
+  updateStatus(
+    {
+      qrCode: null,
+      qrPayloadLength: null,
+      qrDeliveredAt: null,
+      qrPersistedAt: null,
+      lastQrAt: null,
+    },
+    'client-generation-reset',
+    `attemptId=${startupAttemptId}`,
+  );
 
   const { Client, LocalAuth } = await loadWhatsAppRuntimeModule();
 
@@ -3753,7 +3771,7 @@ async function runBrowserAttempt(
   const startupGate = createStartupGate();
 
   nextClient.on('qr', (qr: string) => {
-    if (startupAttemptId !== activeStartupAttemptId || nextClient !== client) {
+    if (!isActiveClientGeneration(nextClient, startupAttemptId)) {
       appendCollectorLog('qr-ignored-stale-attempt', describeClientIdentity(nextClient, startupAttemptId));
       return;
     }
@@ -3808,7 +3826,7 @@ async function runBrowserAttempt(
   });
 
   nextClient.on('authenticated', () => {
-    if (startupAttemptId !== activeStartupAttemptId) {
+    if (!isActiveClientGeneration(nextClient, startupAttemptId)) {
       appendCollectorLog(
         'authenticated-ignored-stale-attempt',
         describeClientIdentity(nextClient, startupAttemptId),
@@ -3846,17 +3864,21 @@ async function runBrowserAttempt(
   });
 
   nextClient.on('change_state', (state: string) => {
+    if (!isActiveClientGeneration(nextClient, startupAttemptId)) {
+      appendCollectorLog('change-state-ignored-stale-attempt', describeClientIdentity(nextClient, startupAttemptId));
+      return;
+    }
     if (/^CONNECTED$/i.test(state) && stopForUnexpectedAuthentication('CONNECTED')) {
       return;
     }
     logLifecycleEvent('change_state', `waState=${state}`, nextClient, startupAttemptId);
-    if (/pairing|opening|connected|syncing/i.test(state)) {
+    if (/^CONNECTED$/i.test(state)) {
       markQrScanDetected(`change_state:${state}`, nextClient);
     }
   });
 
   nextClient.on('ready', async () => {
-    if (startupAttemptId !== activeStartupAttemptId || nextClient !== client) {
+    if (!isActiveClientGeneration(nextClient, startupAttemptId)) {
       appendCollectorLog('ready-ignored-stale-attempt', describeClientIdentity(nextClient, startupAttemptId));
       return;
     }
@@ -3885,6 +3907,10 @@ async function runBrowserAttempt(
   });
 
   nextClient.on('disconnected', (reason: string) => {
+    if (!isActiveClientGeneration(nextClient, startupAttemptId)) {
+      appendCollectorLog('disconnected-ignored-stale-attempt', describeClientIdentity(nextClient, startupAttemptId));
+      return;
+    }
     clearStartupTimeouts();
     clearReadinessTimers();
     clearGroupDiscoveryTimers();
@@ -3921,11 +3947,16 @@ async function runBrowserAttempt(
     if (client === nextClient) {
       client = null;
     }
+    clearLatestQrPayload();
     setReadinessFinalized(false, 'disconnected-event');
 
     updateStatus(
       {
         state: 'disconnected',
+        qrCode: null,
+        qrPayloadLength: null,
+        qrDeliveredAt: null,
+        qrPersistedAt: null,
         connectedAccount: status.connectedAccount,
         info: status.sessionCorruptionSuspected
           ? SESSION_CORRUPTION_USER_MESSAGE
@@ -3954,6 +3985,10 @@ async function runBrowserAttempt(
   });
 
   nextClient.on('auth_failure', (message: string) => {
+    if (!isActiveClientGeneration(nextClient, startupAttemptId)) {
+      appendCollectorLog('auth-failure-ignored-stale-attempt', describeClientIdentity(nextClient, startupAttemptId));
+      return;
+    }
     clearStartupTimeouts();
     clearReadinessTimers();
     logLifecycleEvent('auth_failure', message, nextClient, startupAttemptId);

@@ -116,7 +116,7 @@ index 800109e..2201b93 100644
      }
  
 diff --git a/node_modules/whatsapp-web.js/src/util/Injected/AuthStore/AuthStore.js b/node_modules/whatsapp-web.js/src/util/Injected/AuthStore/AuthStore.js
-index 9c4644d..7ef6e71 100644
+index 9c4644d..2013259 100644
 --- a/node_modules/whatsapp-web.js/src/util/Injected/AuthStore/AuthStore.js
 +++ b/node_modules/whatsapp-web.js/src/util/Injected/AuthStore/AuthStore.js
 @@ -1,8 +1,73 @@
@@ -194,3 +194,25 @@ index 9c4644d..7ef6e71 100644
      window.AuthStore.Cmd = window.require('WAWebCmd').Cmd;
      window.AuthStore.Conn = window.require('WAWebConnModel').Conn;
      window.AuthStore.OfflineMessageHandler = window.require(
+diff --git a/node_modules/whatsapp-web.js/src/util/Puppeteer.js b/node_modules/whatsapp-web.js/src/util/Puppeteer.js
+index 54df700..67b9bdc 100644
+--- a/node_modules/whatsapp-web.js/src/util/Puppeteer.js
++++ b/node_modules/whatsapp-web.js/src/util/Puppeteer.js
+@@ -17,5 +17,16 @@ async function exposeFunctionIfAbsent(page, name, fn) {
+     if (exist) {
+         return;
+     }
+-    await page.exposeFunction(name, fn);
++    try {
++        await page.exposeFunction(name, fn);
++    } catch (error) {
++        // Puppeteer retains exposed binding metadata across same-page
++        // navigation even when the browser window no longer has the function.
++        // Replace that stale binding deterministically during reinjection.
++        if (!/already exists/i.test(error && error.message ? error.message : String(error))) {
++            throw error;
++        }
++        await page.removeExposedFunction(name);
++        await page.exposeFunction(name, fn);
++    }
+ }

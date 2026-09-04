@@ -74,4 +74,21 @@ describe('wwebjs-compatibility', () => {
     expect(WWEBJS_MODULE_COMPATIBILITY_ERROR).toBe('WWEBJS_MODULE_COMPATIBILITY_ERROR');
     expect(WWEBJS_MODULE_COMPATIBILITY_ERROR.toLowerCase().includes('logout')).toBe(false);
   });
+
+  it('replaces a Puppeteer binding retained across page navigation', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { exposeFunctionIfAbsent } = require('whatsapp-web.js/src/util/Puppeteer');
+    const duplicate = new Error('Failed to add page binding with name onQRChangedEvent: already exists!');
+    const page = {
+      evaluate: jest.fn().mockResolvedValue(false),
+      exposeFunction: jest.fn().mockRejectedValueOnce(duplicate).mockResolvedValueOnce(undefined),
+      removeExposedFunction: jest.fn().mockResolvedValue(undefined),
+    };
+    const callback = jest.fn();
+
+    await exposeFunctionIfAbsent(page, 'onQRChangedEvent', callback);
+
+    expect(page.removeExposedFunction).toHaveBeenCalledWith('onQRChangedEvent');
+    expect(page.exposeFunction).toHaveBeenNthCalledWith(2, 'onQRChangedEvent', callback);
+  });
 });
