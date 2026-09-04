@@ -1,9 +1,27 @@
 import {
+  classifyPostAuthCompatibility,
   extractUnknownWaWebModule,
   isWwebjsModuleCompatibilitySignal,
   shouldTreatAsModuleCompatibilityFailure,
   WWEBJS_MODULE_COMPATIBILITY_ERROR,
 } from './wwebjs-compatibility';
+
+const compatibleProbe = {
+  hasWindowStore: false,
+  hasAuthStore: true,
+  hasChatCollection: true,
+  hasMsgCollection: true,
+  socketModuleId: 'WAWebSocketModel',
+  socketStrategy: 'require',
+  missingDependencies: [],
+  waState: 'CONNECTED',
+  getChatsOk: null,
+  getChatsError: null,
+  getChatsCount: null,
+  chatCollectionReadOk: true,
+  chatCollectionReadError: null,
+  chatModelCount: 1,
+};
 
 describe('wwebjs-compatibility', () => {
   it('keeps the patched auth-store socket resolver inside the Puppeteer-serialized function', () => {
@@ -73,6 +91,21 @@ describe('wwebjs-compatibility', () => {
   it('exposes a distinct failure code that is not logout', () => {
     expect(WWEBJS_MODULE_COMPATIBILITY_ERROR).toBe('WWEBJS_MODULE_COMPATIBILITY_ERROR');
     expect(WWEBJS_MODULE_COMPATIBILITY_ERROR.toLowerCase().includes('logout')).toBe(false);
+  });
+
+  it('accepts the minimum post-auth Store contract without enumerating chats', () => {
+    expect(classifyPostAuthCompatibility(compatibleProbe)).toBeNull();
+  });
+
+  it.each([
+    [{ hasAuthStore: false }, 'STORE_NOT_EXPOSED'],
+    [{ hasChatCollection: false }, 'CHAT_MODULE_MISSING'],
+    [{ hasMsgCollection: false }, 'MESSAGE_MODULE_MISSING'],
+    [{ missingDependencies: ['WWebJS.getChats'] }, 'GET_CHATS_UNAVAILABLE'],
+    [{ chatCollectionReadOk: false }, 'CHAT_COLLECTION_READ_FAILED'],
+    [{ waState: 'OPENING' }, 'WHATSAPP_NOT_CONNECTED'],
+  ])('reports a precise compatibility failure for %j', (override, expected) => {
+    expect(classifyPostAuthCompatibility({ ...compatibleProbe, ...override })).toBe(expected);
   });
 
   it('replaces a Puppeteer binding retained across page navigation', async () => {

@@ -34,9 +34,7 @@ describe('WhatsApp QR-only certification runtime contract', () => {
   it('guards ready before listeners, chat discovery, backfill, ingestion, or sending', () => {
     const body = handlerBody("nextClient.on('ready'", "nextClient.on('disconnected'");
     expect(body.indexOf("stopForUnexpectedAuthentication('ready')")).toBeGreaterThanOrEqual(0);
-    expect(body.indexOf("stopForUnexpectedAuthentication('ready')")).toBeLessThan(
-      body.indexOf('attachLiveMediaListenersOnce'),
-    );
+    expect(body).not.toContain('attachLiveMediaListenersOnce');
 
     const finalizeStart = helperSource.indexOf('async function finalizeClientReady');
     const finalizeEnd = helperSource.indexOf('async function watchClientInfoAfterAuthentication', finalizeStart);
@@ -45,7 +43,7 @@ describe('WhatsApp QR-only certification runtime contract', () => {
       finalizeBody.indexOf('resolveConnectedAccountWithRetry'),
     );
     expect(finalizeBody.indexOf("stopForUnexpectedAuthentication('client-identity')")).toBeLessThan(
-      finalizeBody.indexOf('probePostAuthStoreCompatibility'),
+      finalizeBody.indexOf('waitForPostAuthCompatibility'),
     );
     expect(finalizeBody.indexOf("stopForUnexpectedAuthentication('client-identity')")).toBeLessThan(
       finalizeBody.indexOf('refreshDiscoveredChats'),
@@ -60,6 +58,39 @@ describe('WhatsApp QR-only certification runtime contract', () => {
     expect(body).not.toContain('.logout(');
     expect(body).not.toContain('fullyDestroyClientSession');
     expect(body).not.toContain('rmSync');
+  });
+
+  it('keeps normal stop separate from explicit account logout', () => {
+    const commandStart = helperSource.indexOf("if (command.type === 'stop')");
+    const commandEnd = helperSource.indexOf("if (command.type === 'authorize-certification-authentication')", commandStart);
+    const commandBody = helperSource.slice(commandStart, commandEnd);
+    expect(commandBody).toContain('shutdown(0)');
+    expect(commandBody).not.toContain('operatorLogout');
+    expect(commandBody).not.toContain('.logout(');
+
+    const shutdownStart = helperSource.indexOf('async function shutdown');
+    const shutdownEnd = helperSource.indexOf('function wireCommands', shutdownStart);
+    const shutdownBody = helperSource.slice(shutdownStart, shutdownEnd);
+    expect(shutdownBody).toContain("closeBrowserGracefully(currentClient, 'shutdown')");
+    expect(shutdownBody).not.toContain('.logout(');
+    expect(shutdownBody).not.toContain('rmSync');
+  });
+
+  it('finalizes compatibility before attaching ingestion listeners', () => {
+    const finalizeStart = helperSource.indexOf('async function finalizeClientReady');
+    const finalizeEnd = helperSource.indexOf('async function watchClientInfoAfterAuthentication', finalizeStart);
+    const body = helperSource.slice(finalizeStart, finalizeEnd);
+    expect(body.indexOf('waitForPostAuthCompatibility')).toBeGreaterThanOrEqual(0);
+    expect(body.indexOf('setReadinessFinalized(true')).toBeLessThan(body.indexOf('attachLiveMediaListenersOnce'));
+    expect(body).not.toContain('waitForChatDiscoveryReady');
+  });
+
+  it('does not use broad getChats serialization as the basic compatibility gate', () => {
+    const probeStart = helperSource.indexOf('async function probePostAuthStoreCompatibility');
+    const probeEnd = helperSource.indexOf('async function waitForPostAuthCompatibility', probeStart);
+    const probeBody = helperSource.slice(probeStart, probeEnd);
+    expect(probeBody).toContain('getModelsArray');
+    expect(probeBody).not.toContain('currentClient.getChats()');
   });
 
   it('keeps the supervisor terminal and blocks automatic restart', () => {

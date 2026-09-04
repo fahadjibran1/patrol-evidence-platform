@@ -23,6 +23,30 @@ export interface WwebjsStoreProbeResult {
   getChatsOk: boolean | null;
   getChatsError: string | null;
   getChatsCount: number | null;
+  chatCollectionReadOk: boolean;
+  chatCollectionReadError: string | null;
+  chatModelCount: number | null;
+}
+
+export type PostAuthCompatibilityFailure =
+  | 'PAGE_GENERATION_CHANGED'
+  | 'STORE_NOT_EXPOSED'
+  | 'CHAT_MODULE_MISSING'
+  | 'MESSAGE_MODULE_MISSING'
+  | 'GET_CHATS_UNAVAILABLE'
+  | 'CHAT_COLLECTION_READ_FAILED'
+  | 'WHATSAPP_NOT_CONNECTED';
+
+export function classifyPostAuthCompatibility(
+  probe: WwebjsStoreProbeResult,
+): PostAuthCompatibilityFailure | null {
+  if (!probe.hasAuthStore) return 'STORE_NOT_EXPOSED';
+  if (!probe.hasChatCollection) return 'CHAT_MODULE_MISSING';
+  if (!probe.hasMsgCollection) return 'MESSAGE_MODULE_MISSING';
+  if (probe.missingDependencies.includes('WWebJS.getChats')) return 'GET_CHATS_UNAVAILABLE';
+  if (!probe.chatCollectionReadOk) return 'CHAT_COLLECTION_READ_FAILED';
+  if (probe.waState !== 'CONNECTED') return 'WHATSAPP_NOT_CONNECTED';
+  return null;
 }
 
 export function isWwebjsModuleCompatibilitySignal(text: string | null | undefined): boolean {

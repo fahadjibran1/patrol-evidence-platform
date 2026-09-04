@@ -64,6 +64,7 @@ import {
 } from './browser-profile-lock.util';
 import {
   buildModuleCompatibilityDetails,
+  classifyPostAuthCompatibility,
   extractUnknownWaWebModule,
   isWwebjsModuleCompatibilitySignal,
   shouldTreatAsModuleCompatibilityFailure,
@@ -90,6 +91,7 @@ const BROWSER_AUTOMATION_FAILED_MESSAGE =
   'Unable to start browser automation. Check Edge/Chrome installation.';
 const SESSION_CORRUPTION_USER_MESSAGE = 'WhatsApp session appears corrupted. Reset WhatsApp session.';
 const QR_SCAN_INCOMPLETE_MESSAGE = 'QR scan did not complete. Please rescan.';
+const POST_AUTH_COMPATIBILITY_TIMEOUT_MS = 10_000;
 
 type WhatsAppRuntimeModule = typeof import('whatsapp-web.js');
 
@@ -1351,6 +1353,9 @@ async function probePostAuthStoreCompatibility(currentClient: Client): Promise<W
     getChatsOk: null,
     getChatsError: null,
     getChatsCount: null,
+    chatCollectionReadOk: false,
+    chatCollectionReadError: null,
+    chatModelCount: null,
   };
 
   if (!currentClient.pupPage) {
@@ -1372,6 +1377,9 @@ async function probePostAuthStoreCompatibility(currentClient: Client): Promise<W
       const hasAuthStore = typeof scoped.AuthStore !== 'undefined';
       let hasChatCollection = Boolean(scoped.Store?.Chat);
       let hasMsgCollection = Boolean(scoped.Store?.Msg);
+      let chatCollectionReadOk = false;
+      let chatCollectionReadError: string | null = null;
+      let chatModelCount: number | null = null;
 
       if (!hasChatCollection && typeof scoped.require === 'function') {
         try {
@@ -1381,8 +1389,15 @@ async function probePostAuthStoreCompatibility(currentClient: Client): Promise<W
           };
           hasChatCollection = Boolean(collections?.Chat);
           hasMsgCollection = Boolean(collections?.Msg);
-        } catch {
+          const chatCollection = collections?.Chat as { getModelsArray?: () => unknown[] } | undefined;
+          if (typeof chatCollection?.getModelsArray === 'function') {
+            const models = chatCollection.getModelsArray();
+            chatCollectionReadOk = Array.isArray(models);
+            chatModelCount = Array.isArray(models) ? models.length : null;
+          }
+        } catch (error) {
           missing.push('WAWebCollections');
+          chatCollectionReadError = error instanceof Error ? error.message : String(error);
         }
       }
 
@@ -1408,6 +1423,9 @@ async function probePostAuthStoreCompatibility(currentClient: Client): Promise<W
         socketStrategy: scoped.AuthStore?.__socketStrategy ?? null,
         missingDependencies: missing,
         hasWWebJSGetChats: typeof scoped.WWebJS?.getChats === 'function',
+        chatCollectionReadOk,
+        chatCollectionReadError,
+        chatModelCount,
       };
     });
 
@@ -1417,6 +1435,9 @@ async function probePostAuthStoreCompatibility(currentClient: Client): Promise<W
     result.hasMsgCollection = pageProbe.hasMsgCollection;
     result.socketModuleId = pageProbe.socketModuleId;
     result.socketStrategy = pageProbe.socketStrategy;
+    result.chatCollectionReadOk = pageProbe.chatCollectionReadOk;
+    result.chatCollectionReadError = pageProbe.chatCollectionReadError;
+    result.chatModelCount = pageProbe.chatModelCount;
     result.missingDependencies.push(...pageProbe.missingDependencies);
     if (!pageProbe.hasWWebJSGetChats) {
       result.missingDependencies.push('WWebJS.getChats');
@@ -1437,29 +1458,9 @@ async function probePostAuthStoreCompatibility(currentClient: Client): Promise<W
     result.getChatsError = result.getChatsError ?? message;
   }
 
-  try {
-    const chats = await Promise.race([
-      currentClient.getChats(),
-      new Promise<never>((_resolve, reject) => {
-        setTimeout(() => reject(new Error('getChats-timeout')), 20_000);
-      }),
-    ]);
-    if (Array.isArray(chats)) {
-      result.getChatsOk = true;
-      result.getChatsCount = chats.length;
-    } else {
-      result.getChatsOk = false;
-      result.getChatsError = `getChatsReturned=${typeof chats}`;
-      result.missingDependencies.push('getChats');
-    }
-  } catch (error) {
-    result.getChatsOk = false;
-    result.getChatsError = error instanceof Error ? error.message : String(error);
-    result.missingDependencies.push('getChats');
-    if (isWwebjsModuleCompatibilitySignal(result.getChatsError)) {
-      rememberModuleCompatibilitySignal(result.getChatsError);
-    }
-  }
+  // Full getChats() serializes every chat and belongs to discovery. Basic
+  // authenticated readiness only requires a safe read of the current Chat
+  // collection, performed above without exposing chat contents.
 
   appendCollectorLog(
     'POST_AUTH_COMPAT_PROBE',
@@ -1475,10 +1476,31 @@ async function probePostAuthStoreCompatibility(currentClient: Client): Promise<W
       `getChatsCount=${result.getChatsCount ?? 'n/a'}`,
       `missing=${result.missingDependencies.join(',') || 'none'}`,
       `getChatsError=${result.getChatsError ?? 'none'}`,
+      `chatCollectionReadOk=${result.chatCollectionReadOk}`,
+      `chatModelCount=${result.chatModelCount ?? 'n/a'}`,
+      `chatCollectionReadError=${result.chatCollectionReadError ?? 'none'}`,
     ].join(' '),
   );
 
   return result;
+}
+
+async function waitForPostAuthCompatibility(
+  currentClient: Client,
+  timeoutMs = POST_AUTH_COMPATIBILITY_TIMEOUT_MS,
+): Promise<{ probe: WwebjsStoreProbeResult; failure: ReturnType<typeof classifyPostAuthCompatibility> }> {
+  const deadline = Date.now() + timeoutMs;
+  let probe = await probePostAuthStoreCompatibility(currentClient);
+  let failure = classifyPostAuthCompatibility(probe);
+  while (failure && Date.now() < deadline && !shutdownRequested) {
+    if (currentClient !== client || !currentClient.pupPage) {
+      return { probe, failure: 'PAGE_GENERATION_CHANGED' };
+    }
+    await sleep(500);
+    probe = await probePostAuthStoreCompatibility(currentClient);
+    failure = classifyPostAuthCompatibility(probe);
+  }
+  return { probe, failure };
 }
 
 function logMediaListenerCounts(target: Client, trigger: string): void {
@@ -1562,14 +1584,12 @@ async function finalizeClientReady(
   logWhatsAppRuntimePackages(context.readySource);
   await logLoadedWhatsAppWebVersion(currentClient, context.readySource);
 
-  const compatProbe = await probePostAuthStoreCompatibility(currentClient);
-  const chatStoreReady = await waitForChatDiscoveryReady(currentClient, CHAT_STORE_READY_TIMEOUT_MS, {
-    requireReadinessFinalized: false,
-  });
-  if (!chatStoreReady) {
+  const compatibility = await waitForPostAuthCompatibility(currentClient);
+  const compatProbe = compatibility.probe;
+  if (compatibility.failure) {
     appendCollectorLog(
       'CHAT_STORE_NOT_READY',
-      `source=${context.readySource} account=${connectedAccount ?? 'unknown'} ${describeClientForDiscovery(currentClient)}`,
+      `source=${context.readySource} reason=${compatibility.failure} account=${connectedAccount ?? 'unknown'} ${describeClientForDiscovery(currentClient)}`,
     );
 
     const treatAsCompat = shouldTreatAsModuleCompatibilityFailure({
@@ -1580,10 +1600,10 @@ async function finalizeClientReady(
       lastError: compatProbe.getChatsError,
     });
 
-    if (treatAsCompat || compatProbe.getChatsOk === false || compatProbe.missingDependencies.length > 0) {
+    if (treatAsCompat || compatibility.failure) {
       reportModuleCompatibilityFailure(
         'chat-store-not-ready-after-authenticated',
-        `account=${connectedAccount ?? 'unknown'} source=${context.readySource}`,
+        `reason=${compatibility.failure} account=${connectedAccount ?? 'unknown'} source=${context.readySource}`,
         compatProbe,
       );
     } else {
@@ -1628,6 +1648,7 @@ async function finalizeClientReady(
 
   if (firstReadyFinalization) {
     clearLatestQrPayload();
+    attachLiveMediaListenersOnce(currentClient);
     if (client) {
       logMediaListenerCounts(client, 'ready-event');
     }
@@ -3466,14 +3487,9 @@ function scheduleChatDiscoveryAfterReady(reason: string): void {
 
 async function shutdown(
   exitCode = 0,
-  options?: { operatorLogout?: boolean; preserveTerminalState?: boolean },
+  options?: { preserveTerminalState?: boolean },
 ): Promise<void> {
   shutdownRequested = true;
-  if (options?.operatorLogout) {
-    operatorLogoutRequested = true;
-    logDestructiveAction('client.logout', 'operator-shutdown', client);
-  }
-
   clearStartupTimeouts();
   clearReadinessTimers();
   clearNavigationReattachTimer();
@@ -3533,7 +3549,7 @@ function wireCommands(): void {
     }
 
     if (command.type === 'stop') {
-      await shutdown(0, { operatorLogout: true });
+      await shutdown(0);
       return;
     }
 
@@ -3933,7 +3949,6 @@ async function runBrowserAttempt(
     logAuthLifecycle('READY', `browser=${executablePath} source=${browserSource}`, nextClient);
     appendCollectorLog('client-info-detected', `source=library-ready-event browser=${executablePath}`);
     cancelClientInfoWatch();
-    attachLiveMediaListenersOnce(nextClient);
     await finalizeClientReady(nextClient, {
       headless: BROWSER_HEADLESS,
       browserPath: executablePath,
