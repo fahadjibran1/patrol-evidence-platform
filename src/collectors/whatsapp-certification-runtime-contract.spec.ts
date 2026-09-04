@@ -60,6 +60,45 @@ describe('WhatsApp QR-only certification runtime contract', () => {
     expect(body).not.toContain('rmSync');
   });
 
+  it('holds an existing LocalAuth certification reconnect before client initialization', () => {
+    const holdStart = helperSource.indexOf('async function waitForReconnectCertificationAuthorization');
+    const startCollector = helperSource.indexOf('async function startCollector');
+    const browserResolution = helperSource.indexOf('const browserResolution = resolveBrowserExecutables()', startCollector);
+    expect(holdStart).toBeGreaterThan(-1);
+    expect(helperSource).toContain("state: 'RECONNECT_AUTHORIZATION_PENDING'");
+    expect(helperSource).toContain('hasExistingLocalAuthSessionCandidate()');
+    expect(helperSource).toContain('const reconnectAuthorized = await waitForReconnectCertificationAuthorization()');
+    expect(helperSource.indexOf('await waitForReconnectCertificationAuthorization()', startCollector)).toBeLessThan(browserResolution);
+    expect(browserResolution).toBeGreaterThan(startCollector);
+  });
+
+  it('acknowledges reconnect authorization before releasing initialization exactly once', () => {
+    const commandStart = helperSource.indexOf("command.type === 'authorize-certification-authentication'");
+    const commandEnd = helperSource.indexOf("command.type === 'manual-backfill'", commandStart);
+    const commandBody = helperSource.slice(commandStart, commandEnd);
+    expect(commandBody.indexOf('emitCertificationAuthorizationResult(authorized)')).toBeLessThan(
+      commandBody.indexOf('release?.(true)'),
+    );
+    expect(commandBody).toContain('releaseReconnectAuthorizationHold = null');
+    expect(commandBody).toContain('qrOnlyCertificationGuard.authorizeAuthentication(true)');
+  });
+
+  it('releases a pending reconnect as unauthorized on stop without logout', () => {
+    const shutdownStart = helperSource.indexOf('async function shutdown');
+    const shutdownEnd = helperSource.indexOf('function wireCommands', shutdownStart);
+    const shutdownBody = helperSource.slice(shutdownStart, shutdownEnd);
+    expect(shutdownBody).toContain('releasePendingReconnect?.(false)');
+    expect(shutdownBody).not.toContain('.logout(');
+  });
+
+  it('does not hold fresh or ordinary production starts', () => {
+    const holdStart = helperSource.indexOf('async function waitForReconnectCertificationAuthorization');
+    const holdEnd = helperSource.indexOf('async function probeAuthReadyLifecycle', holdStart);
+    const holdBody = helperSource.slice(holdStart, holdEnd);
+    expect(holdBody).toContain('!isQrOnlyCertificationMode() || !hasExistingLocalAuthSessionCandidate()');
+    expect(holdBody).toContain('return true');
+  });
+
   it('keeps normal stop separate from explicit account logout', () => {
     const commandStart = helperSource.indexOf("if (command.type === 'stop')");
     const commandEnd = helperSource.indexOf("if (command.type === 'authorize-certification-authentication')", commandStart);

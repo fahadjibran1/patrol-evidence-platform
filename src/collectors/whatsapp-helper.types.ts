@@ -2,6 +2,7 @@ export type CollectorState =
   | 'disabled'
   | 'idle'
   | 'starting'
+  | 'RECONNECT_AUTHORIZATION_PENDING'
   | 'browser-launching'
   | 'whatsapp-loading'
   | 'waiting-for-qr'

@@ -2,6 +2,7 @@ import {
   appendFileSync,
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   renameSync,
   statSync,
@@ -131,6 +132,8 @@ let browserLaunchCompletedAt: number | null = null;
 let whatsappPageLoadedAt: number | null = null;
 let runtimeModulePromise: Promise<WhatsAppRuntimeModule> | null = null;
 let shutdownRequested = false;
+let reconnectAuthorizationPending = false;
+let releaseReconnectAuthorizationHold: ((authorized: boolean) => void) | null = null;
 /** Set only for operator stop / explicit session reset — never for library post_logout. */
 let operatorLogoutRequested = false;
 /** Once authenticated fires for an attempt, QR/browser startup timers must not destroy that client. */
@@ -3489,6 +3492,10 @@ async function shutdown(
   exitCode = 0,
   options?: { preserveTerminalState?: boolean },
 ): Promise<void> {
+  reconnectAuthorizationPending = false;
+  const releasePendingReconnect = releaseReconnectAuthorizationHold;
+  releaseReconnectAuthorizationHold = null;
+  releasePendingReconnect?.(false);
   shutdownRequested = true;
   clearStartupTimeouts();
   clearReadinessTimers();
@@ -3565,6 +3572,12 @@ function wireCommands(): void {
         appendCollectorLog('WHATSAPP_CERTIFICATION_AUTHORIZATION_REJECTED');
       }
       emitCertificationAuthorizationResult(authorized);
+      if (authorized && reconnectAuthorizationPending) {
+        reconnectAuthorizationPending = false;
+        const release = releaseReconnectAuthorizationHold;
+        releaseReconnectAuthorizationHold = null;
+        release?.(true);
+      }
       return;
     }
 
@@ -3593,6 +3606,43 @@ function wireCommands(): void {
         appendCollectorLog('CHAT_DISCOVERY_ERROR', `error=${error instanceof Error ? error.message : String(error)}`);
       });
     }
+  });
+}
+
+function hasExistingLocalAuthSessionCandidate(): boolean {
+  const profileDir = path.join(SESSION_PATH, SESSION_PROFILE_DIR);
+  if (!existsSync(profileDir)) {
+    return false;
+  }
+
+  try {
+    return readdirSync(profileDir).length > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function waitForReconnectCertificationAuthorization(): Promise<boolean> {
+  if (!isQrOnlyCertificationMode() || !hasExistingLocalAuthSessionCandidate()) {
+    return true;
+  }
+
+  reconnectAuthorizationPending = true;
+  updateStatus(
+    {
+      state: 'RECONNECT_AUTHORIZATION_PENDING',
+      startupStage: 'Reconnect authorization required',
+      info: 'Authenticated WhatsApp session found. Waiting for certification authorization before reconnecting.',
+      qrCode: null,
+      qrPayloadLength: null,
+      lastError: null,
+    },
+    'reconnect-authorization-pending',
+    'existingLocalAuthCandidate=true initializeStarted=false',
+  );
+
+  return new Promise<boolean>((resolve) => {
+    releaseReconnectAuthorizationHold = resolve;
   });
 }
 
@@ -4202,6 +4252,18 @@ async function startCollector(): Promise<void> {
 
   const runtimeConfig = await fetchRuntimeConfig();
   status.allowFromMe = runtimeConfig.allowFromMe;
+
+  const reconnectAuthorized = await waitForReconnectCertificationAuthorization();
+  if (!reconnectAuthorized || shutdownRequested || qrOnlyCertificationGuard.isTerminal()) {
+    appendCollectorLog(
+      'reconnect-authorization-hold-ended',
+      `authorized=${reconnectAuthorized} shutdown=${shutdownRequested} terminal=${qrOnlyCertificationGuard.isTerminal()}`,
+    );
+    return;
+  }
+  if (isQrOnlyCertificationMode() && qrOnlyCertificationGuard.currentState === 'AUTHENTICATION_AUTHORIZED') {
+    appendCollectorLog('reconnect-authorization-released', 'clientInitializeMayStart=true');
+  }
 
   const browserResolution = resolveBrowserExecutables();
   const launchPlan = buildBrowserLaunchPlan(browserResolution.available);

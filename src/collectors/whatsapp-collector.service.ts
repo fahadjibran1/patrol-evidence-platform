@@ -273,8 +273,11 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
     ) {
       throw new BadRequestException('The certification session is terminal and cannot be authorized.');
     }
-    if (!this.isHelperRunning() || this.helperStatus.state !== 'qr-ready') {
-      throw new BadRequestException('A QR-ready certification helper session is required.');
+    if (
+      !this.isHelperRunning() ||
+      !['qr-ready', 'RECONNECT_AUTHORIZATION_PENDING'].includes(this.helperStatus.state)
+    ) {
+      throw new BadRequestException('A QR-ready or reconnect-pending certification helper session is required.');
     }
     if (
       this.certificationAuthorizationRequested ||

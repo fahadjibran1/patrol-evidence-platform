@@ -494,6 +494,43 @@ describe('WhatsAppCollectorService', () => {
     }
   });
 
+  it('authorizes an existing-session reconnect while initialization is pending', async () => {
+    const originalArgv = process.argv;
+    const originalEnvironment = process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED;
+    process.argv = [...process.argv, '--patrol-certification-qr-only'];
+    process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED = 'true';
+    try {
+      const service = createService();
+      const { write } = attachRunningHelper(service);
+      (service as unknown as { helperStatus: WhatsAppHelperStatusSnapshot }).helperStatus = readyStatus({
+        state: 'RECONNECT_AUTHORIZATION_PENDING',
+        connected: false,
+        ready: false,
+        connectedAccount: null,
+      });
+
+      const authorization = service.authorizeCertificationAuthentication();
+      expect(write).toHaveBeenCalledWith(
+        `${JSON.stringify({
+          type: 'authorize-certification-authentication',
+          explicitOperatorAuthorization: true,
+        })}\n`,
+      );
+      emitAuthorizationResult(service, true, 'AUTHENTICATION_AUTHORIZED');
+      await expect(authorization).resolves.toEqual({
+        authorized: true,
+        state: 'AUTHENTICATION_AUTHORIZED',
+      });
+      await expect(service.authorizeCertificationAuthentication()).rejects.toThrow(
+        'Certification authentication authorization is not available in the current state.',
+      );
+    } finally {
+      process.argv = originalArgv;
+      if (originalEnvironment === undefined) delete process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED;
+      else process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED = originalEnvironment;
+    }
+  });
+
   it('masks certification QR until helper authorization and reveals only the latest QR', async () => {
     const originalArgv = process.argv;
     const originalEnvironment = process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED;
@@ -577,7 +614,7 @@ describe('WhatsAppCollectorService', () => {
       const service = createService();
       attachRunningHelper(service);
       await expect(service.authorizeCertificationAuthentication()).rejects.toThrow(
-        'A QR-ready certification helper session is required.',
+        'A QR-ready or reconnect-pending certification helper session is required.',
       );
 
       (service as unknown as { certificationTerminal: boolean }).certificationTerminal = true;
