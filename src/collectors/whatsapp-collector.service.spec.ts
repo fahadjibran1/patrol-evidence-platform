@@ -494,6 +494,51 @@ describe('WhatsAppCollectorService', () => {
     }
   });
 
+  it('masks certification QR until helper authorization and reveals only the latest QR', async () => {
+    const originalArgv = process.argv;
+    const originalEnvironment = process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED;
+    process.argv = [...process.argv, '--patrol-certification-qr-only'];
+    process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED = 'true';
+    try {
+      const service = createService();
+      attachRunningHelper(service);
+      emitHelperStatus(service, readyStatus({ state: 'qr-ready', ready: false, connected: false, qrCode: 'qr-old', qrPayloadLength: 6 }));
+      emitHelperStatus(service, readyStatus({ state: 'qr-ready', ready: false, connected: false, qrCode: 'qr-current', qrPayloadLength: 10 }));
+
+      await expect(service.getStatus()).resolves.toMatchObject({
+        qrCode: null,
+        certificationState: 'EXPECTING_QR_ONLY',
+        certificationQrMasked: true,
+      });
+
+      const authorization = service.authorizeCertificationAuthentication();
+      emitAuthorizationResult(service, true, 'AUTHENTICATION_AUTHORIZED');
+      await authorization;
+      await expect(service.getStatus()).resolves.toMatchObject({
+        qrCode: 'qr-current',
+        certificationState: 'AUTHENTICATION_AUTHORIZED',
+        certificationQrMasked: false,
+      });
+    } finally {
+      process.argv = originalArgv;
+      if (originalEnvironment === undefined) delete process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED;
+      else process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED = originalEnvironment;
+    }
+  });
+
+  it('never replaces a terminal supervisor snapshot with later normal helper status', async () => {
+    const service = createService();
+    (service as unknown as { certificationTerminal: boolean }).certificationTerminal = true;
+    (service as unknown as { helperStatus: WhatsAppHelperStatusSnapshot }).helperStatus = readyStatus({
+      state: 'UNEXPECTED_AUTHENTICATION', connected: false, ready: false, connectedAccount: null,
+    });
+    emitHelperStatus(service, readyStatus({ state: 'authenticated', connected: false, ready: false }));
+    emitHelperStatus(service, readyStatus({ state: 'ready', connected: true, ready: true }));
+    await expect(service.getStatus()).resolves.toMatchObject({
+      state: 'UNEXPECTED_AUTHENTICATION', connected: false, ready: false,
+    });
+  });
+
   it('fails closed when either certification activation factor is absent', async () => {
     const originalArgv = process.argv;
     const originalEnvironment = process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED;

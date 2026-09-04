@@ -760,6 +760,11 @@ function stopForUnexpectedAuthentication(signal: AccountBoundSignal): boolean {
     return false;
   }
 
+  if (unexpectedAuthenticationShutdownStarted) {
+    appendCollectorLog('certification-terminal-callback-ignored', `signal=${signal}`);
+    return true;
+  }
+
   unexpectedAuthenticationShutdownStarted = true;
   cancelClientInfoWatch();
   clearReadinessTimers();
@@ -787,6 +792,14 @@ function stopForUnexpectedAuthentication(signal: AccountBoundSignal): boolean {
   );
   resolveStartupOnce('failed');
   setImmediate(() => void shutdown(2, { preserveTerminalState: true }));
+  return true;
+}
+
+function blockAfterCertificationTerminal(event: string): boolean {
+  if (!unexpectedAuthenticationShutdownStarted && !qrOnlyCertificationGuard.isTerminal()) {
+    return false;
+  }
+  appendCollectorLog('certification-terminal-callback-ignored', `event=${event}`);
   return true;
 }
 
@@ -1246,6 +1259,9 @@ async function resolveConnectedAccountWithRetry(
   currentClient: Client,
   timeoutMs = 15_000,
 ): Promise<string | null> {
+  if (blockAfterCertificationTerminal('resolve-client-identity')) {
+    return null;
+  }
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline && !shutdownRequested) {
     const account = await resolveConnectedAccountId(currentClient);
@@ -1500,6 +1516,9 @@ async function finalizeClientReady(
     readySource: 'ready-event' | 'client-info-detected';
   },
 ): Promise<void> {
+  if (blockAfterCertificationTerminal('finalize-ready')) {
+    return;
+  }
   if (stopForUnexpectedAuthentication('client-identity')) {
     return;
   }
@@ -1644,6 +1663,9 @@ async function watchClientInfoAfterAuthentication(
   edgeExecutablePath: string,
   attemptId: number,
 ): Promise<void> {
+  if (blockAfterCertificationTerminal('watch-client-info')) {
+    return;
+  }
   if (shutdownRequested || readinessFinalized || status.state === 'ready') {
     appendCollectorLog(
       'waiting-for-client-info',
@@ -2548,6 +2570,9 @@ function scheduleLiveMediaRecheck(messageId: string, attempt = 1): void {
 }
 
 function attachLiveMediaListenersOnce(target: Client): void {
+  if (blockAfterCertificationTerminal('attach-live-media-listeners')) {
+    return;
+  }
   if (liveMediaListenersAttached) {
     appendCollectorLog('listener-attached', 'skipped=already-attached');
     return;
@@ -3140,6 +3165,9 @@ async function reportChatDiscoveryFailure(message: string, logEvent = 'CHAT_DISC
 }
 
 async function refreshDiscoveredChats(): Promise<void> {
+  if (blockAfterCertificationTerminal('refresh-discovered-chats')) {
+    return;
+  }
   appendCollectorLog('CHAT_DISCOVERY_START', describeClientForDiscovery(client));
 
   const activeClient = client;
@@ -3771,6 +3799,9 @@ async function runBrowserAttempt(
   const startupGate = createStartupGate();
 
   nextClient.on('qr', (qr: string) => {
+    if (blockAfterCertificationTerminal('qr')) {
+      return;
+    }
     if (!isActiveClientGeneration(nextClient, startupAttemptId)) {
       appendCollectorLog('qr-ignored-stale-attempt', describeClientIdentity(nextClient, startupAttemptId));
       return;
@@ -3826,6 +3857,9 @@ async function runBrowserAttempt(
   });
 
   nextClient.on('authenticated', () => {
+    if (blockAfterCertificationTerminal('authenticated')) {
+      return;
+    }
     if (!isActiveClientGeneration(nextClient, startupAttemptId)) {
       appendCollectorLog(
         'authenticated-ignored-stale-attempt',
@@ -3864,6 +3898,9 @@ async function runBrowserAttempt(
   });
 
   nextClient.on('change_state', (state: string) => {
+    if (blockAfterCertificationTerminal(`change_state:${state}`)) {
+      return;
+    }
     if (!isActiveClientGeneration(nextClient, startupAttemptId)) {
       appendCollectorLog('change-state-ignored-stale-attempt', describeClientIdentity(nextClient, startupAttemptId));
       return;
@@ -3878,6 +3915,9 @@ async function runBrowserAttempt(
   });
 
   nextClient.on('ready', async () => {
+    if (blockAfterCertificationTerminal('ready')) {
+      return;
+    }
     if (!isActiveClientGeneration(nextClient, startupAttemptId)) {
       appendCollectorLog('ready-ignored-stale-attempt', describeClientIdentity(nextClient, startupAttemptId));
       return;
@@ -3907,6 +3947,9 @@ async function runBrowserAttempt(
   });
 
   nextClient.on('disconnected', (reason: string) => {
+    if (blockAfterCertificationTerminal(`disconnected:${reason}`)) {
+      return;
+    }
     if (!isActiveClientGeneration(nextClient, startupAttemptId)) {
       appendCollectorLog('disconnected-ignored-stale-attempt', describeClientIdentity(nextClient, startupAttemptId));
       return;
@@ -3985,6 +4028,9 @@ async function runBrowserAttempt(
   });
 
   nextClient.on('auth_failure', (message: string) => {
+    if (blockAfterCertificationTerminal('auth_failure')) {
+      return;
+    }
     if (!isActiveClientGeneration(nextClient, startupAttemptId)) {
       appendCollectorLog('auth-failure-ignored-stale-attempt', describeClientIdentity(nextClient, startupAttemptId));
       return;

@@ -50,6 +50,8 @@ export interface WhatsAppCollectorStatus extends Omit<WhatsAppHelperStatusSnapsh
   collectorLogTail: string[];
   mappedGroupsCount: number;
   pilotGroupName: string | null;
+  certificationState: WhatsAppCertificationAuthorizationResult['state'];
+  certificationQrMasked: boolean;
 }
 
 export interface WhatsAppCertificationAuthorizationResult {
@@ -150,7 +152,10 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
 
   async getStatus(): Promise<WhatsAppCollectorStatus> {
     await this.refreshMappedGroupsCount();
-    if (this.helperStatus.qrCode && !this.helperStatus.qrDeliveredAt) {
+    const certificationQrMasked =
+      isQrOnlyCertificationMode() &&
+      this.certificationAuthorizationState !== 'AUTHENTICATION_AUTHORIZED';
+    if (this.helperStatus.qrCode && !certificationQrMasked && !this.helperStatus.qrDeliveredAt) {
       this.helperStatus = {
         ...this.helperStatus,
         qrDeliveredAt: new Date().toISOString(),
@@ -168,11 +173,19 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
 
     return {
       ...this.helperStatus,
+      qrCode: certificationQrMasked ? null : this.helperStatus.qrCode,
+      qrPayloadLength: certificationQrMasked ? null : this.helperStatus.qrPayloadLength,
+      info:
+        certificationQrMasked && this.helperStatus.state === 'qr-ready'
+          ? 'QR prepared — waiting for certification authorization.'
+          : this.helperStatus.info,
       connected: this.helperStatus.state === 'ready',
       ready: this.helperStatus.state === 'ready',
       mappedGroupsCount: this.mappedGroupsCount,
       pilotGroupName: this.pilotGroupName ?? null,
       collectorLogTail: this.readCollectorLogTail(),
+      certificationState: this.certificationAuthorizationState,
+      certificationQrMasked,
     };
   }
 
@@ -786,6 +799,13 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
         return;
       }
       if (event.type === 'status') {
+        if (this.certificationTerminal && event.payload.state !== UNEXPECTED_AUTHENTICATION) {
+          this.appendCollectorLog(
+            'certification-terminal-status-ignored',
+            `state=${event.payload.state}`,
+          );
+          return;
+        }
         const previousQr = this.helperStatus.qrCode;
         const previousConnectedAccount = this.helperStatus.connectedAccount?.trim() || null;
         this.helperStatus = {

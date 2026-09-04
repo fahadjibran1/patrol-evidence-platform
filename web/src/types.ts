@@ -161,6 +161,8 @@ export interface WhatsAppCollectorStatus {
   browserCandidatesTried: string[];
   sessionPathExists: boolean;
   sessionPathWritable: boolean;
+  certificationState?: 'DISABLED' | 'EXPECTING_QR_ONLY' | 'AUTHENTICATION_AUTHORIZED' | 'UNEXPECTED_AUTHENTICATION';
+  certificationQrMasked?: boolean;
 }
 
 export interface WhatsAppCollectorGroup {

@@ -70,6 +70,23 @@ describe('WhatsApp QR-only certification runtime contract', () => {
     );
   });
 
+  it('centrally blocks every helper lifecycle callback after terminalization', () => {
+    expect(helperSource).toContain('function blockAfterCertificationTerminal');
+    for (const event of ['qr', 'authenticated', 'ready', 'auth_failure']) {
+      expect(helperSource).toContain(`blockAfterCertificationTerminal('${event}')`);
+    }
+    expect(helperSource).toContain('blockAfterCertificationTerminal(`change_state:${state}`)');
+    expect(helperSource).toContain('blockAfterCertificationTerminal(`disconnected:${reason}`)');
+    expect(helperSource).toContain("blockAfterCertificationTerminal('watch-client-info')");
+    expect(helperSource).toContain("blockAfterCertificationTerminal('attach-live-media-listeners')");
+    expect(helperSource).toContain("blockAfterCertificationTerminal('refresh-discovered-chats')");
+  });
+
+  it('masks certification QR presentation until authorization is acknowledged', () => {
+    expect(supervisorSource).toContain("this.certificationAuthorizationState !== 'AUTHENTICATION_AUTHORIZED'");
+    expect(supervisorSource).toContain('qrCode: certificationQrMasked ? null : this.helperStatus.qrCode');
+  });
+
   it('routes explicit authorization over the private helper command channel', () => {
     expect(controllerSource).toContain("@Post('certification/authorize-authentication')");
     expect(supervisorSource).toContain("type: 'authorize-certification-authentication'");

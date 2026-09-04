@@ -44,11 +44,18 @@ export class QrOnlyCertificationGuard {
   }
 
   detectAccountBoundSignal(_signal: AccountBoundSignal): boolean {
+    if (this.state === UNEXPECTED_AUTHENTICATION) {
+      return true;
+    }
     if (this.state !== 'EXPECTING_QR_ONLY') {
       return false;
     }
     this.state = UNEXPECTED_AUTHENTICATION;
     return true;
+  }
+
+  isTerminal(): boolean {
+    return this.state === UNEXPECTED_AUTHENTICATION;
   }
 }
 

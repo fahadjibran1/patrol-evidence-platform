@@ -32,7 +32,8 @@ describe('QR-only WhatsApp certification guard', () => {
       const guard = new QrOnlyCertificationGuard(true);
       expect(guard.detectAccountBoundSignal(signal)).toBe(true);
       expect(guard.currentState).toBe(UNEXPECTED_AUTHENTICATION);
-      expect(guard.detectAccountBoundSignal(signal)).toBe(false);
+      expect(guard.detectAccountBoundSignal(signal)).toBe(true);
+      expect(guard.isTerminal()).toBe(true);
     },
   );
 
@@ -45,6 +46,30 @@ describe('QR-only WhatsApp certification guard', () => {
     expect(guard.detectAccountBoundSignal('authenticated')).toBe(false);
     expect(guard.authorizeAuthentication(true)).toBe(false);
     expect(guard.currentState).toBe('AUTHENTICATION_AUTHORIZED');
+  });
+
+  it.each([
+    ['authenticated', 'authenticated'],
+    ['authenticated', 'CONNECTED'],
+    ['authenticated', 'ready'],
+    ['authenticated', 'client-identity'],
+  ] as const)('remains fail-closed after terminal %s then %s signals', (first, second) => {
+    const guard = new QrOnlyCertificationGuard(true);
+    expect(guard.detectAccountBoundSignal(first)).toBe(true);
+    expect(guard.detectAccountBoundSignal(second)).toBe(true);
+    expect(guard.currentState).toBe(UNEXPECTED_AUTHENTICATION);
+    expect(guard.authorizeAuthentication(true)).toBe(false);
+  });
+
+  it('fails closed for nearly concurrent account-bound signals', async () => {
+    const guard = new QrOnlyCertificationGuard(true);
+    const blocked = await Promise.all([
+      Promise.resolve().then(() => guard.detectAccountBoundSignal('authenticated')),
+      Promise.resolve().then(() => guard.detectAccountBoundSignal('ready')),
+      Promise.resolve().then(() => guard.detectAccountBoundSignal('CONNECTED')),
+    ]);
+    expect(blocked).toEqual([true, true, true]);
+    expect(guard.currentState).toBe(UNEXPECTED_AUTHENTICATION);
   });
 
   it('cannot authorize a terminal certification session retroactively', () => {

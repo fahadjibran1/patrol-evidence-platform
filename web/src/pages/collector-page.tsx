@@ -148,7 +148,14 @@ export function CollectorPage(): JSX.Element {
                   </div>
                 ) : (
                   <div className="collector-initializing">
-                    <LoadingBlock label={view.stageLabel} />
+                    {status.certificationQrMasked ? (
+                      <>
+                        <h4>QR prepared — waiting for certification authorization</h4>
+                        <p className="muted-text">The QR will appear here only after the active certification helper is authorized.</p>
+                      </>
+                    ) : (
+                      <LoadingBlock label={view.stageLabel} />
+                    )}
                     <p className="muted-text collector-initializing-hint">
                       First launch can take up to two minutes while the selected browser and WhatsApp Web start. Do not
                       close the browser window.
