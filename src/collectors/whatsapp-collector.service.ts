@@ -150,7 +150,6 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
 
   async getStatus(): Promise<WhatsAppCollectorStatus> {
     await this.refreshMappedGroupsCount();
-    this.hydrateQrFromDiskIfMissing();
     if (this.helperStatus.qrCode && !this.helperStatus.qrDeliveredAt) {
       this.helperStatus = {
         ...this.helperStatus,
@@ -624,6 +623,8 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       qrCode: null,
     });
 
+    this.clearPreviousQrArtifact();
+
     if (!existsSync(this.helperEntryPath)) {
       this.helperStatus = {
         ...this.helperStatus,
@@ -738,42 +739,16 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  private hydrateQrFromDiskIfMissing(): void {
-    if (this.helperStatus.qrCode || !this.isHelperRunning()) {
-      return;
-    }
-
+  private clearPreviousQrArtifact(): void {
     try {
-      if (!existsSync(this.latestQrPath)) {
-        return;
+      if (existsSync(this.latestQrPath)) {
+        unlinkSync(this.latestQrPath);
       }
-
-      const qr = readFileSync(this.latestQrPath, 'utf8').trim();
-      if (qr.length < 20) {
-        return;
-      }
-
-      const linkingStates = new Set([
-        'starting',
-        'browser-launching',
-        'whatsapp-loading',
-        'waiting-for-qr',
-        'qr-ready',
-      ]);
-
-      if (!linkingStates.has(this.helperStatus.state)) {
-        return;
-      }
-
-      this.helperStatus = {
-        ...this.helperStatus,
-        qrCode: qr,
-        qrPayloadLength: qr.length,
-        state: this.helperStatus.state === 'waiting-for-qr' ? 'qr-ready' : this.helperStatus.state,
-      };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.appendCollectorLog('latest-qr-hydrate-error', message);
+      this.appendCollectorLog(
+        'latest-qr-clear-error',
+        error instanceof Error ? error.message : String(error),
+      );
     }
   }
 
@@ -819,6 +794,20 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
           contacts: [...event.payload.contacts],
           browserCandidatesTried: [...event.payload.browserCandidatesTried],
         };
+        const qrEligibleStates = new Set([
+          'starting',
+          'browser-launching',
+          'whatsapp-loading',
+          'waiting-for-qr',
+          'qr-ready',
+        ]);
+        if (!qrEligibleStates.has(this.helperStatus.state)) {
+          this.helperStatus = {
+            ...this.helperStatus,
+            qrCode: null,
+            qrPayloadLength: null,
+          };
+        }
         if (this.helperStatus.state === UNEXPECTED_AUTHENTICATION) {
           this.certificationTerminal = true;
           this.certificationAuthorizationState = UNEXPECTED_AUTHENTICATION;

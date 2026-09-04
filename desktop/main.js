@@ -271,7 +271,8 @@ function getConfiguredRuntimeValues() {
       sqliteDbPath: defaultSqlitePath,
       storageRootPath: resolvePackagedStorageRootPath(workspaceConfig, dataDir),
       whatsappSessionPath: defaultWhatsAppSessionPath,
-      autoStartCollector: workspaceConfig.autoStartCollector === true,
+      // Desktop linking is always initiated deliberately from the application UI.
+      autoStartCollector: false,
     };
   }
 
@@ -287,7 +288,8 @@ function getConfiguredRuntimeValues() {
     storageRootPath,
     whatsappSessionPath:
       String(process.env.WHATSAPP_SESSION_PATH || defaultWhatsAppSessionPath).trim(),
-    autoStartCollector: workspaceConfig.autoStartCollector === true,
+    // Desktop linking is always initiated deliberately from the application UI.
+    autoStartCollector: false,
   };
 }
 

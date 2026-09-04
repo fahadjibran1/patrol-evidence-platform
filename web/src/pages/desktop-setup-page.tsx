@@ -631,7 +631,7 @@ export function DesktopSetupPage(): JSX.Element {
           localAdminFirstName: setupForm.adminFirstName,
           localAdminLastName: setupForm.adminLastName,
           autoLaunchApp: setupForm.autoLaunchApp,
-          autoStartCollector: setupForm.autoStartCollector,
+          autoStartCollector: false,
           whatsappAllowFromMe: setupForm.whatsappAllowFromMe,
         },
         { restartBackend: true },
@@ -647,7 +647,7 @@ export function DesktopSetupPage(): JSX.Element {
           adminEmail: setupForm.adminEmail,
           adminPassword: setupForm.adminPassword,
           autoLaunchApp: setupForm.autoLaunchApp,
-          autoStartCollector: setupForm.autoStartCollector,
+          autoStartCollector: false,
           whatsappAllowFromMe: setupForm.whatsappAllowFromMe,
           markSetupComplete: false,
         }),
@@ -1074,14 +1074,9 @@ export function DesktopSetupPage(): JSX.Element {
                 />
               </label>
             </div>
-            <label className="checkbox-row">
-              <input
-                type="checkbox"
-                checked={setupForm.autoStartCollector}
-                onChange={(event) => setSetupForm((current) => ({ ...current, autoStartCollector: event.target.checked }))}
-              />
-              Start patrol monitoring automatically after setup (off by default)
-            </label>
+            <p className="muted-text">
+              WhatsApp linking starts only when an administrator selects Link WhatsApp from Monitoring.
+            </p>
             <div className="button-row">
               <button type="submit" className="primary-button" disabled={isBusy}>
                 Continue to storage

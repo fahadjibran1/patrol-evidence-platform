@@ -71,7 +71,7 @@ export function CollectorPage(): JSX.Element {
                     ? 'Patrol images from mapped sources will appear on the dashboard and in Evidence.'
                     : view.isLinking
                       ? status.info
-                      : 'Start monitoring to link WhatsApp and receive patrol images.'}
+                      : 'WhatsApp is not linked. Link it when you are ready; the rest of Patrol Evidence remains available.'}
                 </p>
               </div>
               <OpsStatusPill tone={view.opsTone} label={view.label} />
@@ -89,18 +89,24 @@ export function CollectorPage(): JSX.Element {
             </div>
 
             <div className="button-row">
-              {!view.isLive ? (
+              {view.isLinking ? (
+                <button type="button" className="secondary-button" disabled={isBusy} onClick={() => void stop()}>
+                  Cancel linking
+                </button>
+              ) : !view.isLive ? (
                 <button type="button" className="primary-button" disabled={isBusy} onClick={() => void start()}>
-                  Start monitoring
+                  {view.isError ? 'Retry linking' : 'Link WhatsApp'}
                 </button>
               ) : (
                 <button type="button" className="secondary-button" disabled={isBusy} onClick={() => void stop()}>
                   Pause monitoring
                 </button>
               )}
-              <button type="button" className="secondary-button" disabled={isBusy} onClick={() => void resetSession()}>
-                Re-link WhatsApp
-              </button>
+              {view.isLive ? (
+                <button type="button" className="secondary-button" disabled={isBusy} onClick={() => void resetSession()}>
+                  Re-link WhatsApp
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="secondary-button"
@@ -126,16 +132,19 @@ export function CollectorPage(): JSX.Element {
           {view.showQr ? (
             <Card className="collector-qr-card collector-qr-hero">
               <h3>Scan to link WhatsApp</h3>
-              <p className="collector-qr-hero-lead">On the patrol phone: WhatsApp → Linked devices → Link a device.</p>
+              <p className="collector-qr-hero-lead">
+                Scan only the current QR shown here in Patrol Evidence. On the patrol phone: WhatsApp → Linked devices → Link a device.
+              </p>
               <div className="collector-qr-hero-layout">
                 <div className="collector-qr-actions">
-                  <button type="button" className="primary-button" disabled={isBusy} onClick={() => void start()}>
-                    Refresh QR
+                  <button type="button" className="secondary-button" disabled={isBusy} onClick={() => void stop()}>
+                    Cancel linking
                   </button>
                 </div>
                 {status.qrCode ? (
                   <div className="collector-qr-wrap large" aria-label="WhatsApp QR code">
-                    <QRCode value={status.qrCode} size={280} level="M" />
+                    <QRCode key={status.lastQrAt ?? status.qrCode} value={status.qrCode} size={280} level="M" />
+                    <p className="muted-text">This code refreshes automatically. Scan the code shown here, not the browser window.</p>
                   </div>
                 ) : (
                   <div className="collector-initializing">

@@ -53,7 +53,7 @@ function phaseLabel(phase: MonitoringPhase, backfillRunning: boolean): string {
     case 'ready':
       return backfillRunning ? 'Catching up' : 'Live';
     case 'launching-browser':
-      return 'Launching browser';
+      return 'Starting link';
     case 'loading-whatsapp':
       return 'Loading WhatsApp Web';
     case 'waiting-for-qr':
@@ -61,13 +61,13 @@ function phaseLabel(phase: MonitoringPhase, backfillRunning: boolean): string {
     case 'qr-ready':
       return 'QR Ready';
     case 'authenticated':
-      return 'Authenticated';
+      return 'Authenticating';
     case 'error':
       return 'Error';
     case 'disabled':
       return 'Disabled';
     default:
-      return 'Offline';
+      return 'Not linked';
   }
 }
 
@@ -108,7 +108,7 @@ function derivePhase(status: WhatsAppCollectorStatus): MonitoringPhase {
     return 'ready';
   }
 
-  if (status.state === 'failed') {
+  if (status.state === 'failed' || status.state === 'disconnected') {
     return 'error';
   }
 
@@ -144,7 +144,12 @@ function isLinkingStatus(status: WhatsAppCollectorStatus): boolean {
     return false;
   }
 
-  if (status.state === 'failed' || status.state === 'idle' || status.state === 'disabled') {
+  if (
+    status.state === 'failed' ||
+    status.state === 'disconnected' ||
+    status.state === 'idle' ||
+    status.state === 'disabled'
+  ) {
     return false;
   }
 
@@ -155,10 +160,10 @@ export function deriveMonitoringView(status: WhatsAppCollectorStatus | null): Mo
   if (!status) {
     return {
       phase: 'offline',
-      label: 'Offline',
-      headerLabel: 'Offline',
-      sidebarLabel: 'Monitoring offline',
-      stageLabel: 'Offline',
+      label: 'Not linked',
+      headerLabel: 'Not linked',
+      sidebarLabel: 'WhatsApp not linked',
+      stageLabel: 'Not linked',
       tone: 'idle',
       opsTone: 'amber' as MonitoringOpsTone,
       isLive: false,
@@ -187,7 +192,7 @@ export function deriveMonitoringView(status: WhatsAppCollectorStatus | null): Mo
       ? 'Error'
       : isLinking
         ? label
-        : 'Offline';
+        : 'Not linked';
 
   const sidebarLabel = isLive
     ? 'Monitoring live'
@@ -195,7 +200,7 @@ export function deriveMonitoringView(status: WhatsAppCollectorStatus | null): Mo
       ? 'Monitoring error'
       : isLinking
         ? `Monitoring · ${label}`
-        : 'Monitoring offline';
+        : 'WhatsApp not linked';
 
   const accountTitle = isLive
     ? status.connectedAccount || 'Patrol WhatsApp linked'
@@ -209,7 +214,7 @@ export function deriveMonitoringView(status: WhatsAppCollectorStatus | null): Mo
       ? 'FAILED'
       : isLinking
         ? 'PENDING'
-        : 'OFFLINE';
+      : 'NOT LINKED';
 
   return {
     phase,

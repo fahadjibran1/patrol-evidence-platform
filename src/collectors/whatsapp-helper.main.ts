@@ -83,7 +83,6 @@ const QR_AFTER_PAGE_LOAD_TIMEOUT_MS = Number(
   process.env.PATROL_HELPER_QR_TIMEOUT_MS ?? process.env.PATROL_HELPER_STARTUP_TIMEOUT_MS ?? 120_000,
 );
 const MAX_BLANK_QR_STARTUP_RETRIES = Number(process.env.PATROL_HELPER_STARTUP_RETRIES ?? 2);
-const QR_REUSE_MAX_AGE_MS = Number(process.env.PATROL_HELPER_QR_REUSE_MAX_AGE_MS ?? 5 * 60_000);
 const SESSION_PROFILE_DIR = 'session-patrol-evidence-platform';
 const LOCAL_AUTH_CLIENT_ID = 'patrol-evidence-platform';
 const BROWSER_HEADLESS = false;
@@ -293,50 +292,6 @@ function clearLatestQrPayload(): void {
   } catch (error) {
     appendCollectorLog('latest-qr-clear-error', error instanceof Error ? error.message : String(error));
   }
-}
-
-function readLatestQrPayload(): { qr: string; ageMs: number } | null {
-  try {
-    if (!existsSync(LATEST_QR_PATH)) {
-      return null;
-    }
-
-    const qr = readFileSync(LATEST_QR_PATH, 'utf8').trim();
-    if (qr.length < 20) {
-      return null;
-    }
-
-    const fileAgeMs = Date.now() - statSync(LATEST_QR_PATH).mtimeMs;
-    if (fileAgeMs > QR_REUSE_MAX_AGE_MS) {
-      return null;
-    }
-
-    return { qr, ageMs: fileAgeMs };
-  } catch (error) {
-    appendCollectorLog('latest-qr-read-error', error instanceof Error ? error.message : String(error));
-    return null;
-  }
-}
-
-function hydrateCachedQrForStartup(): void {
-  const cached = readLatestQrPayload();
-  if (!cached) {
-    return;
-  }
-
-  updateStatus(
-    {
-      state: 'qr-ready',
-      qrCode: cached.qr,
-      qrPayloadLength: cached.qr.length,
-      lastQrAt: new Date().toISOString(),
-      lastError: null,
-      info: 'Showing saved QR while WhatsApp Web opens. A fresh code will replace it if needed.',
-      startupStage: 'QR ready',
-    },
-    'qr-reused-from-cache',
-    `ageMs=${cached.ageMs} length=${cached.qr.length}`,
-  );
 }
 
 function isSessionHealthy(): boolean {
@@ -4198,8 +4153,6 @@ async function startCollector(): Promise<void> {
     return;
   }
 
-  hydrateCachedQrForStartup();
-
   const maxAttempts = 1 + MAX_BLANK_QR_STARTUP_RETRIES;
 
   try {
@@ -4227,7 +4180,6 @@ async function startCollector(): Promise<void> {
           await fullyDestroyClientSession(client, 'startup-retry');
         }
 
-        hydrateCachedQrForStartup();
       }
 
       await prepareBrowserLaunch(attemptIndex);

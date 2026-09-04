@@ -38,7 +38,8 @@ interface MonitoringContextValue {
 const MonitoringContext = createContext<MonitoringContextValue | null>(null);
 
 const MONITORING_POLL_IDLE_MS = 60_000;
-const MONITORING_POLL_LINKING_MS = 5_000;
+// Linking is interactive: poll quickly enough that a refreshed QR replaces the old one promptly.
+const MONITORING_POLL_LINKING_MS = 1_000;
 
 export function MonitoringProvider({ children }: PropsWithChildren): JSX.Element {
   const { token, user } = useAuth();

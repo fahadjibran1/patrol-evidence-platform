@@ -4,21 +4,12 @@ import {
   DesktopWorkspaceConfig,
   getDefaultDesktopDataDirectory,
   getDesktopConfigPath,
-  normalizeSetupCompleted,
   readDesktopWorkspaceConfig,
 } from './desktop-config.util';
 
 function isAutoStartCollectorEnabled(config: DesktopWorkspaceConfig): boolean {
   const value = config.autoStartCollector as unknown;
-  if (value === true) {
-    return true;
-  }
-
-  if (typeof value === 'string' && value.trim().toLowerCase() === 'true') {
-    return true;
-  }
-
-  return false;
+  return value === true || (typeof value === 'string' && value.trim().toLowerCase() === 'true');
 }
 
 export function resolveConfiguredStorageRootPath(workspace?: DesktopWorkspaceConfig): string {
@@ -42,18 +33,13 @@ export function resolveConfiguredStorageRootPath(workspace?: DesktopWorkspaceCon
 }
 
 export function resolveDesktopWhatsAppAutoStart(workspace?: DesktopWorkspaceConfig): boolean {
-  const config = workspace ?? readDesktopWorkspaceConfig();
+  if (process.env.DESKTOP_CONFIG_PATH?.trim()) {
+    return false;
+  }
 
+  const config = workspace ?? readDesktopWorkspaceConfig();
   if (!isAutoStartCollectorEnabled(config)) {
     return false;
-  }
-
-  if (process.env.DESKTOP_CONFIG_PATH?.trim() && !normalizeSetupCompleted(config.setupCompleted)) {
-    return false;
-  }
-
-  if (process.env.DESKTOP_CONFIG_PATH?.trim()) {
-    return true;
   }
 
   return process.env.WHATSAPP_AUTO_START === 'true';

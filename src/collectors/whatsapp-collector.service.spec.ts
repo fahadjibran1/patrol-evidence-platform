@@ -316,6 +316,47 @@ describe('WhatsAppCollectorService', () => {
     expect(whatsAppSourceMappingService.countActiveMappingsForIngest).toHaveBeenCalledWith('linked-account-1');
   });
 
+  it('replaces a refreshed QR and clears it when authentication leaves the linking state', async () => {
+    const service = createService();
+    attachRunningHelper(service);
+
+    emitHelperStatus(
+      service,
+      readyStatus({
+        state: 'qr-ready',
+        connected: false,
+        ready: false,
+        connectedAccount: null,
+        qrCode: 'current-qr-generation-1-payload',
+        lastQrAt: '2026-09-04T12:00:00.000Z',
+      }),
+    );
+    await expect(service.getStatus()).resolves.toMatchObject({
+      state: 'qr-ready',
+      qrCode: 'current-qr-generation-1-payload',
+    });
+
+    emitHelperStatus(
+      service,
+      readyStatus({
+        state: 'qr-ready',
+        connected: false,
+        ready: false,
+        connectedAccount: null,
+        qrCode: 'current-qr-generation-2-payload',
+        lastQrAt: '2026-09-04T12:01:00.000Z',
+      }),
+    );
+    await expect(service.getStatus()).resolves.toMatchObject({
+      state: 'qr-ready',
+      qrCode: 'current-qr-generation-2-payload',
+      lastQrAt: '2026-09-04T12:01:00.000Z',
+    });
+
+    emitHelperStatus(service, readyStatus({ qrCode: 'stale-qr-must-not-survive-ready' }));
+    await expect(service.getStatus()).resolves.toMatchObject({ state: 'ready', qrCode: null });
+  });
+
   it('runs manual backfill for the requested hour window', async () => {
     const service = createService({ whatsappAllowFromMe: false, whatsappBackfillMessageLimit: 0 });
     const { write } = attachRunningHelper(service);

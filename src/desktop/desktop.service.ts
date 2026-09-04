@@ -213,7 +213,8 @@ export class DesktopService {
       localAdminEmail: email,
       localAdminFirstName: dto.adminFirstName.trim(),
       localAdminLastName: dto.adminLastName.trim(),
-      autoStartCollector: dto.autoStartCollector === true,
+      // Retain the legacy field for config compatibility, but desktop linking is user initiated.
+      autoStartCollector: false,
       autoLaunchApp: dto.autoLaunchApp === true,
       whatsappAllowFromMe: dto.whatsappAllowFromMe === true,
       lastSetupAt: new Date().toISOString(),

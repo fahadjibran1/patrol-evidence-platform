@@ -47,15 +47,16 @@ describe('resolveDesktopWhatsAppAutoStart', () => {
     ).toBe(false);
   });
 
-  it('returns true only when autoStartCollector is enabled and setup is completed', () => {
+  it('never auto-starts a WhatsApp linking or monitoring session in desktop mode', () => {
     process.env.DESKTOP_CONFIG_PATH = 'C:/Patrol/workspace.json';
+    process.env.WHATSAPP_AUTO_START = 'true';
 
     expect(
       resolveDesktopWhatsAppAutoStart({
         autoStartCollector: true,
         setupCompleted: true,
       }),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it('falls back to WHATSAPP_AUTO_START outside desktop config mode', () => {
