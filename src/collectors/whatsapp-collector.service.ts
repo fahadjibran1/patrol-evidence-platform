@@ -208,6 +208,11 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       return this.getStatus();
     }
 
+    if (isQrOnlyCertificationMode()) {
+      this.appendCollectorLog('certification-operational-command-suppressed', 'action=refresh-discovered-chats');
+      return this.getStatus();
+    }
+
     this.sendHelperCommand({ type: 'refresh-discovered-chats' });
     return this.getStatus();
   }
@@ -456,6 +461,11 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
         ...this.helperStatus,
         info: 'Patrol monitoring must be ready before history refresh can run.',
       };
+      return this.getStatus();
+    }
+
+    if (isQrOnlyCertificationMode()) {
+      this.appendCollectorLog('certification-operational-command-suppressed', 'action=manual-backfill');
       return this.getStatus();
     }
 
@@ -895,6 +905,11 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       return this.getStatus();
     }
 
+    if (isQrOnlyCertificationMode()) {
+      this.appendCollectorLog('certification-operational-command-suppressed', 'action=send-test-image');
+      return this.getStatus();
+    }
+
     this.sendHelperCommand({ type: 'send-test-image', groupId });
     return this.getStatus();
   }
@@ -1137,6 +1152,9 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
   }
 
   private maybeRequestChatDiscoveryRefresh(): void {
+    if (isQrOnlyCertificationMode()) {
+      return;
+    }
     if (!this.isHelperRunning() || this.helperStatus.state !== 'ready') {
       return;
     }

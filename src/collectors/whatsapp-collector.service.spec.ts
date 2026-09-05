@@ -531,6 +531,51 @@ describe('WhatsAppCollectorService', () => {
     }
   });
 
+  it('keeps a dual-factor certification connection operationally idle', async () => {
+    const originalArgv = process.argv;
+    const originalEnvironment = process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED;
+    process.argv = [...process.argv, '--patrol-certification-qr-only'];
+    process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED = 'true';
+    try {
+      const service = createService();
+      const { write } = attachRunningHelper(service);
+      await service.listGroups();
+      await service.listContacts();
+      await service.refreshDiscoveredChats();
+      await service.manualBackfill(1);
+      await service.sendTestImage('synthetic-test-group');
+      expect(write).not.toHaveBeenCalled();
+    } finally {
+      process.argv = originalArgv;
+      if (originalEnvironment === undefined) delete process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED;
+      else process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED = originalEnvironment;
+    }
+  });
+
+  it('retains existing operational commands when either certification factor is absent', async () => {
+    const originalArgv = process.argv;
+    const originalEnvironment = process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED;
+    try {
+      process.argv = process.argv.filter((value) => value !== '--patrol-certification-qr-only');
+      process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED = 'true';
+      const environmentOnly = createService();
+      const { write: environmentWrite } = attachRunningHelper(environmentOnly);
+      await environmentOnly.refreshDiscoveredChats();
+      expect(environmentWrite).toHaveBeenCalledWith(`${JSON.stringify({ type: 'refresh-discovered-chats' })}\n`);
+
+      delete process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED;
+      process.argv = [...process.argv, '--patrol-certification-qr-only'];
+      const markerOnly = createService();
+      const { write: markerWrite } = attachRunningHelper(markerOnly);
+      await markerOnly.manualBackfill(1);
+      expect(markerWrite).toHaveBeenCalledWith(`${JSON.stringify({ type: 'manual-backfill', hours: 1 })}\n`);
+    } finally {
+      process.argv = originalArgv;
+      if (originalEnvironment === undefined) delete process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED;
+      else process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED = originalEnvironment;
+    }
+  });
+
   it('masks certification QR until helper authorization and reveals only the latest QR', async () => {
     const originalArgv = process.argv;
     const originalEnvironment = process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED;

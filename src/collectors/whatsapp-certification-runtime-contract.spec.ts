@@ -99,6 +99,43 @@ describe('WhatsApp QR-only certification runtime contract', () => {
     expect(holdBody).toContain('return true');
   });
 
+  it('keeps dual-factor certification ready state connected but operationally idle', () => {
+    const readyStart = helperSource.indexOf('async function finalizeClientReady');
+    const readyEnd = helperSource.indexOf('async function watchClientInfoAfterAuthentication', readyStart);
+    const readyBody = helperSource.slice(readyStart, readyEnd);
+    expect(readyBody).toContain("appendCollectorLog(\n        'CONNECTED_CERTIFICATION_IDLE'");
+    expect(readyBody).toContain('clearGroupDiscoveryTimers()');
+    expect(readyBody).toContain('resetLiveMessageListenerState()');
+    expect(readyBody).toContain('if (isQrOnlyCertificationMode())');
+    expect(readyBody).toContain('attachLiveMediaListenersOnce(currentClient)');
+    expect(readyBody).toContain('await refreshDiscoveredChats()');
+    expect(readyBody).toContain('scheduleChatDiscoveryAfterReady(context.readySource)');
+  });
+
+  it('suppresses delayed discovery and listener reattachment throughout certification idle', () => {
+    const scheduleStart = helperSource.indexOf('function scheduleChatDiscoveryAfterReady');
+    const scheduleEnd = helperSource.indexOf('async function shutdown', scheduleStart);
+    const scheduleBody = helperSource.slice(scheduleStart, scheduleEnd);
+    const heartbeatStart = helperSource.indexOf('function startReadyHeartbeat');
+    const heartbeatEnd = helperSource.indexOf('async function processMessage', heartbeatStart);
+    const heartbeatBody = helperSource.slice(heartbeatStart, heartbeatEnd);
+    expect(scheduleBody).toContain('if (isQrOnlyCertificationMode())');
+    expect(scheduleBody).toContain('clearGroupDiscoveryTimers()');
+    expect(scheduleBody.indexOf('if (isQrOnlyCertificationMode())')).toBeLessThan(scheduleBody.indexOf('setTimeout'));
+    expect(heartbeatBody).toContain('if (!isQrOnlyCertificationMode())');
+    expect(heartbeatBody).toContain("verifyAndReattachLiveMediaListeners('health-check')");
+  });
+
+  it('fails closed for manual discovery, backfill, and sending commands in certification mode', () => {
+    const commandStart = helperSource.indexOf('function wireCommands');
+    const commandEnd = helperSource.indexOf('function hasExistingLocalAuthSessionCandidate', commandStart);
+    const commandBody = helperSource.slice(commandStart, commandEnd);
+    for (const action of ['manual-backfill', 'send-test-image', 'refresh-discovered-chats']) {
+      expect(commandBody).toContain(`action=${action}`);
+    }
+    expect(commandBody.match(/isQrOnlyCertificationMode\(\)/g)?.length).toBeGreaterThanOrEqual(3);
+  });
+
   it('keeps normal stop separate from explicit account logout', () => {
     const commandStart = helperSource.indexOf("if (command.type === 'stop')");
     const commandEnd = helperSource.indexOf("if (command.type === 'authorize-certification-authentication')", commandStart);

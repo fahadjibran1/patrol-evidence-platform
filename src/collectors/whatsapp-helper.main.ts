@@ -1651,15 +1651,24 @@ async function finalizeClientReady(
 
   if (firstReadyFinalization) {
     clearLatestQrPayload();
-    attachLiveMediaListenersOnce(currentClient);
-    if (client) {
-      logMediaListenerCounts(client, 'ready-event');
+    if (isQrOnlyCertificationMode()) {
+      clearGroupDiscoveryTimers();
+      resetLiveMessageListenerState();
+      appendCollectorLog(
+        'CONNECTED_CERTIFICATION_IDLE',
+        'discovery=0 mapping=0 backfill=0 ingestionListeners=0 sending=0',
+      );
+    } else {
+      attachLiveMediaListenersOnce(currentClient);
+      if (client) {
+        logMediaListenerCounts(client, 'ready-event');
+      }
+      await refreshDiscoveredChats();
+      scheduleChatDiscoveryAfterReady(context.readySource);
+      setTimeout(() => verifyAndReattachLiveMediaListeners('post-ready'), 2_000);
     }
-    await refreshDiscoveredChats();
-    scheduleChatDiscoveryAfterReady(context.readySource);
     startReadyHeartbeat();
     resolveStartupOnce('ready');
-    setTimeout(() => verifyAndReattachLiveMediaListeners('post-ready'), 2_000);
 
     if (CHAT_DISCOVERY_SMOKE_MODE) {
       void runChatDiscoverySmoke(currentClient)
@@ -2680,7 +2689,9 @@ function startReadyHeartbeat(): void {
       `ready=true listenersAttached=${liveMediaListenersAttached} listenerCounts=${counts}`,
     );
 
-    verifyAndReattachLiveMediaListeners('health-check');
+    if (!isQrOnlyCertificationMode()) {
+      verifyAndReattachLiveMediaListeners('health-check');
+    }
   }, READY_HEARTBEAT_INTERVAL_MS);
 }
 
@@ -3192,6 +3203,10 @@ async function refreshDiscoveredChats(): Promise<void> {
   if (blockAfterCertificationTerminal('refresh-discovered-chats')) {
     return;
   }
+  if (isQrOnlyCertificationMode()) {
+    appendCollectorLog('certification-operational-command-suppressed', 'action=refresh-discovered-chats');
+    return;
+  }
   appendCollectorLog('CHAT_DISCOVERY_START', describeClientForDiscovery(client));
 
   const activeClient = client;
@@ -3450,6 +3465,11 @@ function clearGroupDiscoveryTimers(): void {
 }
 
 function scheduleChatDiscoveryAfterReady(reason: string): void {
+  if (isQrOnlyCertificationMode()) {
+    clearGroupDiscoveryTimers();
+    appendCollectorLog('certification-operational-timer-suppressed', `action=chat-discovery reason=${reason}`);
+    return;
+  }
   if (groupDiscoveryTimers.length > 0) {
     appendCollectorLog('group-discovery-already-scheduled', reason);
     return;
@@ -3582,10 +3602,18 @@ function wireCommands(): void {
     }
 
     if (command.type === 'manual-backfill') {
+      if (isQrOnlyCertificationMode()) {
+        appendCollectorLog('certification-operational-command-suppressed', 'action=manual-backfill');
+        return;
+      }
       void runBackfill(command.hours);
     }
 
     if (command.type === 'send-test-image') {
+      if (isQrOnlyCertificationMode()) {
+        appendCollectorLog('certification-operational-command-suppressed', 'action=send-test-image');
+        return;
+      }
       const groupId = command.groupId?.trim() || DEFAULT_TEST_GROUP_ID;
       void sendTestImageToGroup(groupId).catch((error) => {
         appendCollectorLog(
@@ -3602,6 +3630,10 @@ function wireCommands(): void {
     }
 
     if (command.type === 'refresh-discovered-chats') {
+      if (isQrOnlyCertificationMode()) {
+        appendCollectorLog('certification-operational-command-suppressed', 'action=refresh-discovered-chats');
+        return;
+      }
       void refreshDiscoveredChats().catch((error) => {
         appendCollectorLog('CHAT_DISCOVERY_ERROR', `error=${error instanceof Error ? error.message : String(error)}`);
       });
