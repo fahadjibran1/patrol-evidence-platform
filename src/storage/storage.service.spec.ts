@@ -1,6 +1,7 @@
 import { promises as fs } from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { createHash } from 'crypto';
 import sharp = require('sharp');
 import { StorageService } from './storage.service';
 
@@ -62,9 +63,10 @@ describe('StorageService', () => {
     const metadata = await sharp(savedBuffer).metadata();
 
     expect(stored.filePath).toContain(path.join('SWI01', '2026-04-04', '1700'));
-    expect(stored.storedFileName).toContain('SWI01_2026-04-04_17-03-22_test.jpg');
+    expect(stored.storedFileName).toMatch(/^SWI01_2026-04-04_17-03-22_[0-9a-f-]+\.jpg$/);
     expect(savedBuffer.equals(originalBuffer)).toBe(false);
     expect(stored.fileSize).toBe(savedBuffer.length);
+    expect(stored.contentSha256).toBe(createHash('sha256').update(savedBuffer).digest('hex'));
     expect(metadata.width).toBe(800);
     expect(metadata.height).toBe(600);
   });
@@ -91,20 +93,33 @@ describe('StorageService', () => {
     expect(overlaySvg).toContain('Sender: MJ');
   });
 
-  it('falls back to the original image when stamping fails', async () => {
+  it('rejects corrupt image bytes instead of saving them as evidence', async () => {
     const originalBuffer = Buffer.from('not-an-image');
-    const stored = await service.savePatrolEvidence({
+    await expect(service.savePatrolEvidence({
       siteCode: 'SWI01',
       siteName: 'Corner Copse, Swindon',
       senderName: 'MJ',
       timestamp: new Date('2026-04-04T16:03:22.000Z'),
       buffer: originalBuffer,
       mimeType: 'image/jpeg',
-    });
+    })).rejects.toThrow();
+  });
 
-    const savedBuffer = await fs.readFile(stored.filePath);
+  it('gives simultaneous messages distinct final files', async () => {
+    const originalBuffer = await sharp({ create: { width: 20, height: 20, channels: 3, background: '#225577' } }).jpeg().toBuffer();
+    const [first, second] = await Promise.all([
+      service.savePatrolEvidence({ siteCode: 'SWI01', timestamp: new Date('2026-04-04T16:03:22.000Z'), buffer: originalBuffer, mimeType: 'image/jpeg' }),
+      service.savePatrolEvidence({ siteCode: 'SWI01', timestamp: new Date('2026-04-04T16:03:22.000Z'), buffer: originalBuffer, mimeType: 'image/jpeg' }),
+    ]);
+    expect(first.filePath).not.toBe(second.filePath);
+    expect((await fs.readFile(first.filePath)).length).toBeGreaterThan(0);
+    expect((await fs.readFile(second.filePath)).length).toBeGreaterThan(0);
+  });
 
-    expect(savedBuffer.equals(originalBuffer)).toBe(true);
-    expect(stored.filePath).toContain(path.join('SWI01', '2026-04-04', '1700'));
+  it('rejects a path-escaping site code', async () => {
+    const originalBuffer = await sharp({ create: { width: 2, height: 2, channels: 3, background: '#225577' } }).jpeg().toBuffer();
+    await expect(service.savePatrolEvidence({
+      siteCode: '..', timestamp: new Date('2026-04-04T16:03:22.000Z'), buffer: originalBuffer, mimeType: 'image/jpeg',
+    })).rejects.toThrow('escapes configured storage root');
   });
 });

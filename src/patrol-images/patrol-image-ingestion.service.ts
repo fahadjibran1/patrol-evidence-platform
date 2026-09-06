@@ -21,6 +21,7 @@ export interface IngestPatrolImageEvent {
   senderNumber?: string;
   senderExternalId?: string;
   messageExternalId?: string;
+  linkedAccountId?: string;
   originalFileName?: string;
   mimeType: string;
   fileSize: number;
@@ -52,10 +53,15 @@ export class PatrolImageIngestionService {
 
   async ingestPatrolImage(event: IngestPatrolImageEvent, user?: AuthenticatedUser): Promise<PatrolImage> {
     const normalized = this.normalizeIncomingEvent(event);
+    if (normalized.collectorType === CollectorType.WHATSAPP && (!normalized.linkedAccountId || !normalized.messageExternalId)) {
+      throw new BadRequestException('WhatsApp evidence requires linkedAccountId and messageExternalId');
+    }
     this.logger.log(
       `pipeline:image-ingest-received siteCode=${normalized.siteCode} message=${normalized.messageExternalId ?? 'none'} bytes=${normalized.fileBuffer.length}`,
     );
-    const existing = await this.findExistingByExternalMessageId(normalized.messageExternalId);
+    const existing = normalized.linkedAccountId
+      ? await this.findExistingByIdentity(normalized.linkedAccountId, normalized.messageExternalId)
+      : await this.findExistingByExternalMessageId(normalized.messageExternalId);
     if (existing) {
       this.logger.log(`pipeline:image-ingest-duplicate imageId=${existing.id} message=${normalized.messageExternalId}`);
       return existing;
@@ -74,7 +80,7 @@ export class PatrolImageIngestionService {
 
     let stored;
     try {
-      stored = await this.storageService.savePatrolEvidence({
+      const storageParams = {
         siteCode: site.siteCode,
         siteName: site.siteName,
         senderName: normalized.senderName ?? undefined,
@@ -82,7 +88,10 @@ export class PatrolImageIngestionService {
         buffer: normalized.fileBuffer,
         mimeType: normalized.mimeType,
         uniqueSuffix: this.buildStorageSuffix(normalized.messageExternalId),
-      });
+      };
+      stored = typeof (this.storageService as StorageService & { stagePatrolEvidence?: unknown }).stagePatrolEvidence === 'function'
+        ? await (this.storageService as StorageService & { stagePatrolEvidence: (p: typeof storageParams) => Promise<typeof storageParams & { storedFileName: string; filePath: string; fileSize: number; mimeType: string; contentSha256: string; tempPath: string }> }).stagePatrolEvidence(storageParams)
+        : await this.storageService.savePatrolEvidence(storageParams);
     } catch (error) {
       this.logger.error(
         `pipeline:storage-failure siteCode=${site.siteCode} error=${error instanceof Error ? error.message : String(error)}`,
@@ -102,6 +111,7 @@ export class PatrolImageIngestionService {
       senderNumber: normalized.senderNumber ?? undefined,
       senderExternalId: normalized.senderExternalId ?? undefined,
       messageExternalId: normalized.messageExternalId ?? undefined,
+      linkedAccountId: normalized.linkedAccountId ?? undefined,
       sentAt: normalized.timestamp,
       receivedAt: new Date(),
       patrolDate: patrolTime.date,
@@ -111,6 +121,8 @@ export class PatrolImageIngestionService {
       filePath: stored.filePath,
       fileSize: String(stored.fileSize),
       mimeType: stored.mimeType,
+      contentSha256: stored.contentSha256,
+      integrityStatus: stored.tempPath ? 'STAGING' : 'FINALIZED',
       status: PatrolSlotStatus.PENDING,
       notes: undefined,
     };
@@ -121,10 +133,30 @@ export class PatrolImageIngestionService {
       image = await this.imageRepo.save(imageEntity);
       this.logger.log(`pipeline:db-save-success imageId=${image.id} siteId=${image.siteId}`);
     } catch (error) {
+      if (stored.tempPath) await this.storageService.removeOwnedFile(stored.tempPath);
+      await this.storageService.removeOwnedFile(stored.filePath);
+      const duplicate = await this.findExistingByIdentity(normalized.linkedAccountId, normalized.messageExternalId);
+      if (duplicate) {
+        this.logger.log(`pipeline:image-ingest-duplicate-race imageId=${duplicate.id}`);
+        return duplicate;
+      }
       this.logger.error(
         `pipeline:db-save-failure siteCode=${site.siteCode} path=${stored.filePath} error=${error instanceof Error ? error.message : String(error)}`,
       );
       throw error;
+    }
+
+    if (stored.tempPath) {
+      try {
+        await this.storageService.finalizePatrolEvidence(stored as typeof stored & { tempPath: string });
+        image.filePath = stored.filePath;
+        image.integrityStatus = 'FINALIZED';
+        image = await this.imageRepo.save(image);
+      } catch (error) {
+        await this.storageService.removeOwnedFile(stored.tempPath);
+        await this.storageService.removeOwnedFile(stored.filePath);
+        throw error;
+      }
     }
 
     const slotStatus = await this.complianceService.updateSlotStatusFromImage(image);
@@ -146,6 +178,13 @@ export class PatrolImageIngestionService {
     });
   }
 
+  async findExistingByIdentity(linkedAccountId?: string, messageExternalId?: string): Promise<PatrolImage | null> {
+    const account = linkedAccountId?.trim();
+    const message = messageExternalId?.trim();
+    if (!account || !message) return null;
+    return this.imageRepo.findOne({ where: { linkedAccountId: account, messageExternalId: message }, relations: ['site', 'group'] });
+  }
+
   private normalizeIncomingEvent(event: IngestPatrolImageEvent): ParsedIngestPatrolImageEvent {
     const timestamp = new Date(event.timestamp);
     if (Number.isNaN(timestamp.getTime())) {
@@ -162,6 +201,7 @@ export class PatrolImageIngestionService {
       senderNumber: event.senderNumber?.trim() || undefined,
       senderExternalId: event.senderExternalId?.trim() || undefined,
       messageExternalId: event.messageExternalId?.trim() || undefined,
+      linkedAccountId: event.linkedAccountId?.trim() || undefined,
     };
   }
 

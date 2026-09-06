@@ -2,6 +2,7 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   JoinColumn,
   ManyToOne,
   OneToOne,
@@ -16,6 +17,10 @@ import { PatrolSlotStatus } from '@/common/enums/patrol-slot-status.enum';
 import { PatrolSlot } from '@/patrol-slots/entities/patrol-slot.entity';
 import { bigintColumn, dateTimeColumn, enumColumn } from '@/common/utils/database-column.util';
 
+@Index('UQ_patrol_images_whatsapp_identity', ['linkedAccountId', 'messageExternalId'], {
+  unique: true,
+  where: '"collectorType" = \'WHATSAPP\' AND "linkedAccountId" IS NOT NULL AND "messageExternalId" IS NOT NULL',
+})
 @Entity('patrol_images')
 export class PatrolImage {
   @PrimaryGeneratedColumn('uuid')
@@ -75,6 +80,9 @@ export class PatrolImage {
   })
   messageExternalId?: string;
 
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  linkedAccountId?: string;
+
   @Column(dateTimeColumn())
   sentAt!: Date;
 
@@ -118,6 +126,12 @@ export class PatrolImage {
     length: 100,
   })
   mimeType!: string;
+
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  contentSha256?: string;
+
+  @Column({ type: 'varchar', length: 32, default: 'FINALIZED' })
+  integrityStatus!: 'STAGING' | 'FINALIZED' | 'INTEGRITY_FAILED' | 'UNKNOWN';
 
   @Column(enumColumn(PatrolSlotStatus))
   status!: PatrolSlotStatus;

@@ -54,6 +54,7 @@ export interface WhatsAppHelperIngestPayload {
   senderNumber?: string;
   senderExternalId?: string;
   messageExternalId?: string;
+  linkedAccountId?: string;
   originalFileName?: string;
   mimeType: string;
   fileSize: number;

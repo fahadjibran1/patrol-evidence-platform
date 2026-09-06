@@ -10,7 +10,7 @@ describe('PatrolImageIngestionService', () => {
     save: jest.fn(),
     findOne: jest.fn(),
   };
-  const storageService = { savePatrolEvidence: jest.fn() };
+  const storageService = { savePatrolEvidence: jest.fn(), removeOwnedFile: jest.fn() };
   const complianceService = { updateSlotStatusFromImage: jest.fn() };
 
   let service: PatrolImageIngestionService;
@@ -18,6 +18,7 @@ describe('PatrolImageIngestionService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    storageService.removeOwnedFile.mockResolvedValue(undefined);
     process.env.BUSINESS_TIMEZONE = 'Europe/London';
     service = new PatrolImageIngestionService(
       sitesService as never,
@@ -140,6 +141,7 @@ describe('PatrolImageIngestionService', () => {
       senderName: 'Ali',
       senderNumber: '+441234567890',
       messageExternalId: 'wamid-1',
+      linkedAccountId: 'account-1',
       originalFileName: 'proof.jpg',
       mimeType: 'image/jpeg',
       fileSize: 100,
@@ -149,8 +151,9 @@ describe('PatrolImageIngestionService', () => {
     expect(imageRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({
         groupId: 'group-1',
-        senderNumber: '+441234567890',
-        messageExternalId: 'wamid-1',
+      senderNumber: '+441234567890',
+      messageExternalId: 'wamid-1',
+      linkedAccountId: 'account-1',
       }),
     );
   });
@@ -159,6 +162,7 @@ describe('PatrolImageIngestionService', () => {
     const existingImage = {
       id: 'img-existing',
       messageExternalId: 'wamid-1',
+      linkedAccountId: 'account-1',
       status: PatrolSlotStatus.RECEIVED_ON_TIME,
     };
 
@@ -169,6 +173,7 @@ describe('PatrolImageIngestionService', () => {
       siteCode: 'OXF01',
       timestamp: '2026-03-19T09:00:00.000Z',
       messageExternalId: 'wamid-1',
+      linkedAccountId: 'account-1',
       mimeType: 'image/jpeg',
       fileSize: 100,
       fileBuffer: Buffer.from('abc'),
@@ -197,6 +202,8 @@ describe('PatrolImageIngestionService', () => {
       collectorType: CollectorType.WHATSAPP,
       siteCode: 'OXF01',
       timestamp: '2026-07-01T23:30:00.000Z',
+      messageExternalId: 'wamid-timezone-1',
+      linkedAccountId: 'account-1',
       senderName: 'Ali',
       mimeType: 'image/jpeg',
       fileSize: 100,

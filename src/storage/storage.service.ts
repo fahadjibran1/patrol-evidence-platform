@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { promises as fs } from 'fs';
 import * as path from 'path';
+import { createHash, randomUUID } from 'crypto';
 import sharp = require('sharp');
 import { getPatrolTimeParts, patrolTimeZone } from '@/common/utils/patrol-time.util';
 
@@ -10,6 +11,8 @@ export interface StoredFileResult {
   filePath: string;
   fileSize: number;
   mimeType: string;
+  contentSha256: string;
+  tempPath?: string;
 }
 
 @Injectable()
@@ -35,36 +38,84 @@ export class StorageService {
     mimeType: string;
     uniqueSuffix?: string;
   }): Promise<StoredFileResult> {
+    const staged = await this.stagePatrolEvidence(params);
+    await this.finalizePatrolEvidence(staged);
+    const { tempPath: _tempPath, ...result } = staged;
+    return result;
+  }
+
+  async stagePatrolEvidence(params: {
+    siteCode: string; siteName?: string; senderName?: string; timestamp: Date;
+    buffer: Buffer; mimeType: string; uniqueSuffix?: string;
+  }): Promise<StoredFileResult & { tempPath: string }> {
     const siteCode = this.sanitize(params.siteCode);
     const patrolTime = getPatrolTimeParts(params.timestamp, this.businessTimeZone);
     const patrolDate = patrolTime.date;
     const patrolHour = patrolTime.hourFolder;
     const timePart = patrolTime.timePart;
-    const suffix = params.uniqueSuffix ? `_${this.sanitize(params.uniqueSuffix)}` : '';
-
     const extension = this.resolveExtension(params.mimeType);
-    const storedFileName = `${siteCode}_${patrolDate}_${timePart}${suffix}.${extension}`;
+    if (!['image/jpeg', 'image/png'].includes(params.mimeType.toLowerCase())) {
+      throw new Error(`Unsupported evidence MIME type: ${params.mimeType}`);
+    }
+    if (params.buffer.length > 25 * 1024 * 1024) {
+      throw new Error('Evidence image exceeds the 25MB limit');
+    }
+    const storedFileName = `${siteCode}_${patrolDate}_${timePart}_${randomUUID()}.${extension}`;
     const targetDir = path.join(this.rootPath, siteCode, patrolDate, patrolHour);
     const filePath = path.join(targetDir, storedFileName);
 
+    this.assertContained(targetDir);
+    this.assertContained(filePath);
+
     await fs.mkdir(targetDir, { recursive: true });
 
-    const storedBuffer = await this.stampEvidenceImage(params).catch(async (error) => {
-      this.logger.error(
-        `Failed to stamp evidence image for site ${params.siteCode}. Falling back to original image save.`,
-        error instanceof Error ? error.stack : undefined,
-      );
-      return params.buffer;
-    });
-
-    await fs.writeFile(filePath, storedBuffer);
+    const storedBuffer = await this.stampEvidenceImage(params);
+    const contentSha256 = createHash('sha256').update(storedBuffer).digest('hex');
+    const tempPath = path.join(targetDir, `.staging-${randomUUID()}.tmp`);
+    this.assertContained(tempPath);
+    try {
+      const handle = await fs.open(tempPath, 'wx');
+      try { await handle.writeFile(storedBuffer); } finally { await handle.close(); }
+      try { await fs.access(filePath); throw new Error('Evidence destination already exists'); } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      }
+    } catch (error) {
+      await fs.unlink(tempPath).catch(() => undefined);
+      throw error;
+    }
 
     return {
       storedFileName,
       filePath,
       fileSize: storedBuffer.length,
       mimeType: params.mimeType,
+      contentSha256,
+      tempPath,
     };
+  }
+
+  async finalizePatrolEvidence(staged: StoredFileResult & { tempPath: string }): Promise<void> {
+    this.assertContained(staged.tempPath);
+    this.assertContained(staged.filePath);
+    try { await fs.access(staged.filePath); throw new Error('Evidence destination already exists'); } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+    await fs.rename(staged.tempPath, staged.filePath);
+  }
+
+  async removeOwnedFile(filePath: string): Promise<void> {
+    if (!this.isContained(filePath)) return;
+    await fs.unlink(filePath).catch(() => undefined);
+  }
+
+  private isContained(candidate: string): boolean {
+    const root = path.resolve(this.rootPath);
+    const resolved = path.resolve(candidate);
+    return resolved === root || resolved.startsWith(`${root}${path.sep}`);
+  }
+
+  private assertContained(candidate: string): void {
+    if (!this.isContained(candidate)) throw new Error('Evidence path escapes configured storage root');
   }
 
   private async stampEvidenceImage(params: {
@@ -179,6 +230,7 @@ export class StorageService {
       return 'png';
     }
 
-    return 'jpg';
+    if (mimeType.toLowerCase() === 'image/jpeg') return 'jpg';
+    throw new Error(`Unsupported evidence MIME type: ${mimeType}`);
   }
 }

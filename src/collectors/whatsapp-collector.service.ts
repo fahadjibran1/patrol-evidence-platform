@@ -543,6 +543,7 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       {
         siteCode: payload.siteCode.trim().toUpperCase(),
         groupId: payload.groupId ?? mappedGroup.id,
+        linkedAccountId: linkedAccountId ?? undefined,
         senderName: 'Simulated guard',
         senderNumber: 'simulated',
         messageExternalId,
@@ -586,6 +587,13 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       `source=${source} siteCode=${payload.siteCode} message=${payload.messageExternalId} groupId=${payload.groupId ?? 'none'} bytes=${payload.fileSize}`,
     );
 
+    if (!Number.isFinite(payload.fileSize) || payload.fileSize <= 0 || payload.fileSize > 25 * 1024 * 1024) {
+      throw new BadRequestException('Evidence image exceeds the 25MB limit or has an invalid size');
+    }
+    if (Buffer.byteLength(payload.fileBase64, 'utf8') > 36 * 1024 * 1024) {
+      throw new BadRequestException('Evidence image payload exceeds the encoded size limit');
+    }
+
     const normalized: IngestPatrolImageEvent = {
       collectorType: CollectorType.WHATSAPP,
       siteCode: payload.siteCode,
@@ -595,6 +603,7 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       senderNumber: payload.senderNumber,
       senderExternalId: payload.senderExternalId,
       messageExternalId: payload.messageExternalId,
+      linkedAccountId: payload.linkedAccountId,
       originalFileName: payload.originalFileName,
       mimeType: payload.mimeType,
       fileSize: payload.fileSize,
@@ -602,7 +611,9 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
     };
 
     const existingBefore = payload.messageExternalId
-      ? await this.patrolImageIngestionService.findExistingByExternalMessageId(payload.messageExternalId)
+      ? payload.linkedAccountId
+        ? await this.patrolImageIngestionService.findExistingByIdentity(payload.linkedAccountId, payload.messageExternalId)
+        : await this.patrolImageIngestionService.findExistingByExternalMessageId(payload.messageExternalId)
       : null;
 
     try {

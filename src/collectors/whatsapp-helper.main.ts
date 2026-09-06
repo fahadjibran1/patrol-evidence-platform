@@ -2390,6 +2390,7 @@ async function buildIncomingPayload(
     senderNumber,
     senderExternalId: senderPreview.senderId,
     messageExternalId: message.id._serialized,
+    linkedAccountId: status.connectedAccount ?? undefined,
     originalFileName: media.filename ?? `whatsapp-${message.id.id}.${extensionFromMedia(media)}`,
     mimeType: media.mimetype,
     fileSize: Buffer.byteLength(media.data, 'base64'),
