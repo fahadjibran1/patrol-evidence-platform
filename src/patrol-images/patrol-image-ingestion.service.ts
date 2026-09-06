@@ -155,6 +155,7 @@ export class PatrolImageIngestionService {
       } catch (error) {
         await this.storageService.removeOwnedFile(stored.tempPath);
         await this.storageService.removeOwnedFile(stored.filePath);
+        await this.imageRepo.delete(image.id).catch(() => undefined);
         throw error;
       }
     }
