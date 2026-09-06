@@ -675,4 +675,25 @@ describe('WhatsAppCollectorService', () => {
       }
     }
   });
+
+  it('allows only authorized certification group metadata lookup', async () => {
+    const originalArgv = process.argv;
+    const originalEnvironment = process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED;
+    process.argv = [...process.argv, '--patrol-certification-qr-only'];
+    process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED = 'true';
+    try {
+      const service = createService();
+      const helper = attachRunningHelper(service);
+      (service as unknown as { certificationAuthorizationState: string }).certificationAuthorizationState = 'AUTHENTICATION_AUTHORIZED';
+      const lookup = service.lookupCertificationGroup('test1');
+      expect(helper.write).toHaveBeenCalledWith(`${JSON.stringify({ type: 'certification-group-lookup', displayName: 'test1' })}\n`);
+      const line = `${WHATSAPP_HELPER_EVENT_PREFIX}${JSON.stringify({ type: 'certification-group-lookup-result', payload: { displayName: 'test1', matches: [{ name: 'test1', id: '123@g.us' }] } })}`;
+      (service as unknown as { handleHelperStdoutLine(line: string): void }).handleHelperStdoutLine(line);
+      await expect(lookup).resolves.toEqual({ displayName: 'test1', matches: [{ name: 'test1', id: '123@g.us' }] });
+    } finally {
+      process.argv = originalArgv;
+      if (originalEnvironment === undefined) delete process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED;
+      else process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED = originalEnvironment;
+    }
+  });
 });

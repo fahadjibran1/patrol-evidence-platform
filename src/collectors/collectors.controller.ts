@@ -55,6 +55,12 @@ export class CollectorsController {
     return this.whatsAppCollectorService.authorizeCertificationAuthentication();
   }
 
+  @Post('certification/lookup-group')
+  @RequireLicenceFeature('whatsappMonitoring')
+  lookupCertificationGroup(@Body() body: { displayName?: string }): Promise<{ displayName: string; matches: Array<{ name: string; id: string }> }> {
+    return this.whatsAppCollectorService.lookupCertificationGroup(body?.displayName ?? '');
+  }
+
   @Post('reset-session')
   @RequireLicenceFeature('whatsappMonitoring')
   resetSession(): Promise<WhatsAppCollectorStatus> {

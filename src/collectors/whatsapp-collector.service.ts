@@ -97,6 +97,9 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
         timer: NodeJS.Timeout;
       }
     | null = null;
+  private pendingCertificationGroupLookup:
+    | { resolve: (matches: Array<{ name: string; id: string }>) => void; timer: NodeJS.Timeout }
+    | null = null;
   private helperStatus: WhatsAppHelperStatusSnapshot;
 
   constructor(
@@ -194,6 +197,20 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
     return [...this.helperStatus.groups].sort((left, right) => left.name.localeCompare(right.name));
   }
 
+  async lookupCertificationGroup(displayName: string): Promise<{ displayName: string; matches: Array<{ name: string; id: string }> }> {
+    if (!isQrOnlyCertificationMode() || this.certificationAuthorizationState !== 'AUTHENTICATION_AUTHORIZED' || !this.isHelperRunning() || this.helperStatus.state !== 'ready') {
+      throw new BadRequestException('An authorized certification helper session is required.');
+    }
+    const requested = displayName.trim();
+    if (!requested) throw new BadRequestException('displayName is required.');
+    const result = new Promise<Array<{ name: string; id: string }>>((resolve) => {
+      const timer = setTimeout(() => { this.pendingCertificationGroupLookup = null; resolve([]); }, 10_000);
+      this.pendingCertificationGroupLookup = { resolve, timer };
+    });
+    this.sendHelperCommand({ type: 'certification-group-lookup', displayName: requested });
+    return { displayName: requested, matches: await result };
+  }
+
   async listContacts(): Promise<WhatsAppCollectorContact[]> {
     this.maybeRequestChatDiscoveryRefresh();
     return [...this.helperStatus.contacts].sort((left, right) => left.name.localeCompare(right.name));
@@ -250,6 +267,11 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
 
   async stop(): Promise<WhatsAppCollectorStatus> {
     await this.stopHelperProcess();
+    if (this.pendingCertificationGroupLookup) {
+      clearTimeout(this.pendingCertificationGroupLookup.timer);
+      this.pendingCertificationGroupLookup.resolve([]);
+      this.pendingCertificationGroupLookup = null;
+    }
     this.certificationTerminal = false;
     this.clearPendingCertificationAuthorization();
     this.certificationAuthorizationRequested = false;
@@ -820,6 +842,12 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
             state: event.payload.state,
           });
         }
+        return;
+      }
+      if (event.type === 'certification-group-lookup-result') {
+        const pending = this.pendingCertificationGroupLookup;
+        this.pendingCertificationGroupLookup = null;
+        if (pending) { clearTimeout(pending.timer); pending.resolve(event.payload.matches); }
         return;
       }
       if (event.type === 'status') {

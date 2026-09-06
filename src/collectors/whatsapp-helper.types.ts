@@ -107,6 +107,9 @@ export type WhatsAppHelperEvent = {
   type: 'status';
   payload: WhatsAppHelperStatusSnapshot;
 } | {
+  type: 'certification-group-lookup-result';
+  payload: { displayName: string; matches: Array<{ name: string; id: string }> };
+} | {
   type: 'certification-authorization-result';
   payload: {
     authorized: boolean;
@@ -135,6 +138,10 @@ export type WhatsAppHelperCommand =
   | {
       type: 'authorize-certification-authentication';
       explicitOperatorAuthorization: true;
+    }
+  | {
+      type: 'certification-group-lookup';
+      displayName: string;
     };
 
 export const WHATSAPP_HELPER_EVENT_PREFIX = 'PATROL_COLLECTOR_EVENT ';

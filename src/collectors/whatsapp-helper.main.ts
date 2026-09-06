@@ -641,6 +641,11 @@ function emitCertificationAuthorizationResult(authorized: boolean): void {
   process.stdout.write(`${WHATSAPP_HELPER_EVENT_PREFIX}${JSON.stringify(payload)}\n`);
 }
 
+function emitCertificationGroupLookupResult(displayName: string, matches: Array<{ name: string; id: string }>): void {
+  const payload: WhatsAppHelperEvent = { type: 'certification-group-lookup-result', payload: { displayName, matches } };
+  process.stdout.write(`${WHATSAPP_HELPER_EVENT_PREFIX}${JSON.stringify(payload)}\n`);
+}
+
 function isConnectedAndFinalized(): boolean {
   return readinessFinalized && Boolean(status.connectedAccount?.trim());
 }
@@ -3306,6 +3311,27 @@ async function refreshDiscoveredChats(): Promise<void> {
   }
 }
 
+async function lookupCertificationGroup(displayName: string): Promise<void> {
+  const requested = displayName.trim();
+  const activeClient = client;
+  if (!isQrOnlyCertificationMode() || !requested || !activeClient || status.state !== 'ready') {
+    emitCertificationGroupLookupResult(requested, []);
+    return;
+  }
+  if (typeof activeClient.getChats !== 'function' || !(await waitForChatDiscoveryReady(activeClient))) {
+    emitCertificationGroupLookupResult(requested, []);
+    return;
+  }
+  const chats = await activeClient.getChats();
+  const matches = chats
+    .filter((chat) => chat.isGroup && resolveChatDisplayName(chat) === requested)
+    .map((chat) => ({ name: resolveChatDisplayName(chat), id: chat.id?._serialized?.trim() ?? '' }))
+    .filter((match) => isValidDiscoveredChatId(match.id))
+    .map(({ name, id }) => ({ name, id }));
+  appendCollectorLog('CERTIFICATION_GROUP_LOOKUP_COMPLETE', `name=${requested} matches=${matches.length}`);
+  emitCertificationGroupLookupResult(requested, matches);
+}
+
 function normalizeDetectedGroups(groups: WhatsAppCollectorGroup[]): WhatsAppCollectorGroup[] {
   const seen = new Set<string>();
   return groups
@@ -3599,6 +3625,14 @@ function wireCommands(): void {
         releaseReconnectAuthorizationHold = null;
         release?.(true);
       }
+      return;
+    }
+
+    if (command.type === 'certification-group-lookup') {
+      void lookupCertificationGroup(command.displayName).catch((error) => {
+        appendCollectorLog('CERTIFICATION_GROUP_LOOKUP_FAILED', error instanceof Error ? error.message : String(error));
+        emitCertificationGroupLookupResult(command.displayName.trim(), []);
+      });
       return;
     }
 
