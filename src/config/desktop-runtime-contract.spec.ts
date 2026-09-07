@@ -4,7 +4,8 @@ const runtimeContract = require('../../desktop/runtime-contract') as {
   getApiBaseUrl(port: number): string;
   getApiBaseUrlArgument(port: number): string;
   normalizeBackendPort(value: unknown): number;
-  getBackendProcessArguments(entryPoint: string, environment: NodeJS.ProcessEnv, argv: string[]): string[];
+  isExplicitCertificationLaunch(environment: NodeJS.ProcessEnv, argv: string[]): boolean;
+  getBackendProcessArguments(entryPoint: string, environment: NodeJS.ProcessEnv, argv: string[], additionalArgs?: string[]): string[];
 };
 
 describe('desktop runtime contract', () => {
@@ -43,5 +44,31 @@ describe('desktop runtime contract', () => {
         ['electron', marker],
       ),
     ).toEqual(['dist/main.js', marker]);
+  });
+
+  it('preserves development backend arguments while appending the marker', () => {
+    const marker = '--patrol-certification-qr-only';
+    expect(runtimeContract.getBackendProcessArguments(
+      'node_modules/@nestjs/cli/bin/nest.js',
+      { PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED: 'true' },
+      ['electron', marker],
+      ['start', '--watch', '--exec', 'electron'],
+    )).toEqual([
+      'node_modules/@nestjs/cli/bin/nest.js',
+      'start', '--watch', '--exec', 'electron', marker,
+    ]);
+  });
+
+  it('keeps certification launch detection dual-factor', () => {
+    const marker = '--patrol-certification-qr-only';
+    expect(runtimeContract.isExplicitCertificationLaunch({}, ['electron', marker])).toBe(false);
+    expect(runtimeContract.isExplicitCertificationLaunch(
+      { PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED: 'true' },
+      ['electron'],
+    )).toBe(false);
+    expect(runtimeContract.isExplicitCertificationLaunch(
+      { PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED: 'true' },
+      ['electron', marker],
+    )).toBe(true);
   });
 });

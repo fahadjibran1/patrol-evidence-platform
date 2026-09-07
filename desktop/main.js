@@ -9,6 +9,7 @@ const {
   getApiBaseUrl: formatApiBaseUrl,
   getApiBaseUrlArgument,
   getBackendProcessArguments,
+  isExplicitCertificationLaunch,
   normalizeBackendPort,
 } = require('./runtime-contract');
 const { createDesktopProcessLifecycle } = require('./process-lifecycle');
@@ -2033,7 +2034,7 @@ async function startBackend() {
     `mode=${app.isPackaged ? 'packaged' : 'dev'} port=${env.PORT} cwd=${cwd} dbType=${env.DB_TYPE} sqlite=${env.SQLITE_DB_PATH} storage=${env.STORAGE_ROOT_PATH} whatsappSession=${env.WHATSAPP_SESSION_PATH}`,
   );
 
-  const useCompiledBackend = app.isPackaged || process.env.DESKTOP_DEV !== 'true';
+  const useCompiledBackend = app.isPackaged || process.env.DESKTOP_DEV !== 'true' || isExplicitCertificationLaunch(env, process.argv);
   if (useCompiledBackend) {
     const backendResolution = resolveBackendEntryDetails();
     const entryPoint = backendResolution.resolved;
@@ -2088,12 +2089,16 @@ async function startBackend() {
       'Backend dev command',
       `electron-node nest start --watch --exec electron nestCli=${nestCliPath} exists=${fs.existsSync(nestCliPath)}`,
     );
-    const child = spawn(process.execPath, [nestCliPath, 'start', '--watch', '--exec', process.execPath], {
-      cwd,
-      env: devBackendEnv,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
-    });
+    const child = spawn(
+      process.execPath,
+      getBackendProcessArguments(nestCliPath, env, process.argv, ['start', '--watch', '--exec', process.execPath]),
+      {
+        cwd,
+        env: devBackendEnv,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+      },
+    );
     backendProcess = child;
     attachBackendProcessHandlers(child, healthCheckGeneration);
   }

@@ -2,12 +2,13 @@ const DEFAULT_BACKEND_PORT = 3001;
 const QR_ONLY_CERTIFICATION_ENV = 'PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED';
 const QR_ONLY_CERTIFICATION_PROCESS_MARKER = '--patrol-certification-qr-only';
 
-function getBackendProcessArguments(entryPoint, environment = process.env, argv = process.argv) {
-  const args = [entryPoint];
-  if (
-    environment[QR_ONLY_CERTIFICATION_ENV] === 'true' &&
-    argv.includes(QR_ONLY_CERTIFICATION_PROCESS_MARKER)
-  ) {
+function isExplicitCertificationLaunch(environment = process.env, argv = process.argv) {
+  return environment[QR_ONLY_CERTIFICATION_ENV] === 'true' && argv.includes(QR_ONLY_CERTIFICATION_PROCESS_MARKER);
+}
+
+function getBackendProcessArguments(entryPoint, environment = process.env, argv = process.argv, additionalArgs = []) {
+  const args = [entryPoint, ...additionalArgs];
+  if (isExplicitCertificationLaunch(environment, argv)) {
     args.push(QR_ONLY_CERTIFICATION_PROCESS_MARKER);
   }
   return args;
@@ -31,6 +32,7 @@ module.exports = {
   DEFAULT_BACKEND_PORT,
   QR_ONLY_CERTIFICATION_ENV,
   QR_ONLY_CERTIFICATION_PROCESS_MARKER,
+  isExplicitCertificationLaunch,
   getBackendProcessArguments,
   getApiBaseUrl,
   getApiBaseUrlArgument,
