@@ -8,6 +8,7 @@ export type MonitoringPhase =
   | 'loading-whatsapp'
   | 'waiting-for-qr'
   | 'qr-ready'
+  | 'relink-required'
   | 'authenticated'
   | 'ready'
   | 'error'
@@ -64,6 +65,8 @@ function phaseLabel(phase: MonitoringPhase, backfillRunning: boolean): string {
       return 'Authenticating';
     case 'error':
       return 'Error';
+    case 'relink-required':
+      return 'Session expired';
     case 'disabled':
       return 'Disabled';
     default:
@@ -76,7 +79,7 @@ function phaseTone(phase: MonitoringPhase): MonitoringView['tone'] {
     return 'ready';
   }
 
-  if (phase === 'error') {
+  if (phase === 'error' || phase === 'relink-required') {
     return 'error';
   }
 
@@ -106,6 +109,10 @@ function derivePhase(status: WhatsAppCollectorStatus): MonitoringPhase {
 
   if (status.ready || status.state === 'ready') {
     return 'ready';
+  }
+
+  if (status.state === 'RELINK_REQUIRED') {
+    return 'relink-required';
   }
 
   if (status.state === 'failed' || status.state === 'disconnected') {
@@ -147,6 +154,7 @@ function isLinkingStatus(status: WhatsAppCollectorStatus): boolean {
   if (
     status.state === 'failed' ||
     status.state === 'disconnected' ||
+    status.state === 'RELINK_REQUIRED' ||
     status.state === 'idle' ||
     status.state === 'disabled'
   ) {
@@ -182,12 +190,14 @@ export function deriveMonitoringView(status: WhatsAppCollectorStatus | null): Mo
   const tone = phaseTone(phase);
   const isLive = phase === 'ready';
   const isLinking = isLinkingStatus(status);
-  const isError = phase === 'error';
+  const isError = phase === 'error' || phase === 'relink-required';
   const isOffline = phase === 'offline' || phase === 'disabled';
   const stageLabel = status.startupStage?.trim() || label;
 
   const headerLabel = isLive
     ? 'Live'
+    : phase === 'relink-required'
+      ? 'Session expired'
     : isError
       ? 'Error'
       : isLinking
@@ -196,6 +206,8 @@ export function deriveMonitoringView(status: WhatsAppCollectorStatus | null): Mo
 
   const sidebarLabel = isLive
     ? 'Monitoring live'
+    : phase === 'relink-required'
+      ? 'WhatsApp session expired'
     : isError
       ? 'Monitoring error'
       : isLinking
@@ -204,12 +216,16 @@ export function deriveMonitoringView(status: WhatsAppCollectorStatus | null): Mo
 
   const accountTitle = isLive
     ? status.connectedAccount || 'Patrol WhatsApp linked'
+    : phase === 'relink-required'
+      ? 'Session expired'
     : isLinking
       ? stageLabel
       : 'Not linked yet';
 
   const statusBadge = isLive
     ? 'CONNECTED'
+    : phase === 'relink-required'
+      ? 'RELINK REQUIRED'
     : isError
       ? 'FAILED'
       : isLinking
@@ -250,6 +266,10 @@ export function monitoringHelperStateLabel(state: WhatsAppCollectorStatus['state
       return 'Waiting for QR';
     case 'qr-ready':
       return 'QR Ready';
+    case 'RECONNECT_AUTHORIZATION_PENDING':
+      return 'Reconnect authorization required';
+    case 'RELINK_REQUIRED':
+      return 'Relink required';
     case 'authenticated':
       return 'Authenticated';
     case 'waiting-for-client-info':

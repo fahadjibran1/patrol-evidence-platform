@@ -135,6 +135,10 @@ let runtimeModulePromise: Promise<WhatsAppRuntimeModule> | null = null;
 let shutdownRequested = false;
 let reconnectAuthorizationPending = false;
 let releaseReconnectAuthorizationHold: ((authorized: boolean) => void) | null = null;
+/** True when a populated LocalAuth profile failed to restore an authenticated session. */
+let existingLocalAuthSessionCandidate = false;
+/** Terminal reconnect outcome: never expose the fresh QR from an invalid saved session. */
+let relinkRequiredShutdownStarted = false;
 /** Set only for operator stop / explicit session reset — never for library post_logout. */
 let operatorLogoutRequested = false;
 /** Once authenticated fires for an attempt, QR/browser startup timers must not destroy that client. */
@@ -806,8 +810,50 @@ function stopForUnexpectedAuthentication(signal: AccountBoundSignal): boolean {
   return true;
 }
 
+function markReconnectRelinkRequired(reason: string): boolean {
+  if (!existingLocalAuthSessionCandidate || authenticationReachedAttemptId !== null) {
+    return false;
+  }
+
+  if (relinkRequiredShutdownStarted) {
+    appendCollectorLog('relink-required-callback-ignored', reason);
+    return true;
+  }
+
+  relinkRequiredShutdownStarted = true;
+  clearStartupTimeouts();
+  clearReadinessTimers();
+  clearGroupDiscoveryTimers();
+  resetLiveMessageListenerState();
+  clearLatestQrPayload();
+  updateStatus(
+    {
+      state: 'RELINK_REQUIRED',
+      connected: false,
+      ready: false,
+      connectedAccount: null,
+      groups: [],
+      contacts: [],
+      qrCode: null,
+      qrPayloadLength: null,
+      qrDeliveredAt: null,
+      qrPersistedAt: null,
+      startupStage: 'Relink required',
+      info: 'WhatsApp could not restore the saved linked session. Explicit relinking is required.',
+      lastError: 'Saved WhatsApp session did not authenticate during reconnect.',
+      failureCode: 'WHATSAPP_RELINK_REQUIRED',
+      lastDisconnectAt: new Date().toISOString(),
+    },
+    'relink-required',
+    reason,
+  );
+  resolveStartupOnce('failed');
+  setImmediate(() => void shutdown(0, { preserveRelinkRequired: true }));
+  return true;
+}
+
 function blockAfterCertificationTerminal(event: string): boolean {
-  if (!unexpectedAuthenticationShutdownStarted && !qrOnlyCertificationGuard.isTerminal()) {
+  if (!unexpectedAuthenticationShutdownStarted && !relinkRequiredShutdownStarted && !qrOnlyCertificationGuard.isTerminal()) {
     return false;
   }
   appendCollectorLog('certification-terminal-callback-ignored', `event=${event}`);
@@ -3548,7 +3594,7 @@ function scheduleChatDiscoveryAfterReady(reason: string): void {
 
 async function shutdown(
   exitCode = 0,
-  options?: { preserveTerminalState?: boolean },
+  options?: { preserveTerminalState?: boolean; preserveRelinkRequired?: boolean },
 ): Promise<void> {
   reconnectAuthorizationPending = false;
   const releasePendingReconnect = releaseReconnectAuthorizationHold;
@@ -3568,7 +3614,24 @@ async function shutdown(
   await closeBrowserGracefully(currentClient, 'shutdown');
 
   clearLatestQrPayload();
-  if (options?.preserveTerminalState && unexpectedAuthenticationShutdownStarted) {
+  if (options?.preserveRelinkRequired && relinkRequiredShutdownStarted) {
+    updateStatus(
+      {
+        state: 'RELINK_REQUIRED',
+        connected: false,
+        ready: false,
+        connectedAccount: null,
+        groups: [],
+        contacts: [],
+        qrCode: null,
+        qrPayloadLength: null,
+        qrDeliveredAt: null,
+        qrPersistedAt: null,
+        failureCode: 'WHATSAPP_RELINK_REQUIRED',
+      },
+      'relink-required-stop',
+    );
+  } else if (options?.preserveTerminalState && unexpectedAuthenticationShutdownStarted) {
     updateStatus(
       {
         state: UNEXPECTED_AUTHENTICATION,
@@ -3701,7 +3764,8 @@ function hasExistingLocalAuthSessionCandidate(): boolean {
 }
 
 async function waitForReconnectCertificationAuthorization(): Promise<boolean> {
-  if (!isQrOnlyCertificationMode() || !hasExistingLocalAuthSessionCandidate()) {
+  existingLocalAuthSessionCandidate = isQrOnlyCertificationMode() && hasExistingLocalAuthSessionCandidate();
+  if (!existingLocalAuthSessionCandidate) {
     return true;
   }
 
@@ -3867,6 +3931,7 @@ async function runBrowserAttempt(
 
   const startupAttemptId = (activeStartupAttemptId += 1);
   authenticationReachedAttemptId = null;
+  relinkRequiredShutdownStarted = false;
   activeBrowserLaunch = { executablePath, headless: BROWSER_HEADLESS };
   logBrowserLaunchConfiguration(executablePath, browserSource);
   moduleCompatibilitySignals.length = 0;
@@ -3948,6 +4013,10 @@ async function runBrowserAttempt(
     }
     if (!isActiveClientGeneration(nextClient, startupAttemptId)) {
       appendCollectorLog('qr-ignored-stale-attempt', describeClientIdentity(nextClient, startupAttemptId));
+      return;
+    }
+
+    if (markReconnectRelinkRequired(`fresh-qr-during-reconnect attemptId=${startupAttemptId}`)) {
       return;
     }
 
@@ -4102,6 +4171,15 @@ async function runBrowserAttempt(
     clearGroupDiscoveryTimers();
 
     const normalizedReason = reason?.trim() || 'unknown';
+    if (
+      existingLocalAuthSessionCandidate &&
+      authenticationReachedAttemptId === null &&
+      /^(LOGOUT|UNPAIRED|UNPAIRED_IDLE|CONFLICT)$/i.test(normalizedReason)
+    ) {
+      if (markReconnectRelinkRequired(`invalid-session-disconnected reason=${normalizedReason}`)) {
+        return;
+      }
+    }
     const wasHealthy = isSessionHealthy();
     const postAuthIncomplete =
       normalizedReason === 'LOGOUT' &&
@@ -4176,6 +4254,9 @@ async function runBrowserAttempt(
     }
     if (!isActiveClientGeneration(nextClient, startupAttemptId)) {
       appendCollectorLog('auth-failure-ignored-stale-attempt', describeClientIdentity(nextClient, startupAttemptId));
+      return;
+    }
+    if (markReconnectRelinkRequired(`auth-failure-during-reconnect message=${message}`)) {
       return;
     }
     clearStartupTimeouts();

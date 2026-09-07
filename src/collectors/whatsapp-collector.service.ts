@@ -297,7 +297,8 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
     if (
       this.certificationTerminal ||
       this.certificationAuthorizationState === UNEXPECTED_AUTHENTICATION ||
-      this.helperStatus.state === UNEXPECTED_AUTHENTICATION
+      this.helperStatus.state === UNEXPECTED_AUTHENTICATION ||
+      this.helperStatus.state === 'RELINK_REQUIRED'
     ) {
       throw new BadRequestException('The certification session is terminal and cannot be authorized.');
     }
@@ -856,7 +857,7 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
         return;
       }
       if (event.type === 'status') {
-        if (this.certificationTerminal && event.payload.state !== UNEXPECTED_AUTHENTICATION) {
+        if (this.certificationTerminal && event.payload.state !== UNEXPECTED_AUTHENTICATION && event.payload.state !== 'RELINK_REQUIRED') {
           this.appendCollectorLog(
             'certification-terminal-status-ignored',
             `state=${event.payload.state}`,
@@ -896,6 +897,20 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
             connectedAccount: null,
             groups: [],
             contacts: [],
+          };
+        }
+        if (this.helperStatus.state === 'RELINK_REQUIRED') {
+          this.certificationTerminal = true;
+          this.clearPendingCertificationAuthorization();
+          this.helperStatus = {
+            ...this.helperStatus,
+            connected: false,
+            ready: false,
+            connectedAccount: null,
+            groups: [],
+            contacts: [],
+            qrCode: null,
+            qrPayloadLength: null,
           };
         }
         const nextConnectedAccount = this.helperStatus.connectedAccount?.trim() || null;

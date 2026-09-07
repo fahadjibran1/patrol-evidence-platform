@@ -437,6 +437,36 @@ describe('WhatsAppCollectorService', () => {
     expect(whatsAppSourceMappingService.persistLinkedWhatsAppAccount).not.toHaveBeenCalledWith(accountIdentifier);
   });
 
+  it('preserves a relink-required reconnect terminal state without exposing QR or allowing commands', async () => {
+    const service = createService();
+    const { write } = attachRunningHelper(service);
+    emitHelperStatus(
+      service,
+      readyStatus({
+        state: 'RELINK_REQUIRED',
+        connected: false,
+        ready: false,
+        connectedAccount: null,
+        qrCode: 'must-not-reach-renderer',
+        qrPayloadLength: 24,
+        failureCode: 'WHATSAPP_RELINK_REQUIRED',
+      }),
+    );
+
+    await expect(service.getStatus()).resolves.toMatchObject({
+      state: 'RELINK_REQUIRED',
+      connected: false,
+      ready: false,
+      qrCode: null,
+      qrPayloadLength: null,
+      failureCode: 'WHATSAPP_RELINK_REQUIRED',
+    });
+    await service.refreshDiscoveredChats();
+    await service.manualBackfill(1);
+    await service.sendTestImage();
+    expect(write).not.toHaveBeenCalled();
+  });
+
   it('does not start or auto-recover after an unexpected-authentication terminal state', async () => {
     const service = createService();
     (service as unknown as { certificationTerminal: boolean }).certificationTerminal = true;

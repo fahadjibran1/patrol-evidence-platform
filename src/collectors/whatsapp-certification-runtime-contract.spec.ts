@@ -95,7 +95,7 @@ describe('WhatsApp QR-only certification runtime contract', () => {
     const holdStart = helperSource.indexOf('async function waitForReconnectCertificationAuthorization');
     const holdEnd = helperSource.indexOf('async function probeAuthReadyLifecycle', holdStart);
     const holdBody = helperSource.slice(holdStart, holdEnd);
-    expect(holdBody).toContain('!isQrOnlyCertificationMode() || !hasExistingLocalAuthSessionCandidate()');
+    expect(holdBody).toContain('existingLocalAuthSessionCandidate = isQrOnlyCertificationMode() && hasExistingLocalAuthSessionCandidate()');
     expect(holdBody).toContain('return true');
   });
 
@@ -173,8 +173,20 @@ describe('WhatsApp QR-only certification runtime contract', () => {
     expect(supervisorSource).toContain('this.certificationTerminal = true');
     expect(supervisorSource).toContain('if (this.certificationTerminal)');
     expect(supervisorSource).toContain(
-      'this.certificationTerminal || this.helperStatus.state === UNEXPECTED_AUTHENTICATION',
+      "this.certificationTerminal || this.helperStatus.state === UNEXPECTED_AUTHENTICATION",
     );
+    expect(supervisorSource).toContain("this.helperStatus.state === 'RELINK_REQUIRED'");
+  });
+
+  it('suppresses a reconnect QR and preserves the profile as relink-required', () => {
+    const qrStart = helperSource.indexOf("nextClient.on('qr'");
+    const qrEnd = helperSource.indexOf("nextClient.on('authenticated'", qrStart);
+    const qrBody = helperSource.slice(qrStart, qrEnd);
+    expect(qrBody).toContain('markReconnectRelinkRequired');
+    expect(qrBody.indexOf('markReconnectRelinkRequired')).toBeLessThan(qrBody.indexOf("state: 'qr-ready'"));
+    expect(helperSource).toContain("state: 'RELINK_REQUIRED'");
+    expect(helperSource).toContain("preserveRelinkRequired: true");
+    expect(helperSource).not.toContain('rmSync');
   });
 
   it('centrally blocks every helper lifecycle callback after terminalization', () => {

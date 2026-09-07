@@ -67,7 +67,9 @@ export function CollectorPage(): JSX.Element {
                 <p className="eyebrow">WhatsApp session</p>
                 <h3>{view.accountTitle}</h3>
                 <p className="muted-text">
-                  {view.isLive
+                  {view.phase === 'relink-required'
+                    ? 'WhatsApp could not restore the saved linked session. Relink WhatsApp to continue.'
+                    : view.isLive
                     ? 'Patrol images from mapped sources will appear on the dashboard and in Evidence.'
                     : view.isLinking
                       ? status.info
@@ -89,7 +91,16 @@ export function CollectorPage(): JSX.Element {
             </div>
 
             <div className="button-row">
-              {view.isLinking ? (
+              {view.phase === 'relink-required' ? (
+                <button
+                  type="button"
+                  className="primary-button"
+                  disabled
+                  title="A safe fresh-profile relink flow is not yet available."
+                >
+                  Relink WhatsApp
+                </button>
+              ) : view.isLinking ? (
                 <button type="button" className="secondary-button" disabled={isBusy} onClick={() => void stop()}>
                   Cancel linking
                 </button>

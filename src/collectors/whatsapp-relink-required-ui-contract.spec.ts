@@ -1,0 +1,27 @@
+import { readFileSync } from 'fs';
+import * as path from 'path';
+
+describe('WhatsApp relink-required renderer contract', () => {
+  const monitoringState = readFileSync(
+    path.join(process.cwd(), 'web', 'src', 'lib', 'monitoring-state.ts'),
+    'utf8',
+  );
+  const collectorPage = readFileSync(
+    path.join(process.cwd(), 'web', 'src', 'pages', 'collector-page.tsx'),
+    'utf8',
+  );
+
+  it('maps RELINK_REQUIRED to a non-QR expired-session view', () => {
+    expect(monitoringState).toContain("status.state === 'RELINK_REQUIRED'");
+    expect(monitoringState).toContain("case 'relink-required':\n      return 'Session expired';");
+    expect(monitoringState).toContain("phase === 'relink-required'\n      ? 'RELINK REQUIRED'");
+    expect(monitoringState).toContain("status.state === 'RELINK_REQUIRED'");
+  });
+
+  it('shows explicit relink guidance without automatically replacing the profile', () => {
+    expect(collectorPage).toContain('WhatsApp could not restore the saved linked session. Relink WhatsApp to continue.');
+    expect(collectorPage).toContain('Relink WhatsApp');
+    expect(collectorPage).toContain('A safe fresh-profile relink flow is not yet available.');
+    expect(collectorPage).toContain('disabled');
+  });
+});
