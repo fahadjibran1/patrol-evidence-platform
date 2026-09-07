@@ -16,6 +16,12 @@ describe('projectCertificationGroupMatches', () => {
     ], 'test1')).toEqual([{ name: 'test1', id: '3@g.us' }]);
   });
 
+  it('recognizes groups by the canonical g.us JID when isGroup is absent', () => {
+    expect(projectCertificationGroupMatches([
+      { formattedTitle: 'test1', id: { _serialized: '120363431495091943@g.us' } },
+    ], 'test1')).toEqual([{ name: 'test1', id: '120363431495091943@g.us' }]);
+  });
+
   it('returns duplicate exact groups without selecting a winner and sanitizes fields', () => {
     const result = projectCertificationGroupMatches([
       { isGroup: true, name: 'test1', id: { _serialized: '1@g.us' }, participants: ['secret'], messages: ['secret'] } as any,

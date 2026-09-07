@@ -32,7 +32,10 @@ export function projectCertificationGroupMatches(
   if (!requested) return [];
   const seen = new Set<string>();
   return chats
-    .map((chat) => ({ name: readName(chat), id: readId(chat), isGroup: chat.isGroup === true }))
+    .map((chat) => {
+      const id = readId(chat);
+      return { name: readName(chat), id, isGroup: chat.isGroup === true || /@g\.us$/i.test(id) };
+    })
     .filter((chat) => chat.isGroup && chat.name === requested && /@g\.us$/i.test(chat.id))
     .filter((chat) => chat.id && !seen.has(chat.id) && seen.add(chat.id))
     .map(({ name, id }) => ({ name, id }));

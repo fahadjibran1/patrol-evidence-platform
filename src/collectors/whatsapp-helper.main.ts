@@ -3329,7 +3329,7 @@ async function lookupCertificationGroup(displayName: string, requestId?: string)
       const collection = (scoped.require?.('WAWebCollections') as { Chat?: { getModelsArray?: () => unknown[] } } | undefined)?.Chat;
       return (collection?.getModelsArray?.() ?? []).map((chat: any) => ({
         id: chat?.id?._serialized ?? '',
-        isGroup: chat?.isGroup === true,
+        isGroup: chat?.isGroup === true || chat?.id?.server === 'g.us' || /@g\.us$/i.test(chat?.id?._serialized ?? ''),
         formattedTitle: chat?.formattedTitle ?? '',
         name: chat?.name ?? '',
         subject: chat?.subject ?? '',
