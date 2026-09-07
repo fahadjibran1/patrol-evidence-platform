@@ -61,6 +61,18 @@ export class CollectorsController {
     return this.whatsAppCollectorService.lookupCertificationGroup(body?.displayName ?? '');
   }
 
+  @Post('certification/live-ingestion/arm')
+  @RequireLicenceFeature('whatsappMonitoring')
+  armCertificationLiveIngestion(@Body() body: { sourceExternalId?: string }): Promise<WhatsAppCollectorStatus> {
+    return this.whatsAppCollectorService.armCertificationLiveIngestion(body?.sourceExternalId ?? '');
+  }
+
+  @Post('certification/live-ingestion/disarm')
+  @RequireLicenceFeature('whatsappMonitoring')
+  disarmCertificationLiveIngestion(): Promise<WhatsAppCollectorStatus> {
+    return this.whatsAppCollectorService.disarmCertificationLiveIngestion();
+  }
+
   @Post('reset-session')
   @RequireLicenceFeature('whatsappMonitoring')
   resetSession(): Promise<WhatsAppCollectorStatus> {

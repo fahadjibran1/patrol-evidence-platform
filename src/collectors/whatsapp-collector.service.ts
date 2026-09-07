@@ -35,6 +35,7 @@ import {
   WhatsAppHelperIngestPayload,
   WhatsAppHelperRuntimeConfig,
   WhatsAppHelperStatusSnapshot,
+  WhatsAppCertificationLiveIngestionStatus,
   WHATSAPP_HELPER_EVENT_PREFIX,
 } from './whatsapp-helper.types';
 import {
@@ -52,6 +53,7 @@ export interface WhatsAppCollectorStatus extends Omit<WhatsAppHelperStatusSnapsh
   pilotGroupName: string | null;
   certificationState: WhatsAppCertificationAuthorizationResult['state'];
   certificationQrMasked: boolean;
+  certificationLiveIngestion: WhatsAppCertificationLiveIngestionStatus;
 }
 
 export interface WhatsAppCertificationAuthorizationResult {
@@ -101,6 +103,15 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
     | { requestId: string; resolve: (matches: Array<{ name: string; id: string }>) => void; timer: NodeJS.Timeout }
     | null = null;
   private helperStatus: WhatsAppHelperStatusSnapshot;
+  private certificationLiveIngestion: WhatsAppCertificationLiveIngestionStatus = {
+    armed: false,
+    budgetRemaining: 0,
+    approvedSourcePresent: false,
+    listenerCount: 0,
+    acceptedItemCount: 0,
+    rejectedUnapprovedSourceCount: 0,
+    rejectedUnsupportedMediaCount: 0,
+  };
 
   constructor(
     private readonly configService: ConfigService,
@@ -189,7 +200,43 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       collectorLogTail: this.readCollectorLogTail(),
       certificationState: this.certificationAuthorizationState,
       certificationQrMasked,
+      certificationLiveIngestion: { ...this.certificationLiveIngestion },
     };
+  }
+
+  async armCertificationLiveIngestion(sourceExternalId: string): Promise<WhatsAppCollectorStatus> {
+    if (!isQrOnlyCertificationMode() || this.certificationAuthorizationState !== 'AUTHENTICATION_AUTHORIZED') {
+      throw new BadRequestException('Certification live ingestion requires both certification factors.');
+    }
+    if (!this.isHelperRunning() || this.helperStatus.state !== 'ready' || !this.helperStatus.connectedAccount) {
+      throw new BadRequestException('An authenticated, ready certification helper session is required.');
+    }
+    const linkedAccountId = this.whatsAppSourceMappingService.resolveActiveLinkedAccountId(this.helperStatus.connectedAccount);
+    const mappings = await this.whatsAppSourceMappingService.findActiveMappingsForIngest(linkedAccountId);
+    const requestedSource = sourceExternalId.trim();
+    if (mappings.length !== 1 || !requestedSource || mappings[0].externalGroupId?.trim() !== requestedSource) {
+      throw new BadRequestException('Exactly one active account-scoped certification mapping is required.');
+    }
+    const mapping = mappings[0];
+    const generationId = randomUUID();
+    this.sendHelperCommand({
+      type: 'arm-certification-live-ingestion',
+      linkedAccountId: linkedAccountId as string,
+      sourceExternalId: requestedSource,
+      mappedGroupId: mapping.id,
+      siteCode: mapping.site.siteCode,
+      generationId,
+    });
+    return this.getStatus();
+  }
+
+  async disarmCertificationLiveIngestion(): Promise<WhatsAppCollectorStatus> {
+    if (!isQrOnlyCertificationMode()) {
+      throw new BadRequestException('Certification live ingestion is unavailable outside certification mode.');
+    }
+    this.sendHelperCommand({ type: 'disarm-certification-live-ingestion' });
+    this.certificationLiveIngestion = { ...this.certificationLiveIngestion, armed: false, budgetRemaining: 0, listenerCount: 0 };
+    return this.getStatus();
   }
 
   async listGroups(): Promise<WhatsAppCollectorGroup[]> {
@@ -784,6 +831,15 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
     this.clearPendingCertificationAuthorization();
     this.certificationAuthorizationRequested = false;
     this.certificationAuthorizationState = isQrOnlyCertificationMode() ? 'EXPECTING_QR_ONLY' : 'DISABLED';
+    this.certificationLiveIngestion = {
+      armed: false,
+      budgetRemaining: 0,
+      approvedSourcePresent: false,
+      listenerCount: 0,
+      acceptedItemCount: 0,
+      rejectedUnapprovedSourceCount: 0,
+      rejectedUnsupportedMediaCount: 0,
+    };
     this.helperStatus = this.buildDefaultStatus({
       state: 'starting',
       info: 'Patrol monitoring starting...',
@@ -963,6 +1019,10 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
         }
         this.pendingCertificationGroupLookup = null;
         if (pending) { clearTimeout(pending.timer); pending.resolve(event.payload.matches); }
+        return;
+      }
+      if (event.type === 'certification-live-ingestion-status') {
+        this.certificationLiveIngestion = { ...event.payload };
         return;
       }
       if (event.type === 'status') {

@@ -24,6 +24,7 @@ import {
   WhatsAppHelperIngestPayload,
   WhatsAppHelperRuntimeConfig,
   WhatsAppHelperStatusSnapshot,
+  WhatsAppCertificationLiveIngestionStatus,
   WHATSAPP_HELPER_EVENT_PREFIX,
 } from './whatsapp-helper.types';
 import {
@@ -162,6 +163,27 @@ let activeBrowserLaunch: { executablePath: string; headless: boolean } | null = 
 let readinessFinalized = false;
 let activeClientInfoWatch: { cancelled: boolean; attemptId: number } | null = null;
 let liveMediaListenersAttached = false;
+type CertificationLiveGate = WhatsAppCertificationLiveIngestionStatus & {
+  linkedAccountId: string;
+  sourceExternalId: string;
+  mappedGroupId: string;
+  siteCode: string;
+  generationId: string;
+};
+let certificationLiveGate: CertificationLiveGate = {
+  armed: false,
+  budgetRemaining: 0,
+  approvedSourcePresent: false,
+  listenerCount: 0,
+  acceptedItemCount: 0,
+  rejectedUnapprovedSourceCount: 0,
+  rejectedUnsupportedMediaCount: 0,
+  linkedAccountId: '',
+  sourceExternalId: '',
+  mappedGroupId: '',
+  siteCode: '',
+  generationId: '',
+};
 let unexpectedAuthenticationShutdownStarted = false;
 let readyHeartbeatInterval: NodeJS.Timeout | null = null;
 let navigationReattachTimer: NodeJS.Timeout | null = null;
@@ -651,6 +673,39 @@ function emitCertificationGroupLookupResult(displayName: string, matches: Array<
   process.stdout.write(`${WHATSAPP_HELPER_EVENT_PREFIX}${JSON.stringify(payload)}\n`);
 }
 
+function emitCertificationLiveIngestionStatus(): void {
+  const payload: WhatsAppHelperEvent = {
+    type: 'certification-live-ingestion-status',
+    payload: {
+      armed: certificationLiveGate.armed,
+      budgetRemaining: certificationLiveGate.budgetRemaining,
+      approvedSourcePresent: certificationLiveGate.armed,
+      listenerCount: liveMediaListenersAttached ? 3 : 0,
+      acceptedItemCount: certificationLiveGate.acceptedItemCount,
+      rejectedUnapprovedSourceCount: certificationLiveGate.rejectedUnapprovedSourceCount,
+      rejectedUnsupportedMediaCount: certificationLiveGate.rejectedUnsupportedMediaCount,
+    },
+  };
+  process.stdout.write(`${WHATSAPP_HELPER_EVENT_PREFIX}${JSON.stringify(payload)}\n`);
+}
+
+function disarmCertificationLiveIngestion(reason: string): void {
+  if (client && liveMediaListenersAttached) {
+    detachLiveMediaListeners(client);
+  } else {
+    liveMediaListenersAttached = false;
+  }
+  certificationLiveGate = {
+    ...certificationLiveGate,
+    armed: false,
+    budgetRemaining: 0,
+    approvedSourcePresent: false,
+    listenerCount: 0,
+  };
+  appendCollectorLog('certification-live-ingestion-disarmed', `reason=${reason}`);
+  emitCertificationLiveIngestionStatus();
+}
+
 function isConnectedAndFinalized(): boolean {
   return readinessFinalized && Boolean(status.connectedAccount?.trim());
 }
@@ -707,6 +762,10 @@ function setReadinessFinalized(nextValue: boolean, reason: string): void {
 function canAcceptLiveMessages(): boolean {
   if (!readinessFinalized) {
     return false;
+  }
+
+  if (isQrOnlyCertificationMode()) {
+    return certificationLiveGate.armed && certificationLiveGate.budgetRemaining > 0 && isConnectedAndFinalized();
   }
 
   if (status.state === 'ready') {
@@ -2381,6 +2440,10 @@ async function buildIncomingPayload(
   appendCollectorLog('media-mimetype', `id=${message.id._serialized} mimetype=${mimetype}`);
 
   if (!media || !media.mimetype?.startsWith('image/')) {
+    if (isQrOnlyCertificationMode() && certificationLiveGate.armed) {
+      certificationLiveGate.rejectedUnsupportedMediaCount += 1;
+      emitCertificationLiveIngestionStatus();
+    }
     appendCollectorLog(
       'pipeline:skip-not-image',
       `sourceExternalId=${sourceExternalId} sourceType=${sourceType} id=${message.id._serialized} mimetype=${mimetype}`,
@@ -2587,6 +2650,9 @@ function scheduleLiveMediaListenerReattachAfterNavigation(url: string, reason: s
 }
 
 function resetLiveMessageListenerState(): void {
+  if (certificationLiveGate.armed) {
+    disarmCertificationLiveIngestion('listener-reset');
+  }
   clearNavigationReattachTimer();
   if (client && liveMediaListenersAttached) {
     detachLiveMediaListeners(client);
@@ -2691,12 +2757,29 @@ async function dispatchLiveMessage(
     `event=${eventName} id=${messageId} chat=${previewSource?.externalId ?? 'none'} sourceType=${previewSource?.sourceType ?? 'none'} hasMedia=${message.hasMedia} fromMe=${message.fromMe} type=${message.type ?? 'unknown'}`,
   );
 
+  if (isQrOnlyCertificationMode()) {
+    const sourceAllowed =
+      certificationLiveGate.armed &&
+      certificationLiveGate.budgetRemaining > 0 &&
+      status.connectedAccount === certificationLiveGate.linkedAccountId &&
+      previewSource?.sourceType === PatrolSourceType.GROUP &&
+      previewSource.externalId === certificationLiveGate.sourceExternalId;
+    if (!sourceAllowed) {
+      certificationLiveGate.rejectedUnapprovedSourceCount += 1;
+      emitCertificationLiveIngestionStatus();
+      appendCollectorLog('certification-live-message-rejected', `event=${eventName} reason=unapproved-source`);
+      return;
+    }
+  }
+
   if (!message.hasMedia && eventName !== 'media_uploaded') {
     appendCollectorLog(
       'process-return-not-media',
       `stage=dispatch event=${eventName} id=${messageId} hasMedia=false`,
     );
-    scheduleLiveMediaRecheck(messageId);
+    if (!isQrOnlyCertificationMode()) {
+      scheduleLiveMediaRecheck(messageId);
+    }
     return;
   }
 
@@ -2861,6 +2944,10 @@ async function processMessage(message: Message, source: MessageSource): Promise<
       processedMessageIds.add(messageExternalId);
     }
     status.backfillImagesImported += 1;
+    if (source === 'live' && isQrOnlyCertificationMode() && certificationLiveGate.armed) {
+      certificationLiveGate.acceptedItemCount += 1;
+      disarmCertificationLiveIngestion('accepted-item');
+    }
     emitStatus();
     appendCollectorLog('image-imported', `source=${source} site=${normalized.siteCode} message=${normalized.messageExternalId}`);
     return 'imported';
@@ -3698,6 +3785,71 @@ function wireCommands(): void {
         const release = releaseReconnectAuthorizationHold;
         releaseReconnectAuthorizationHold = null;
         release?.(true);
+      }
+      return;
+    }
+
+    if (command.type === 'arm-certification-live-ingestion') {
+      if (
+        !isQrOnlyCertificationMode() ||
+        qrOnlyCertificationGuard.currentState !== 'AUTHENTICATION_AUTHORIZED' ||
+        !client ||
+        !readinessFinalized ||
+        !isConnectedAndFinalized() ||
+        status.connectedAccount !== command.linkedAccountId ||
+        !command.sourceExternalId.trim() ||
+        !command.mappedGroupId.trim() ||
+        !command.siteCode.trim() ||
+        !command.generationId.trim()
+      ) {
+        appendCollectorLog('certification-live-ingestion-arm-rejected', 'reason=guard-or-readiness');
+        emitCertificationLiveIngestionStatus();
+        return;
+      }
+
+      let runtimeConfig: WhatsAppHelperRuntimeConfig;
+      try {
+        runtimeConfig = await fetchRuntimeConfig();
+      } catch (error) {
+        appendCollectorLog('certification-live-ingestion-arm-rejected', `reason=runtime-config error=${formatRuntimeError(error)}`);
+        emitCertificationLiveIngestionStatus();
+        return;
+      }
+      const exactMapping = runtimeConfig.mappedGroups.find(
+        (mapping) =>
+          mapping.externalGroupId === command.sourceExternalId &&
+          mapping.mappedGroupId === command.mappedGroupId &&
+          mapping.siteCode === command.siteCode,
+      );
+      if (!exactMapping) {
+        appendCollectorLog('certification-live-ingestion-arm-rejected', 'reason=exact-mapping-not-present');
+        emitCertificationLiveIngestionStatus();
+        return;
+      }
+
+      certificationLiveGate = {
+        armed: true,
+        budgetRemaining: 1,
+        approvedSourcePresent: true,
+        listenerCount: 0,
+        acceptedItemCount: 0,
+        rejectedUnapprovedSourceCount: certificationLiveGate.rejectedUnapprovedSourceCount,
+        rejectedUnsupportedMediaCount: certificationLiveGate.rejectedUnsupportedMediaCount,
+        linkedAccountId: command.linkedAccountId,
+        sourceExternalId: command.sourceExternalId,
+        mappedGroupId: command.mappedGroupId,
+        siteCode: command.siteCode,
+        generationId: command.generationId,
+      };
+      attachLiveMediaListenersOnce(client);
+      appendCollectorLog('certification-live-ingestion-armed', `generation=${command.generationId} source=approved budget=1`);
+      emitCertificationLiveIngestionStatus();
+      return;
+    }
+
+    if (command.type === 'disarm-certification-live-ingestion') {
+      if (isQrOnlyCertificationMode()) {
+        disarmCertificationLiveIngestion('explicit-command');
       }
       return;
     }

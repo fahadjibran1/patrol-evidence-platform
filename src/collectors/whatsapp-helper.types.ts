@@ -47,6 +47,16 @@ export interface WhatsAppHelperRuntimeConfig {
   mappedGroups: WhatsAppHelperGroupMapping[];
 }
 
+export interface WhatsAppCertificationLiveIngestionStatus {
+  armed: boolean;
+  budgetRemaining: number;
+  approvedSourcePresent: boolean;
+  listenerCount: number;
+  acceptedItemCount: number;
+  rejectedUnapprovedSourceCount: number;
+  rejectedUnsupportedMediaCount: number;
+}
+
 export interface WhatsAppHelperIngestPayload {
   siteCode: string;
   groupId?: string;
@@ -116,6 +126,9 @@ export type WhatsAppHelperEvent = {
     authorized: boolean;
     state: 'EXPECTING_QR_ONLY' | 'AUTHENTICATION_AUTHORIZED' | 'UNEXPECTED_AUTHENTICATION' | 'DISABLED';
   };
+} | {
+  type: 'certification-live-ingestion-status';
+  payload: WhatsAppCertificationLiveIngestionStatus;
 };
 
 export type WhatsAppHelperCommand =
@@ -144,6 +157,17 @@ export type WhatsAppHelperCommand =
       type: 'certification-group-lookup';
       displayName: string;
       requestId?: string;
+    }
+  | {
+      type: 'arm-certification-live-ingestion';
+      linkedAccountId: string;
+      sourceExternalId: string;
+      mappedGroupId: string;
+      siteCode: string;
+      generationId: string;
+    }
+  | {
+      type: 'disarm-certification-live-ingestion';
     };
 
 export const WHATSAPP_HELPER_EVENT_PREFIX = 'PATROL_COLLECTOR_EVENT ';
