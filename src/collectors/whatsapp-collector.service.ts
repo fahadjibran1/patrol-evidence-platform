@@ -11,7 +11,7 @@ import { SimulateLiveImageIngestDto } from './dto/simulate-live-image-ingest.dto
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import { ChildProcessWithoutNullStreams, spawn } from 'child_process';
-import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from 'fs';
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as readline from 'readline';
@@ -384,6 +384,52 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Explicitly replace a terminal failed reconnect profile. The old profile is
+   * archived first and is never deleted or reused by this action.
+   */
+  async relinkWhatsApp(): Promise<WhatsAppCollectorStatus> {
+    if (this.helperStatus.state !== 'RELINK_REQUIRED') {
+      throw new BadRequestException('WhatsApp relink is available only after a failed reconnect session.');
+    }
+
+    const archiveResult = await this.archiveCurrentSessionForFreshLink('explicit-relink');
+    if (!archiveResult.ok) {
+      this.helperStatus = this.buildDefaultStatus({
+        state: 'failed',
+        info: 'Could not prepare WhatsApp for relinking. Your existing session data was preserved.',
+        startupStage: 'Relink preparation failed',
+        lastError: archiveResult.error,
+        sessionCorruptionSuspected: true,
+        sessionCorruptionMessage: 'Existing WhatsApp session was preserved; relink preparation failed.',
+      });
+      return this.getStatus();
+    }
+
+    this.certificationTerminal = false;
+    this.clearPendingCertificationAuthorization();
+    this.certificationAuthorizationRequested = false;
+    this.certificationAuthorizationState = isQrOnlyCertificationMode() ? 'EXPECTING_QR_ONLY' : 'DISABLED';
+    this.helperStatus = this.buildDefaultStatus({
+      state: 'idle',
+      info: 'Expired WhatsApp session archived. Starting a fresh relink QR flow…',
+      startupStage: 'Fresh relink profile',
+      lastError: null,
+      sessionCorruptionSuspected: false,
+      sessionCorruptionMessage: null,
+      connectedAccount: null,
+      groups: [],
+      contacts: [],
+    });
+    this.appendCollectorLog('explicit-relink-prepared', `archivePath=${archiveResult.archivePath}`);
+
+    if (!this.enabled) {
+      return this.getStatus();
+    }
+
+    return this.start();
+  }
+
+  /**
    * Operator action: archive the current automated browser profile and start with a brand-new userDataDir.
    * Closes only browser processes that hold this application's profile — not the user's personal Chrome/Edge.
    */
@@ -395,44 +441,17 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       `create-fresh-whatsapp-profile stack=${stack.replace(/\s+/g, ' ')} pid=${process.pid} profileDir=${profileDir}`,
     );
 
-    await this.stopHelperProcess();
-    await this.sleep(1_000);
-
-    const owners = findBrowserProcessesUsingProfile(profileDir);
-    if (owners.length > 0) {
-      this.appendCollectorLog(
-        'EXISTING_BROWSER_FOUND',
-        owners.map((owner) => `pid=${owner.pid} name=${owner.name}`).join(' | '),
-      );
-      await terminateBrowserOwners(owners, { forceAfterMs: 5_000 });
-    }
-
-    try {
-      await ensureProfileUnlocked(profileDir, (event, details) => {
-        this.appendCollectorLog(event, details);
+    const archiveResult = await this.archiveCurrentSessionForFreshLink('fresh-profile');
+    if (!archiveResult.ok) {
+      this.helperStatus = this.buildDefaultStatus({
+        state: 'failed',
+        info: 'Could not prepare a fresh WhatsApp profile. Your existing session data was preserved.',
+        startupStage: 'Fresh profile preparation failed',
+        lastError: archiveResult.error,
       });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      this.appendCollectorLog('fresh-profile-unlock-warning', message);
+      return this.getStatus();
     }
 
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    if (existsSync(this.sessionPath)) {
-      const archivePath = `${this.sessionPath}.bak-${timestamp}`;
-      try {
-        renameSync(this.sessionPath, archivePath);
-        this.appendCollectorLog(
-          'fresh-profile-archived',
-          `from=${this.sessionPath} to=${archivePath}`,
-        );
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        this.appendCollectorLog('fresh-profile-archive-failed', message);
-        await this.deleteSessionFolderWithRetry();
-      }
-    }
-
-    mkdirSync(this.sessionPath, { recursive: true });
     this.appendCollectorLog(
       'fresh-profile-created',
       `sessionPath=${this.sessionPath} userDataDir=${path.join(this.sessionPath, 'session-patrol-evidence-platform')}`,
@@ -455,6 +474,96 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
     }
 
     return this.start();
+  }
+
+  private async archiveCurrentSessionForFreshLink(action: string): Promise<
+    | { ok: true; archivePath: string }
+    | { ok: false; error: string }
+  > {
+    const profileDir = path.join(this.sessionPath, 'session-patrol-evidence-platform');
+    await this.stopHelperProcess();
+    await this.sleep(1_000);
+
+    const owners = findBrowserProcessesUsingProfile(profileDir);
+    if (owners.length > 0) {
+      this.appendCollectorLog(
+        'EXISTING_BROWSER_FOUND',
+        owners.map((owner) => `pid=${owner.pid} name=${owner.name}`).join(' | '),
+      );
+      await terminateBrowserOwners(owners, { forceAfterMs: 5_000 });
+    }
+
+    const remainingOwners = findBrowserProcessesUsingProfile(profileDir);
+    if (remainingOwners.length > 0) {
+      const message = `WhatsApp browser profile is still owned by ${remainingOwners.length} process(es).`;
+      this.appendCollectorLog('fresh-profile-archive-failed', message);
+      return { ok: false, error: message };
+    }
+
+    try {
+      await ensureProfileUnlocked(profileDir, (event, details) => {
+        this.appendCollectorLog(event, details);
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.appendCollectorLog('fresh-profile-archive-failed', message);
+      return { ok: false, error: message };
+    }
+
+    if (!existsSync(this.sessionPath)) {
+      mkdirSync(this.sessionPath, { recursive: true });
+      this.appendCollectorLog('fresh-profile-created', `sessionPath=${this.sessionPath} reason=${action}`);
+      return { ok: true, archivePath: 'none-existing' };
+    }
+
+    const archiveRoot = path.resolve(path.dirname(this.sessionPath), 'whatsapp-session-archive');
+    const archivePath = path.join(
+      archiveRoot,
+      `${path.basename(this.sessionPath)}-${new Date().toISOString().replace(/[:.]/g, '-')}-${randomUUID()}`,
+    );
+    try {
+      mkdirSync(archiveRoot, { recursive: true });
+      const managedRoot = path.resolve(path.dirname(this.sessionPath));
+      if (!archivePath.startsWith(`${managedRoot}${path.sep}`)) {
+        throw new Error('Archive destination escaped the managed WhatsApp data root.');
+      }
+      renameSync(this.sessionPath, archivePath);
+      mkdirSync(this.sessionPath, { recursive: true });
+      if (readdirSync(this.sessionPath).length !== 0) {
+        throw new Error('Fresh WhatsApp session root was not empty after archival.');
+      }
+      const archiveSummary = this.summarizeDirectory(archivePath);
+      this.appendCollectorLog(
+        'fresh-profile-archived',
+        `from=${this.sessionPath} to=${archivePath} action=${action} files=${archiveSummary.files} directories=${archiveSummary.directories} bytes=${archiveSummary.bytes}`,
+      );
+      this.appendCollectorLog('fresh-profile-created', `sessionPath=${this.sessionPath} reason=${action} entries=0 candidate=false`);
+      return { ok: true, archivePath };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.appendCollectorLog('fresh-profile-archive-failed', message);
+      return { ok: false, error: message };
+    }
+  }
+
+  private summarizeDirectory(root: string): { files: number; directories: number; bytes: number } {
+    let files = 0;
+    let directories = 0;
+    let bytes = 0;
+    const visit = (directory: string): void => {
+      for (const entry of readdirSync(directory, { withFileTypes: true })) {
+        const entryPath = path.join(directory, entry.name);
+        if (entry.isDirectory()) {
+          directories += 1;
+          visit(entryPath);
+        } else if (entry.isFile()) {
+          files += 1;
+          bytes += statSync(entryPath).size;
+        }
+      }
+    };
+    visit(root);
+    return { files, directories, bytes };
   }
 
   private async deleteSessionFolderWithRetry(maxAttempts = 6): Promise<void> {

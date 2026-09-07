@@ -22,6 +22,7 @@ export function CollectorPage(): JSX.Element {
     stop,
     resetSession,
     createFreshProfile,
+    relink,
   } = useMonitoring();
 
   if (user?.role === 'GUARD') {
@@ -95,8 +96,8 @@ export function CollectorPage(): JSX.Element {
                 <button
                   type="button"
                   className="primary-button"
-                  disabled
-                  title="A safe fresh-profile relink flow is not yet available."
+                  disabled={isBusy}
+                  onClick={() => void relink()}
                 >
                   Relink WhatsApp
                 </button>

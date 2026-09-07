@@ -467,6 +467,15 @@ describe('WhatsAppCollectorService', () => {
     expect(write).not.toHaveBeenCalled();
   });
 
+  it('rejects explicit relink unless the collector is terminal RELINK_REQUIRED', async () => {
+    const service = createService();
+    (service as unknown as { helperStatus: WhatsAppHelperStatusSnapshot }).helperStatus = readyStatus();
+
+    await expect(service.relinkWhatsApp()).rejects.toThrow(
+      'WhatsApp relink is available only after a failed reconnect session.',
+    );
+  });
+
   it('does not start or auto-recover after an unexpected-authentication terminal state', async () => {
     const service = createService();
     (service as unknown as { certificationTerminal: boolean }).certificationTerminal = true;

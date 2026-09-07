@@ -73,6 +73,12 @@ export class CollectorsController {
     return this.whatsAppCollectorService.createFreshWhatsAppProfile();
   }
 
+  @Post('relink')
+  @RequireLicenceFeature('whatsappMonitoring')
+  relinkWhatsApp(): Promise<WhatsAppCollectorStatus> {
+    return this.whatsAppCollectorService.relinkWhatsApp();
+  }
+
   @Post('backfill')
   @RequireLicenceFeature('whatsappMonitoring')
   backfill(@Body() dto: ManualBackfillDto): Promise<WhatsAppCollectorStatus> {

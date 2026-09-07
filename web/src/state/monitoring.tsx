@@ -16,7 +16,8 @@ type MonitoringActionPath =
   | '/collectors/whatsapp/start'
   | '/collectors/whatsapp/stop'
   | '/collectors/whatsapp/reset-session'
-  | '/collectors/whatsapp/fresh-profile';
+  | '/collectors/whatsapp/fresh-profile'
+  | '/collectors/whatsapp/relink';
 
 interface MonitoringContextValue {
   status: WhatsAppCollectorStatus | null;
@@ -33,6 +34,7 @@ interface MonitoringContextValue {
   stop: () => Promise<void>;
   resetSession: () => Promise<void>;
   createFreshProfile: () => Promise<void>;
+  relink: () => Promise<void>;
 }
 
 const MonitoringContext = createContext<MonitoringContextValue | null>(null);
@@ -113,6 +115,10 @@ export function MonitoringProvider({ children }: PropsWithChildren): JSX.Element
     await runAction('/collectors/whatsapp/fresh-profile');
   }, [runAction]);
 
+  const relink = useCallback(async () => {
+    await runAction('/collectors/whatsapp/relink');
+  }, [runAction]);
+
   const value = useMemo<MonitoringContextValue>(
     () => ({
       status,
@@ -129,6 +135,7 @@ export function MonitoringProvider({ children }: PropsWithChildren): JSX.Element
       stop,
       resetSession,
       createFreshProfile,
+      relink,
     }),
     [
       createFreshProfile,
@@ -139,6 +146,7 @@ export function MonitoringProvider({ children }: PropsWithChildren): JSX.Element
       pollIntervalMs,
       refresh,
       resetSession,
+      relink,
       runAction,
       start,
       status,
