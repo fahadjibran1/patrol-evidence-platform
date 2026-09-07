@@ -911,6 +911,27 @@ function markReconnectRelinkRequired(reason: string): boolean {
   return true;
 }
 
+function terminalizeExhaustedReconnect(startupAttemptId: number): boolean {
+  if (
+    !existingLocalAuthSessionCandidate ||
+    startupAttemptId !== activeStartupAttemptId ||
+    shutdownRequested ||
+    readinessFinalized ||
+    authenticationReachedAttemptId !== null ||
+    !(
+      status.state === 'waiting-for-qr' ||
+      status.lastError === 'WhatsApp Web loaded but no QR code appeared.'
+    ) ||
+    status.qrCode
+  ) {
+    return false;
+  }
+
+  return markReconnectRelinkRequired(
+    `bounded-reconnect-exhausted attemptId=${startupAttemptId} qrSuppressed=true`,
+  );
+}
+
 function blockAfterCertificationTerminal(event: string): boolean {
   if (!unexpectedAuthenticationShutdownStarted && !relinkRequiredShutdownStarted && !qrOnlyCertificationGuard.isTerminal()) {
     return false;
@@ -4803,6 +4824,8 @@ async function startCollector(): Promise<void> {
 
       await sleep(2_500);
     }
+
+    terminalizeExhaustedReconnect(activeStartupAttemptId);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     appendCollectorLog(

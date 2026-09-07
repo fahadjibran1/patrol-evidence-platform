@@ -53,4 +53,26 @@ describe('WhatsApp QR relink lifecycle contract', () => {
     expect(disconnected).toContain('qrCode: null');
     expect(disconnected).toContain('qrPayloadLength: null');
   });
+
+  it('terminalizes only an exhausted existing-session reconnect that is still waiting without a QR', () => {
+    expect(helper).toContain('function terminalizeExhaustedReconnect(startupAttemptId: number)');
+    const terminalization = handler('function terminalizeExhaustedReconnect', 'function blockAfterCertificationTerminal');
+    expect(terminalization).toContain('existingLocalAuthSessionCandidate');
+    expect(terminalization).toContain('startupAttemptId !== activeStartupAttemptId');
+    expect(terminalization).toContain("status.state === 'waiting-for-qr'");
+    expect(terminalization).toContain("status.lastError === 'WhatsApp Web loaded but no QR code appeared.'");
+    expect(terminalization).toContain('status.qrCode');
+    expect(terminalization).toContain('bounded-reconnect-exhausted');
+    expect(helper).toContain('terminalizeExhaustedReconnect(activeStartupAttemptId);');
+  });
+
+  it('keeps fresh-link QR states and the explicit Relink endpoint precondition unchanged', () => {
+    expect(helper).toContain("if (!existingLocalAuthSessionCandidate || authenticationReachedAttemptId !== null)");
+    expect(helper).toContain("state: 'qr-ready'");
+    const service = readFileSync(
+      path.join(process.cwd(), 'src', 'collectors', 'whatsapp-collector.service.ts'),
+      'utf8',
+    );
+    expect(service).toContain("this.helperStatus.state !== 'RELINK_REQUIRED'");
+  });
 });
