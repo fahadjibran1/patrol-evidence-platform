@@ -33,6 +33,7 @@ import {
   isQrOnlyCertificationMode,
   redactQrOnlyCertificationLog,
 } from './whatsapp-certification-guard';
+import { projectCertificationGroupMatches, type CertificationChatMetadata } from './whatsapp-certification-group-lookup.util';
 import { PatrolSourceType } from '@/common/enums/patrol-source-type.enum';
 import {
   getMessageSourceId,
@@ -641,8 +642,8 @@ function emitCertificationAuthorizationResult(authorized: boolean): void {
   process.stdout.write(`${WHATSAPP_HELPER_EVENT_PREFIX}${JSON.stringify(payload)}\n`);
 }
 
-function emitCertificationGroupLookupResult(displayName: string, matches: Array<{ name: string; id: string }>): void {
-  const payload: WhatsAppHelperEvent = { type: 'certification-group-lookup-result', payload: { displayName, matches } };
+function emitCertificationGroupLookupResult(displayName: string, matches: Array<{ name: string; id: string }>, requestId?: string): void {
+  const payload: WhatsAppHelperEvent = { type: 'certification-group-lookup-result', payload: { requestId, displayName, matches } };
   process.stdout.write(`${WHATSAPP_HELPER_EVENT_PREFIX}${JSON.stringify(payload)}\n`);
 }
 
@@ -3311,25 +3312,35 @@ async function refreshDiscoveredChats(): Promise<void> {
   }
 }
 
-async function lookupCertificationGroup(displayName: string): Promise<void> {
+async function lookupCertificationGroup(displayName: string, requestId?: string): Promise<void> {
   const requested = displayName.trim();
   const activeClient = client;
   if (!isQrOnlyCertificationMode() || !requested || !activeClient || status.state !== 'ready') {
-    emitCertificationGroupLookupResult(requested, []);
+    emitCertificationGroupLookupResult(requested, [], requestId);
     return;
   }
-  if (typeof activeClient.getChats !== 'function' || !(await waitForChatDiscoveryReady(activeClient))) {
-    emitCertificationGroupLookupResult(requested, []);
+  if (!activeClient.pupPage) {
+    emitCertificationGroupLookupResult(requested, [], requestId);
     return;
   }
-  const chats = await activeClient.getChats();
-  const matches = chats
-    .filter((chat) => chat.isGroup && resolveChatDisplayName(chat) === requested)
-    .map((chat) => ({ name: resolveChatDisplayName(chat), id: chat.id?._serialized?.trim() ?? '' }))
-    .filter((match) => isValidDiscoveredChatId(match.id))
-    .map(({ name, id }) => ({ name, id }));
+  const chats = await Promise.race([
+    activeClient.pupPage.evaluate(() => {
+      const scoped = window as typeof window & { require?: (id: string) => unknown };
+      const collection = (scoped.require?.('WAWebCollections') as { Chat?: { getModelsArray?: () => unknown[] } } | undefined)?.Chat;
+      return (collection?.getModelsArray?.() ?? []).map((chat: any) => ({
+        id: chat?.id?._serialized ?? '',
+        isGroup: chat?.isGroup === true,
+        formattedTitle: chat?.formattedTitle ?? '',
+        name: chat?.name ?? '',
+        subject: chat?.subject ?? '',
+        title: chat?.title ?? '',
+      }));
+    }) as Promise<CertificationChatMetadata[]>,
+    new Promise<CertificationChatMetadata[]>((_, reject) => setTimeout(() => reject(new Error('certification group metadata lookup timed out')), 5_000)),
+  ]);
+  const matches = projectCertificationGroupMatches(chats, requested);
   appendCollectorLog('CERTIFICATION_GROUP_LOOKUP_COMPLETE', `name=${requested} matches=${matches.length}`);
-  emitCertificationGroupLookupResult(requested, matches);
+  emitCertificationGroupLookupResult(requested, matches, requestId);
 }
 
 function normalizeDetectedGroups(groups: WhatsAppCollectorGroup[]): WhatsAppCollectorGroup[] {
@@ -3629,9 +3640,9 @@ function wireCommands(): void {
     }
 
     if (command.type === 'certification-group-lookup') {
-      void lookupCertificationGroup(command.displayName).catch((error) => {
+      void lookupCertificationGroup(command.displayName, command.requestId).catch((error) => {
         appendCollectorLog('CERTIFICATION_GROUP_LOOKUP_FAILED', error instanceof Error ? error.message : String(error));
-        emitCertificationGroupLookupResult(command.displayName.trim(), []);
+        emitCertificationGroupLookupResult(command.displayName.trim(), [], command.requestId);
       });
       return;
     }

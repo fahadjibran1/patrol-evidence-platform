@@ -686,8 +686,9 @@ describe('WhatsAppCollectorService', () => {
       const helper = attachRunningHelper(service);
       (service as unknown as { certificationAuthorizationState: string }).certificationAuthorizationState = 'AUTHENTICATION_AUTHORIZED';
       const lookup = service.lookupCertificationGroup('test1');
-      expect(helper.write).toHaveBeenCalledWith(`${JSON.stringify({ type: 'certification-group-lookup', displayName: 'test1' })}\n`);
-      const line = `${WHATSAPP_HELPER_EVENT_PREFIX}${JSON.stringify({ type: 'certification-group-lookup-result', payload: { displayName: 'test1', matches: [{ name: 'test1', id: '123@g.us' }] } })}`;
+      const command = JSON.parse((helper.write as jest.Mock).mock.calls[0][0]);
+      expect(command).toMatchObject({ type: 'certification-group-lookup', displayName: 'test1' });
+      const line = `${WHATSAPP_HELPER_EVENT_PREFIX}${JSON.stringify({ type: 'certification-group-lookup-result', payload: { requestId: command.requestId, displayName: 'test1', matches: [{ name: 'test1', id: '123@g.us' }] } })}`;
       (service as unknown as { handleHelperStdoutLine(line: string): void }).handleHelperStdoutLine(line);
       await expect(lookup).resolves.toEqual({ displayName: 'test1', matches: [{ name: 'test1', id: '123@g.us' }] });
     } finally {

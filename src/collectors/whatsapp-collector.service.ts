@@ -98,7 +98,7 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       }
     | null = null;
   private pendingCertificationGroupLookup:
-    | { resolve: (matches: Array<{ name: string; id: string }>) => void; timer: NodeJS.Timeout }
+    | { requestId: string; resolve: (matches: Array<{ name: string; id: string }>) => void; timer: NodeJS.Timeout }
     | null = null;
   private helperStatus: WhatsAppHelperStatusSnapshot;
 
@@ -203,11 +203,12 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
     }
     const requested = displayName.trim();
     if (!requested) throw new BadRequestException('displayName is required.');
+    const requestId = randomUUID();
     const result = new Promise<Array<{ name: string; id: string }>>((resolve) => {
       const timer = setTimeout(() => { this.pendingCertificationGroupLookup = null; resolve([]); }, 10_000);
-      this.pendingCertificationGroupLookup = { resolve, timer };
+      this.pendingCertificationGroupLookup = { requestId, resolve, timer };
     });
-    this.sendHelperCommand({ type: 'certification-group-lookup', displayName: requested });
+    this.sendHelperCommand({ type: 'certification-group-lookup', displayName: requested, requestId });
     return { displayName: requested, matches: await result };
   }
 
@@ -846,6 +847,10 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       }
       if (event.type === 'certification-group-lookup-result') {
         const pending = this.pendingCertificationGroupLookup;
+        if (pending && event.payload.requestId !== pending.requestId) {
+          this.appendCollectorLog('certification-group-lookup-stale-result-ignored');
+          return;
+        }
         this.pendingCertificationGroupLookup = null;
         if (pending) { clearTimeout(pending.timer); pending.resolve(event.payload.matches); }
         return;
