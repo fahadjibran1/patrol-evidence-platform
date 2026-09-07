@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import {
@@ -7,6 +7,7 @@ import {
   detectProfileLock,
   isProfileLockErrorMessage,
   readHelperMutex,
+  releaseProfileOwnership,
 } from './browser-profile-lock.util';
 
 describe('browser-profile-lock.util', () => {
@@ -63,4 +64,29 @@ describe('browser-profile-lock.util', () => {
     expect(message).toContain('msedge.exe');
     expect(message).toContain('C:\\profile');
   });
+
+  it('proves a clean profile remains reusable across bounded settle checks', async () => {
+    const userDataDir = path.join(tempRoot, 'session-patrol-evidence-platform');
+    mkdirSync(userDataDir, { recursive: true });
+
+    const released = await releaseProfileOwnership(userDataDir);
+
+    expect(released.locked).toBe(false);
+    expect(
+      (readdirSync(userDataDir) as string[]).some((name) =>
+        name.startsWith(`.patrol-profile-release-${process.pid}`),
+      ),
+    ).toBe(false);
+  });
+
+  it('clears stale singleton markers only after no owning process is present', async () => {
+    const userDataDir = path.join(tempRoot, 'session-patrol-evidence-platform');
+    mkdirSync(userDataDir, { recursive: true });
+    writeFileSync(path.join(userDataDir, 'SingletonLock'), 'stale', 'utf8');
+
+    const released = await releaseProfileOwnership(userDataDir);
+
+    expect(released.locked).toBe(false);
+    expect(existsSync(path.join(userDataDir, 'SingletonLock'))).toBe(false);
+  }, 30_000);
 });

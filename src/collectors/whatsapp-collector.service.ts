@@ -20,10 +20,9 @@ import { LicensingService } from '@/licensing/licensing.service';
 import { WhatsAppSourceMappingService } from '@/patrol-groups/whatsapp-source-mapping.service';
 import { IngestPatrolImageEvent, PatrolImageIngestionService } from '@/patrol-images/patrol-image-ingestion.service';
 import {
-  ensureProfileUnlocked,
-  findBrowserProcessesUsingProfile,
   isProcessAlive,
   readHelperMutex,
+  releaseProfileOwnership,
   terminateBrowserOwners,
   type BrowserProcessOwner,
 } from './browser-profile-lock.util';
@@ -529,28 +528,10 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
   > {
     const profileDir = path.join(this.sessionPath, 'session-patrol-evidence-platform');
     await this.stopHelperProcess();
-    await this.sleep(1_000);
-
-    const owners = findBrowserProcessesUsingProfile(profileDir);
-    if (owners.length > 0) {
-      this.appendCollectorLog(
-        'EXISTING_BROWSER_FOUND',
-        owners.map((owner) => `pid=${owner.pid} name=${owner.name}`).join(' | '),
-      );
-      await terminateBrowserOwners(owners, { forceAfterMs: 5_000 });
-    }
-
-    const remainingOwners = findBrowserProcessesUsingProfile(profileDir);
-    if (remainingOwners.length > 0) {
-      const message = `WhatsApp browser profile is still owned by ${remainingOwners.length} process(es).`;
-      this.appendCollectorLog('fresh-profile-archive-failed', message);
-      return { ok: false, error: message };
-    }
-
     try {
-      await ensureProfileUnlocked(profileDir, (event, details) => {
+      await releaseProfileOwnership(profileDir, (event, details) => {
         this.appendCollectorLog(event, details);
-      });
+      }, { timeoutMs: 30_000, forceAfterMs: 5_000 });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.appendCollectorLog('fresh-profile-archive-failed', message);

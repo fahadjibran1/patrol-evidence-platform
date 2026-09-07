@@ -5,6 +5,7 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
+  renameSync,
   unlinkSync,
   writeFileSync,
 } from 'fs';
@@ -273,7 +274,10 @@ export async function terminateBrowserOwners(
 
     try {
       if (process.platform === 'win32') {
-        execFileSync('taskkill', ['/PID', String(pid)], {
+        // Ask Windows to terminate the owned process tree together. A browser
+        // root can exit while renderer/storage descendants continue holding
+        // Chromium's Singleton* locks, so killing only the root is insufficient.
+        execFileSync('taskkill', ['/PID', String(pid), '/T'], {
           encoding: 'utf8',
           windowsHide: true,
           stdio: ['ignore', 'pipe', 'pipe'],
@@ -313,6 +317,89 @@ export async function terminateBrowserOwners(
       // ignore
     }
   }
+}
+
+function releaseProbe(userDataDir: string): boolean {
+  if (!existsSync(userDataDir)) {
+    return true;
+  }
+
+  const probe = path.join(userDataDir, `.patrol-profile-release-${process.pid}-${Date.now()}`);
+  const renamed = `${probe}.renamed`;
+  try {
+    writeFileSync(probe, 'release-probe', 'utf8');
+    renameSync(probe, renamed);
+    unlinkSync(renamed);
+    return true;
+  } catch {
+    try {
+      if (existsSync(probe)) unlinkSync(probe);
+      if (existsSync(renamed)) unlinkSync(renamed);
+    } catch {
+      // best-effort cleanup only
+    }
+    return false;
+  }
+}
+
+/**
+ * Stops only browser processes identified as using this profile and waits for
+ * the profile to become genuinely reusable. The repeated settle checks are
+ * intentional: Windows can publish renderer/storage descendants shortly after
+ * the Puppeteer root exits.
+ */
+export async function releaseProfileOwnership(
+  userDataDir: string,
+  log?: (event: string, details: string) => void,
+  options?: { timeoutMs?: number; forceAfterMs?: number },
+): Promise<ProfileLockStatus> {
+  const timeoutMs = options?.timeoutMs ?? 30_000;
+  const forceAfterMs = options?.forceAfterMs ?? 5_000;
+  const startedAt = Date.now();
+  let last = detectProfileLock(userDataDir);
+  let cleanChecks = 0;
+
+  while (Date.now() - startedAt < timeoutMs) {
+    if (last.owners.length > 0) {
+      log?.('PROFILE_OWNERS_DETECTED', `userDataDir=${userDataDir} owners=${formatBrowserOwners(last.owners)}`);
+      await terminateBrowserOwners(last.owners, { forceAfterMs });
+      cleanChecks = 0;
+    }
+
+    if (last.owners.length === 0 && last.lockFilesPresent.length > 0) {
+      for (const name of last.lockFilesPresent) {
+        try {
+          unlinkSync(path.join(userDataDir, name));
+        } catch {
+          // A live owner may recreate the marker; the next probe will catch it.
+        }
+      }
+    }
+
+    last = detectProfileLock(userDataDir);
+    if (!last.locked && releaseProbe(userDataDir)) {
+      cleanChecks += 1;
+      if (cleanChecks >= 3) {
+        log?.('PROFILE_OWNERSHIP_RELEASED', `userDataDir=${userDataDir} settleChecks=${cleanChecks}`);
+        return last;
+      }
+    } else {
+      cleanChecks = 0;
+    }
+
+    await sleep(400);
+  }
+
+  last = detectProfileLock(userDataDir);
+  throw new ProfileLockError(
+    buildProfileLockFailureMessage(
+      userDataDir,
+      last.owners,
+      'Profile ownership was not released within the bounded relink barrier.',
+    ),
+    userDataDir,
+    last.owners,
+  );
 }
 
 export async function waitForProfileUnlock(

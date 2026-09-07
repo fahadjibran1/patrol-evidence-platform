@@ -3,6 +3,7 @@ import * as path from 'path';
 
 describe('WhatsApp explicit relink flow contract', () => {
   const service = readFileSync(path.join(process.cwd(), 'src', 'collectors', 'whatsapp-collector.service.ts'), 'utf8');
+  const lockUtil = readFileSync(path.join(process.cwd(), 'src', 'collectors', 'browser-profile-lock.util.ts'), 'utf8');
   const controller = readFileSync(path.join(process.cwd(), 'src', 'collectors', 'collectors.controller.ts'), 'utf8');
   const monitoring = readFileSync(path.join(process.cwd(), 'web', 'src', 'state', 'monitoring.tsx'), 'utf8');
 
@@ -15,6 +16,8 @@ describe('WhatsApp explicit relink flow contract', () => {
   });
 
   it('archives before creating an empty fresh root and has no delete fallback', () => {
+    expect(service).toContain('releaseProfileOwnership(profileDir');
+    expect(service).toContain('timeoutMs: 30_000');
     expect(service).toContain("renameSync(this.sessionPath, archivePath)");
     expect(service).toContain("mkdirSync(this.sessionPath, { recursive: true })");
     expect(service).toContain('readdirSync(this.sessionPath).length !== 0');
@@ -22,6 +25,14 @@ describe('WhatsApp explicit relink flow contract', () => {
     const relinkBody = service.slice(service.indexOf('async relinkWhatsApp()'), service.indexOf('async createFreshWhatsAppProfile()'));
     expect(relinkBody).not.toContain('deleteSessionFolderWithRetry');
     expect(relinkBody).not.toContain('rmSync');
+  });
+
+  it('requires process-tree ownership release before archive and fresh helper start', () => {
+    const archiveBody = service.slice(service.indexOf('private async archiveCurrentSessionForFreshLink'), service.indexOf('private summarizeDirectory'));
+    expect(archiveBody.indexOf('releaseProfileOwnership')).toBeLessThan(archiveBody.indexOf('renameSync'));
+    expect(archiveBody.indexOf('renameSync')).toBeLessThan(archiveBody.indexOf("this.appendCollectorLog(\n        'fresh-profile-archived"));
+    expect(lockUtil).toContain("taskkill', ['/PID', String(pid), '/T'");
+    expect(lockUtil).not.toContain('taskkill /IM chrome.exe');
   });
 
   it('uses collision-safe managed archive names and resets certification state', () => {
