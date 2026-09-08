@@ -4,6 +4,7 @@ import * as path from 'path';
 import {
   acquireHelperMutex,
   buildProfileLockFailureMessage,
+  classifyProfileOwners,
   detectProfileLock,
   isProfileLockErrorMessage,
   readHelperMutex,
@@ -89,4 +90,34 @@ describe('browser-profile-lock.util', () => {
     expect(released.locked).toBe(false);
     expect(existsSync(path.join(userDataDir, 'SingletonLock'))).toBe(false);
   }, 30_000);
+
+  it('allows only the current browser tree while preserving fail-closed conflicts', () => {
+    const currentTree = [
+      { pid: 100, parentPid: 1, name: 'msedge.exe', commandLine: '--user-data-dir=P1' },
+      { pid: 101, parentPid: 100, name: 'msedge.exe', commandLine: '--type=renderer P1' },
+      { pid: 102, parentPid: 101, name: 'msedge.exe', commandLine: '--type=gpu-process P1' },
+    ];
+    const allowed = classifyProfileOwners(currentTree, 100);
+    expect(allowed.currentGenerationOwners.map((owner) => owner.pid)).toEqual([100, 101, 102]);
+    expect(allowed.conflictingOwners).toHaveLength(0);
+
+    const prior = classifyProfileOwners(
+      [{ pid: 90, parentPid: 9, name: 'msedge.exe', commandLine: '--user-data-dir=P1' }],
+      100,
+    );
+    expect(prior.currentGenerationOwners).toHaveLength(0);
+    expect(prior.conflictingOwners.map((owner) => owner.pid)).toEqual([90]);
+
+    const mixed = classifyProfileOwners(
+      [...currentTree, { pid: 200, parentPid: 2, name: 'chrome.exe', commandLine: '--user-data-dir=P1' }],
+      100,
+    );
+    expect(mixed.conflictingOwners.map((owner) => owner.pid)).toEqual([200]);
+
+    const unknown = classifyProfileOwners(
+      [{ pid: 300, name: 'msedge.exe', commandLine: '--user-data-dir=P1' }],
+      100,
+    );
+    expect(unknown.conflictingOwners.map((owner) => owner.pid)).toEqual([300]);
+  });
 });

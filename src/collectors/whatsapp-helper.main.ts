@@ -57,6 +57,7 @@ import {
 import {
   acquireHelperMutex,
   buildProfileLockFailureMessage,
+  classifyProfileOwners,
   detectProfileLock,
   ensureProfileUnlocked,
   formatBrowserOwners,
@@ -4767,13 +4768,20 @@ async function startCollector(): Promise<void> {
             primaryLaunchError = launchError;
           }
 
-          if (isProfileLockErrorMessage(launchError.message) || lockAfterFailure.locked) {
+          const currentBrowserRootPid = client?.pupBrowser?.process()?.pid ?? null;
+          const ownerClassification = classifyProfileOwners(lockAfterFailure.owners, currentBrowserRootPid);
+          const hasConflictingOwner = ownerClassification.conflictingOwners.length > 0;
+          const hasUnownedLockFiles = lockAfterFailure.lockFilesPresent.length > 0 && !currentBrowserRootPid;
+          if (isProfileLockErrorMessage(launchError.message) || hasConflictingOwner || hasUnownedLockFiles) {
             if (lockAfterFailure.owners.length > 0) {
-              appendCollectorLog('EXISTING_BROWSER_FOUND', formatBrowserOwners(lockAfterFailure.owners));
+              appendCollectorLog(
+                'EXISTING_BROWSER_FOUND',
+                `current=${formatBrowserOwners(ownerClassification.currentGenerationOwners)} conflicting=${formatBrowserOwners(ownerClassification.conflictingOwners)}`,
+              );
             }
             appendCollectorLog(
               'PROFILE_LOCK_DETECTED',
-              `after-launch-failure source=${browser.source} owners=${formatBrowserOwners(lockAfterFailure.owners)}`,
+              `after-launch-failure source=${browser.source} owners=${formatBrowserOwners(lockAfterFailure.owners)} currentRootPid=${currentBrowserRootPid ?? 'unknown'} conflicting=${formatBrowserOwners(ownerClassification.conflictingOwners)}`,
             );
             // Do not fall back to another browser using the same userDataDir.
             throw new ProfileLockError(

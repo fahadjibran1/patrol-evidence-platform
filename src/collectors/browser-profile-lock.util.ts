@@ -16,8 +16,14 @@ export const PROFILE_LOCK_FILES = ['SingletonLock', 'lockfile', 'SingletonCookie
 
 export interface BrowserProcessOwner {
   pid: number;
+  parentPid?: number;
   name: string;
   commandLine: string;
+}
+
+export interface ProfileOwnerClassification {
+  currentGenerationOwners: BrowserProcessOwner[];
+  conflictingOwners: BrowserProcessOwner[];
 }
 
 export interface ProfileLockStatus {
@@ -179,7 +185,7 @@ Get-CimInstance Win32_Process |
     $_.CommandLine -and
     ($_.CommandLine.ToLower().Contains($needle) -or $_.CommandLine.ToLower().Contains('session-patrol-evidence-platform'))
   } |
-  Select-Object ProcessId, Name, CommandLine |
+  Select-Object ProcessId, ParentProcessId, Name, CommandLine |
   ConvertTo-Json -Compress
 `;
 
@@ -195,13 +201,14 @@ Get-CimInstance Win32_Process |
     }
 
     const parsed = JSON.parse(output) as
-      | { ProcessId: number; Name: string; CommandLine?: string }
-      | Array<{ ProcessId: number; Name: string; CommandLine?: string }>;
+      | { ProcessId: number; ParentProcessId?: number; Name: string; CommandLine?: string }
+      | Array<{ ProcessId: number; ParentProcessId?: number; Name: string; CommandLine?: string }>;
     const rows = Array.isArray(parsed) ? parsed : [parsed];
 
     return rows
       .map((row) => ({
         pid: Number(row.ProcessId),
+        parentPid: Number(row.ParentProcessId),
         name: String(row.Name || 'unknown'),
         commandLine: String(row.CommandLine || ''),
       }))
@@ -209,6 +216,46 @@ Get-CimInstance Win32_Process |
   } catch {
     return [];
   }
+}
+
+/**
+ * Classifies owners during an active browser attempt. An owner is current only
+ * when it is the known browser root or a descendant of that root. Unknown or
+ * foreign owners remain conflicts. Callers performing archive/release checks
+ * should continue requiring owners.length === 0.
+ */
+export function classifyProfileOwners(
+  owners: BrowserProcessOwner[],
+  currentBrowserRootPid?: number | null,
+): ProfileOwnerClassification {
+  if (!currentBrowserRootPid || currentBrowserRootPid <= 0) {
+    return { currentGenerationOwners: [], conflictingOwners: owners };
+  }
+
+  const byParent = new Map<number, BrowserProcessOwner[]>();
+  for (const owner of owners) {
+    const parentPid = owner.parentPid;
+    if (!parentPid || parentPid <= 0) continue;
+    const siblings = byParent.get(parentPid) ?? [];
+    siblings.push(owner);
+    byParent.set(parentPid, siblings);
+  }
+
+  const currentPids = new Set<number>([currentBrowserRootPid]);
+  const queue = [currentBrowserRootPid];
+  while (queue.length > 0) {
+    const parentPid = queue.shift()!;
+    for (const child of byParent.get(parentPid) ?? []) {
+      if (currentPids.has(child.pid)) continue;
+      currentPids.add(child.pid);
+      queue.push(child.pid);
+    }
+  }
+
+  return {
+    currentGenerationOwners: owners.filter((owner) => currentPids.has(owner.pid)),
+    conflictingOwners: owners.filter((owner) => !currentPids.has(owner.pid)),
+  };
 }
 
 export function detectProfileLock(userDataDir: string): ProfileLockStatus {
