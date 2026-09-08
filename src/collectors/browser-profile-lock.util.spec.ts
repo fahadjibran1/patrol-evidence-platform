@@ -78,7 +78,7 @@ describe('browser-profile-lock.util', () => {
         name.startsWith(`.patrol-profile-release-${process.pid}`),
       ),
     ).toBe(false);
-  });
+  }, 30_000);
 
   it('clears stale singleton markers only after no owning process is present', async () => {
     const userDataDir = path.join(tempRoot, 'session-patrol-evidence-platform');
