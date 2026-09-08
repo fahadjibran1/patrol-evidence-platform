@@ -76,6 +76,7 @@ import {
   WWEBJS_MODULE_COMPATIBILITY_USER_MESSAGE,
   type WwebjsStoreProbeResult,
 } from './wwebjs-compatibility';
+import { shouldPreserveFreshQrLinkClient } from './whatsapp-qr-link-transition.util';
 
 type MessageSource = 'live' | 'backfill';
 type MessageProcessingResult = 'imported' | 'duplicate' | 'skipped';
@@ -4340,11 +4341,43 @@ async function runBrowserAttempt(
       appendCollectorLog('disconnected-ignored-stale-attempt', describeClientIdentity(nextClient, startupAttemptId));
       return;
     }
+    const normalizedReason = reason?.trim() || 'unknown';
+    if (
+      shouldPreserveFreshQrLinkClient({
+        reason: normalizedReason,
+        currentGeneration: isActiveClientGeneration(nextClient, startupAttemptId),
+        existingLocalAuthSessionCandidate,
+        qrReceivedForCurrentAttempt: qrReceivedLoggedForAttempt === startupAttemptId,
+        authenticationReachedForCurrentAttempt: authenticationReachedAttemptId === startupAttemptId,
+        readinessFinalized,
+        operatorLogoutRequested,
+        shutdownRequested,
+      })
+    ) {
+      clearLatestQrPayload();
+      updateStatus(
+        {
+          state: 'waiting-for-qr',
+          qrCode: null,
+          qrPayloadLength: null,
+          qrDeliveredAt: null,
+          qrPersistedAt: null,
+          info: 'WhatsApp link state changed. Waiting for authentication or a new QR code.',
+          lastError: null,
+        },
+        'fresh-qr-link-transition-preserved',
+        normalizedReason,
+      );
+      appendCollectorLog(
+        'fresh-qr-link-transition-preserved',
+        `reason=${normalizedReason} ${describeClientIdentity(nextClient, startupAttemptId)}`,
+      );
+      return;
+    }
     clearStartupTimeouts();
     clearReadinessTimers();
     clearGroupDiscoveryTimers();
 
-    const normalizedReason = reason?.trim() || 'unknown';
     if (
       existingLocalAuthSessionCandidate &&
       authenticationReachedAttemptId === null &&
