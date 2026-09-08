@@ -117,6 +117,40 @@ describe('WhatsAppCollectorService', () => {
     };
   }
 
+  describe('helper browser preference', () => {
+    const originalBrowser = process.env.WHATSAPP_BROWSER;
+    const originalPatrolBrowser = process.env.PATROL_WHATSAPP_BROWSER;
+
+    beforeEach(() => {
+      delete process.env.WHATSAPP_BROWSER;
+      delete process.env.PATROL_WHATSAPP_BROWSER;
+    });
+
+    afterAll(() => {
+      if (originalBrowser === undefined) delete process.env.WHATSAPP_BROWSER;
+      else process.env.WHATSAPP_BROWSER = originalBrowser;
+      if (originalPatrolBrowser === undefined) delete process.env.PATROL_WHATSAPP_BROWSER;
+      else process.env.PATROL_WHATSAPP_BROWSER = originalPatrolBrowser;
+    });
+
+    const preference = (service: WhatsAppCollectorService) =>
+      (service as unknown as { resolveHelperBrowserPreference(): 'chrome' | 'edge' | 'auto' })
+        .resolveHelperBrowserPreference();
+
+    it('uses the validated auto plan when no browser is configured', () => {
+      expect(preference(createService())).toBe('auto');
+    });
+
+    it.each(['chrome', 'edge', 'auto'] as const)('preserves an explicit %s preference', (browser) => {
+      expect(preference(createService({ whatsappBrowser: browser }))).toBe(browser);
+    });
+
+    it('derives the family from an explicit saved executable when no preference is set', () => {
+      expect(preference(createService({ whatsappChromePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe' }))).toBe('chrome');
+      expect(preference(createService({ whatsappChromePath: 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe' }))).toBe('edge');
+    });
+  });
+
   function attachRunningHelper(service: WhatsAppCollectorService): { write: jest.Mock } {
     const write = jest.fn();
     (service as unknown as {

@@ -1326,8 +1326,9 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       return 'chrome';
     }
 
-    // Packaged default: Chrome. Auto historically preferred Edge and ignored an operator Chrome choice.
-    return 'chrome';
+    // With no operator/admin choice, use the validated Edge-first launch plan.
+    // Explicit browser preferences and saved executable paths remain authoritative above.
+    return 'auto';
   }
 
   private readCollectorLogTail(maxLines = 80): string[] {

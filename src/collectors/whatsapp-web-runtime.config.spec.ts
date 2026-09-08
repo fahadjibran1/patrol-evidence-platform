@@ -23,6 +23,13 @@ describe('whatsapp-web-runtime browser and version selection', () => {
     expect(resolved.available.every((browser) => browser.source === 'chrome')).toBe(true);
   });
 
+  it('fails clearly for an unsupported explicit browser preference', () => {
+    process.env.WHATSAPP_BROWSER = 'firefox';
+    expect(() => resolveWhatsAppBrowserPreference()).toThrow(
+      'Invalid WHATSAPP_BROWSER="firefox". Use chrome, edge, or auto.',
+    );
+  });
+
   it('never selects Edge when Chrome preference is set even if Edge exists', () => {
     process.env.WHATSAPP_BROWSER = 'chrome';
     process.env.PATROL_HELPER_CHROME_PATH =

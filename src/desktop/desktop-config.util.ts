@@ -148,6 +148,7 @@ export function getDefaultDesktopWorkspaceConfig(): DesktopWorkspaceConfig {
     autoStartCollector: false,
     whatsappAllowFromMe: false,
     whatsappHeadless: true,
+    whatsappBrowser: 'auto',
     dbType: 'sqlite',
   };
 }

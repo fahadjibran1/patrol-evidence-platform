@@ -1,6 +1,22 @@
-import { loadDesktopWorkspaceConfig, normalizeSetupCompleted } from './desktop-config.util';
+import {
+  getDefaultDesktopWorkspaceConfig,
+  loadDesktopWorkspaceConfig,
+  normalizeSetupCompleted,
+} from './desktop-config.util';
 
 describe('desktop-config.util', () => {
+  it('uses automatic WhatsApp browser selection for an unconfigured workspace', () => {
+    expect(getDefaultDesktopWorkspaceConfig().whatsappBrowser).toBe('auto');
+  });
+
+  it('keeps the Electron workspace default and restart contract aligned', () => {
+    const { readFileSync } = require('fs');
+    const { join } = require('path');
+    const desktopMain = readFileSync(join(process.cwd(), 'desktop', 'main.js'), 'utf8');
+    expect(desktopMain).toContain("whatsappBrowser: 'auto'");
+    expect(desktopMain).toMatch(/restartKeys\s*=\s*\[[\s\S]*'whatsappBrowser'/);
+  });
+
   it('normalizes setupCompleted from boolean and string values', () => {
     expect(normalizeSetupCompleted(true)).toBe(true);
     expect(normalizeSetupCompleted('true')).toBe(true);

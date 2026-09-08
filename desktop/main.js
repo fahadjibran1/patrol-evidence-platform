@@ -538,6 +538,7 @@ const DEFAULT_WORKSPACE_CONFIG = {
   autoLaunchApp: false,
   autoStartCollector: false,
   whatsappAllowFromMe: false,
+  whatsappBrowser: 'auto',
 };
 
 function normalizeSetupCompleted(value) {
@@ -597,6 +598,7 @@ function configChangeRequiresBackendRestart(partialConfig, currentConfig = readW
     'autoStartCollector',
     'whatsappAllowFromMe',
     'whatsappChromePath',
+    'whatsappBrowser',
     'whatsappHeadless',
   ];
 

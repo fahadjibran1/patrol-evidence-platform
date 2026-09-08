@@ -56,7 +56,7 @@ export function CollectorDiagnosticsPage(): JSX.Element {
       }
       setDesktopState(nextState);
       setChromePath(nextState.config.whatsappChromePath ?? '');
-      setBrowserPreference(nextState.config.whatsappBrowser ?? 'chrome');
+      setBrowserPreference(nextState.config.whatsappBrowser ?? 'auto');
     });
   }, []);
 
@@ -496,8 +496,8 @@ export function CollectorDiagnosticsPage(): JSX.Element {
                 <Card className="wizard-card">
                   <h3>Browser preference</h3>
                   <p className="muted-text">
-                    Choose Chrome or Edge explicitly. When Chrome is selected, the collector launches Chrome only and never
-                    falls back to Edge.
+                    Choose Chrome or Edge explicitly, or use the validated automatic selection. An explicit Chrome choice
+                    launches Chrome only and never falls back to Edge.
                   </p>
                   <label className="inline-field">
                     <span>Browser</span>
@@ -509,7 +509,7 @@ export function CollectorDiagnosticsPage(): JSX.Element {
                     >
                       <option value="chrome">Google Chrome</option>
                       <option value="edge">Microsoft Edge</option>
-                      <option value="auto">Auto (Chrome preferred)</option>
+                      <option value="auto">Auto (Edge preferred)</option>
                     </select>
                   </label>
                   <label className="inline-field">
