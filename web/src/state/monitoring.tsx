@@ -17,6 +17,7 @@ type MonitoringActionPath =
   | '/collectors/whatsapp/stop'
   | '/collectors/whatsapp/reset-session'
   | '/collectors/whatsapp/fresh-profile'
+  | '/collectors/whatsapp/retry-link'
   | '/collectors/whatsapp/relink';
 
 interface MonitoringContextValue {
@@ -34,6 +35,7 @@ interface MonitoringContextValue {
   stop: () => Promise<void>;
   resetSession: () => Promise<void>;
   createFreshProfile: () => Promise<void>;
+  retryLink: () => Promise<void>;
   relink: () => Promise<void>;
 }
 
@@ -42,6 +44,12 @@ const MonitoringContext = createContext<MonitoringContextValue | null>(null);
 const MONITORING_POLL_IDLE_MS = 60_000;
 // Linking is interactive: poll quickly enough that a refreshed QR replaces the old one promptly.
 const MONITORING_POLL_LINKING_MS = 1_000;
+const LINK_RETRY_CLEANUP_FAILURE_CODES = new Set([
+  'REMOTE_BOOTSTRAP_FAILURE',
+  'AUTH_SELECTOR_TIMEOUT',
+  'QR_INITIALIZATION_TIMEOUT',
+  'BROWSER_LAUNCH_FAILURE',
+]);
 
 export function MonitoringProvider({ children }: PropsWithChildren): JSX.Element {
   const { token, user } = useAuth();
@@ -53,7 +61,13 @@ export function MonitoringProvider({ children }: PropsWithChildren): JSX.Element
 
   const view = useMemo(() => deriveMonitoringView(status), [status]);
 
-  const pollIntervalMs = view.isLinking && !view.isLive ? MONITORING_POLL_LINKING_MS : MONITORING_POLL_IDLE_MS;
+  const awaitingLinkRetryCleanup =
+    status?.state === 'failed' &&
+    Boolean(status.failureCode && LINK_RETRY_CLEANUP_FAILURE_CODES.has(status.failureCode));
+  const pollIntervalMs =
+    (view.isLinking && !view.isLive) || awaitingLinkRetryCleanup
+      ? MONITORING_POLL_LINKING_MS
+      : MONITORING_POLL_IDLE_MS;
 
   const loadStatus = useCallback(async () => {
     if (!enabled) {
@@ -115,6 +129,10 @@ export function MonitoringProvider({ children }: PropsWithChildren): JSX.Element
     await runAction('/collectors/whatsapp/fresh-profile');
   }, [runAction]);
 
+  const retryLink = useCallback(async () => {
+    await runAction('/collectors/whatsapp/retry-link');
+  }, [runAction]);
+
   const relink = useCallback(async () => {
     await runAction('/collectors/whatsapp/relink');
   }, [runAction]);
@@ -135,6 +153,7 @@ export function MonitoringProvider({ children }: PropsWithChildren): JSX.Element
       stop,
       resetSession,
       createFreshProfile,
+      retryLink,
       relink,
     }),
     [
@@ -146,6 +165,7 @@ export function MonitoringProvider({ children }: PropsWithChildren): JSX.Element
       pollIntervalMs,
       refresh,
       resetSession,
+      retryLink,
       relink,
       runAction,
       start,

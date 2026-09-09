@@ -21,11 +21,18 @@ import { WhatsAppSourceMappingService } from '@/patrol-groups/whatsapp-source-ma
 import { IngestPatrolImageEvent, PatrolImageIngestionService } from '@/patrol-images/patrol-image-ingestion.service';
 import {
   isProcessAlive,
+  isProfileLockErrorMessage,
   readHelperMutex,
   releaseProfileOwnership,
   terminateBrowserOwners,
   type BrowserProcessOwner,
 } from './browser-profile-lock.util';
+import {
+  classifyLinkProfileSafety,
+  LINK_RETRY_REQUIRED,
+  shouldOfferLinkRetry,
+  type WhatsAppLinkProfileSafety,
+} from './whatsapp-link-retry.util';
 import {
   WhatsAppCollectorContact,
   WhatsAppCollectorGroup,
@@ -80,6 +87,13 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
   private helperStdout: readline.Interface | null = null;
   private startPromise: Promise<WhatsAppCollectorStatus> | null = null;
   private stopPromise: Promise<void> | null = null;
+  private linkRetryCleanupPromise: Promise<void> | null = null;
+  private helperGeneration = 0;
+  private activeHelperGeneration = 0;
+  private currentGenerationAuthenticationObserved = false;
+  private currentGenerationProfileSafety: WhatsAppLinkProfileSafety = 'UNKNOWN';
+  private retryingProvenFirstLink = false;
+  private linkRetryReleaseVerified = false;
   private mappedGroupsCount = 0;
   private pilotGroupName?: string;
   private pilotSiteCode?: string;
@@ -294,6 +308,10 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       return this.getStatus();
     }
 
+    if (this.helperStatus.state === LINK_RETRY_REQUIRED) {
+      throw new BadRequestException('Use Try Again to retry this WhatsApp linking session.');
+    }
+
     this.licensingService.assertCollectorStartAllowed();
 
     if (this.isHelperRunning()) {
@@ -313,6 +331,9 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
   }
 
   async stop(): Promise<WhatsAppCollectorStatus> {
+    if (this.linkRetryCleanupPromise) {
+      await this.linkRetryCleanupPromise;
+    }
     await this.stopHelperProcess();
     if (this.pendingCertificationGroupLookup) {
       clearTimeout(this.pendingCertificationGroupLookup.timer);
@@ -323,6 +344,8 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
     this.clearPendingCertificationAuthorization();
     this.certificationAuthorizationRequested = false;
     this.certificationAuthorizationState = isQrOnlyCertificationMode() ? 'EXPECTING_QR_ONLY' : 'DISABLED';
+    this.linkRetryReleaseVerified = false;
+    this.retryingProvenFirstLink = false;
     this.helperStatus = this.buildDefaultStatus({
       state: this.enabled ? 'idle' : 'disabled',
       info: 'Patrol monitoring stopped.',
@@ -334,6 +357,40 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       contacts: [],
     });
     return this.getStatus();
+  }
+
+  async retryLink(): Promise<WhatsAppCollectorStatus> {
+    if (this.helperStatus.state !== LINK_RETRY_REQUIRED) {
+      throw new BadRequestException('Try Again is available only after a recoverable WhatsApp linking failure.');
+    }
+    if (
+      !this.linkRetryReleaseVerified ||
+      this.linkRetryCleanupPromise ||
+      this.isHelperRunning() ||
+      this.currentGenerationProfileSafety !== 'NEVER_AUTHENTICATED_FIRST_LINK'
+    ) {
+      throw new BadRequestException('The previous WhatsApp linking attempt has not released safely yet.');
+    }
+
+    this.appendCollectorLog(
+      'link-retry-requested',
+      `previousGeneration=${this.activeHelperGeneration} profileSafety=${this.currentGenerationProfileSafety}`,
+    );
+    this.retryingProvenFirstLink = true;
+    this.linkRetryReleaseVerified = false;
+    this.helperStatus = this.buildDefaultStatus({
+      state: 'idle',
+      info: 'Trying WhatsApp again…',
+      startupStage: 'Retrying WhatsApp link',
+      lastError: null,
+      failureCode: null,
+      qrCode: null,
+      qrPayloadLength: null,
+      connectedAccount: null,
+      groups: [],
+      contacts: [],
+    });
+    return this.start();
   }
 
   async authorizeCertificationAuthentication(): Promise<WhatsAppCertificationAuthorizationResult> {
@@ -809,6 +866,21 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async startInternal(): Promise<WhatsAppCollectorStatus> {
+    const profileWasEmptyBeforeLaunch = this.isSessionProfileEmpty();
+    this.currentGenerationProfileSafety = classifyLinkProfileSafety({
+      configuredLinkedAccountId: this.whatsAppSourceMappingService.getConfiguredLinkedAccountId(),
+      profileWasEmptyBeforeLaunch,
+      retryingProvenFirstLink: this.retryingProvenFirstLink,
+    });
+    this.retryingProvenFirstLink = false;
+    this.currentGenerationAuthenticationObserved = false;
+    this.linkRetryReleaseVerified = false;
+    this.activeHelperGeneration = ++this.helperGeneration;
+    const generation = this.activeHelperGeneration;
+    this.appendCollectorLog(
+      'helper-generation-prepared',
+      `generation=${generation} profileSafety=${this.currentGenerationProfileSafety} profileWasEmpty=${profileWasEmptyBeforeLaunch}`,
+    );
     this.clearPendingCertificationAuthorization();
     this.certificationAuthorizationRequested = false;
     this.certificationAuthorizationState = isQrOnlyCertificationMode() ? 'EXPECTING_QR_ONLY' : 'DISABLED';
@@ -872,7 +944,7 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
     });
 
     this.helperStdout.on('line', (line) => {
-      this.handleHelperStdoutLine(line);
+      this.handleHelperStdoutLine(line, generation);
     });
 
     child.stderr.on('data', (chunk) => {
@@ -890,10 +962,20 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
     });
 
     child.on('exit', (code, signal) => {
+      this.appendCollectorLog('helper-exit', `generation=${generation} code=${code} signal=${signal}`);
+      if (generation !== this.activeHelperGeneration) {
+        this.appendCollectorLog(
+          'stale-helper-exit-ignored',
+          `generation=${generation} activeGeneration=${this.activeHelperGeneration}`,
+        );
+        return;
+      }
+
       this.clearPendingCertificationAuthorization();
       this.stopHelperProcessStreams();
-      this.appendCollectorLog('helper-exit', `code=${code} signal=${signal}`);
-      this.helperProcess = null;
+      if (this.helperProcess === child) {
+        this.helperProcess = null;
+      }
       if (this.stoppingHelper) {
         this.stoppingHelper = false;
         return;
@@ -912,6 +994,7 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
         lastError: `Helper exited with code ${code ?? 'null'} signal ${signal ?? 'null'}`,
         lastDisconnectAt: new Date().toISOString(),
       };
+      this.maybeBeginLinkRetryCleanup(this.helperStatus, generation);
     });
 
     await this.sleep(this.startupDelayMs);
@@ -943,6 +1026,8 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       PATROL_HELPER_BROWSER_LAUNCH_GRACE_MS: process.env.PATROL_HELPER_BROWSER_LAUNCH_GRACE_MS ?? '90000',
       PATROL_HELPER_QR_TIMEOUT_MS: process.env.PATROL_HELPER_QR_TIMEOUT_MS ?? '120000',
       PATROL_HELPER_STARTUP_RETRIES: process.env.PATROL_HELPER_STARTUP_RETRIES ?? '2',
+      PATROL_HELPER_FIRST_LINK_ATTEMPT:
+        this.currentGenerationProfileSafety === 'NEVER_AUTHENTICATED_FIRST_LINK' ? 'true' : 'false',
     };
   }
 
@@ -959,7 +1044,7 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private handleHelperStdoutLine(line: string): void {
+  private handleHelperStdoutLine(line: string, generation = this.activeHelperGeneration): void {
     const trimmed = line.trim();
     if (!trimmed) {
       return;
@@ -973,6 +1058,13 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
     const payloadText = trimmed.slice(WHATSAPP_HELPER_EVENT_PREFIX.length);
     try {
       const event = JSON.parse(payloadText) as WhatsAppHelperEvent;
+      if (generation !== this.activeHelperGeneration) {
+        this.appendCollectorLog(
+          'stale-helper-event-ignored',
+          `generation=${generation} activeGeneration=${this.activeHelperGeneration} type=${event.type}`,
+        );
+        return;
+      }
       if (event.type === 'certification-authorization-result') {
         this.certificationAuthorizationState = event.payload.state;
         this.certificationAuthorizationRequested = false;
@@ -1022,6 +1114,23 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
           contacts: [...event.payload.contacts],
           browserCandidatesTried: [...event.payload.browserCandidatesTried],
         };
+        if (
+          this.helperStatus.state === 'RECONNECT_AUTHORIZATION_PENDING' ||
+          this.helperStatus.state === 'authenticated' ||
+          this.helperStatus.state === 'waiting-for-client-info' ||
+          this.helperStatus.state === 'ready' ||
+          Boolean(this.helperStatus.connectedAccount?.trim())
+        ) {
+          this.currentGenerationProfileSafety = 'EXISTING_SESSION_PROTECTED';
+        }
+        if (
+          this.helperStatus.state === 'authenticated' ||
+          this.helperStatus.state === 'waiting-for-client-info' ||
+          this.helperStatus.state === 'ready' ||
+          Boolean(this.helperStatus.connectedAccount?.trim())
+        ) {
+          this.currentGenerationAuthenticationObserved = true;
+        }
         const qrEligibleStates = new Set([
           'starting',
           'browser-launching',
@@ -1075,6 +1184,7 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
             `length=${this.helperStatus.qrPayloadLength ?? this.helperStatus.qrCode.length} path=${this.helperStatus.latestQrPath}`,
           );
         }
+        this.maybeBeginLinkRetryCleanup(this.helperStatus, generation);
       }
     } catch (error) {
       this.appendCollectorLog('helper-event-parse-error', error instanceof Error ? error.message : String(error));
@@ -1142,6 +1252,119 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
     ];
 
     return !nonFatalPatterns.some((pattern) => normalized.includes(pattern));
+  }
+
+  private isSessionProfileEmpty(): boolean {
+    const profileDir = path.join(this.sessionPath, 'session-patrol-evidence-platform');
+    if (!existsSync(profileDir)) {
+      return true;
+    }
+    try {
+      return readdirSync(profileDir).length === 0;
+    } catch {
+      return false;
+    }
+  }
+
+  private maybeBeginLinkRetryCleanup(status: WhatsAppHelperStatusSnapshot, generation: number): void {
+    if (
+      generation !== this.activeHelperGeneration ||
+      this.linkRetryCleanupPromise ||
+      !shouldOfferLinkRetry({
+        status,
+        profileSafety: this.currentGenerationProfileSafety,
+        authenticationObserved: this.currentGenerationAuthenticationObserved,
+        profileLockFailure: isProfileLockErrorMessage(status.lastError ?? status.info ?? ''),
+      })
+    ) {
+      return;
+    }
+
+    this.linkRetryCleanupPromise = this.completeLinkRetryCleanup(status, generation)
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        this.appendCollectorLog('link-retry-cleanup-failed', `generation=${generation} error=${message}`);
+        if (generation === this.activeHelperGeneration) {
+          this.linkRetryReleaseVerified = false;
+          this.helperStatus = this.buildDefaultStatus({
+            state: 'failed',
+            info: 'WhatsApp could not stop the previous linking attempt safely.',
+            startupStage: 'Link cleanup failed',
+            lastError: message,
+            failureCode: 'LINK_RETRY_CLEANUP_FAILED',
+            sessionCorruptionSuspected: false,
+            sessionCorruptionMessage: null,
+          });
+        }
+      })
+      .finally(() => {
+        this.linkRetryCleanupPromise = null;
+      });
+  }
+
+  private async completeLinkRetryCleanup(
+    failedStatus: WhatsAppHelperStatusSnapshot,
+    generation: number,
+  ): Promise<void> {
+    const profileDir = path.join(this.sessionPath, 'session-patrol-evidence-platform');
+    const failureCode = failedStatus.failureCode || 'QR_INITIALIZATION_TIMEOUT';
+    this.appendCollectorLog(
+      'link-retry-cleanup-start',
+      `generation=${generation} failureCode=${failureCode} profileSafety=${this.currentGenerationProfileSafety}`,
+    );
+
+    await this.stopHelperProcess();
+    await this.releaseCurrentProfileOwnership(profileDir, generation);
+    if (generation !== this.activeHelperGeneration) {
+      this.appendCollectorLog(
+        'link-retry-cleanup-stale-completion-ignored',
+        `generation=${generation} activeGeneration=${this.activeHelperGeneration}`,
+      );
+      return;
+    }
+
+    this.clearPreviousQrArtifact();
+    this.clearPendingCertificationAuthorization();
+    this.certificationAuthorizationRequested = false;
+    this.certificationAuthorizationState = isQrOnlyCertificationMode() ? 'EXPECTING_QR_ONLY' : 'DISABLED';
+    this.certificationLiveIngestion = {
+      armed: false,
+      budgetRemaining: 0,
+      approvedSourcePresent: false,
+      listenerCount: 0,
+      acceptedItemCount: 0,
+      rejectedUnapprovedSourceCount: 0,
+      rejectedUnsupportedMediaCount: 0,
+    };
+    this.linkRetryReleaseVerified = true;
+    this.helperStatus = this.buildDefaultStatus({
+      state: LINK_RETRY_REQUIRED,
+      info: 'WhatsApp could not initialise. Check your internet connection and try again.',
+      startupStage: 'WhatsApp could not initialise',
+      lastError: 'WhatsApp bootstrap did not complete.',
+      failureCode,
+      qrCode: null,
+      qrPayloadLength: null,
+      qrDeliveredAt: null,
+      qrPersistedAt: null,
+      connectedAccount: null,
+      groups: [],
+      contacts: [],
+      sessionCorruptionSuspected: false,
+      sessionCorruptionMessage: null,
+    });
+    this.appendCollectorLog(
+      'link-retry-required',
+      `generation=${generation} failureCode=${failureCode} helperReleased=true profileReleased=true`,
+    );
+  }
+
+  private async releaseCurrentProfileOwnership(profileDir: string, generation: number): Promise<void> {
+    await releaseProfileOwnership(
+      profileDir,
+      (event, details) => this.appendCollectorLog(event, `generation=${generation} ${details}`),
+      { timeoutMs: 30_000, forceAfterMs: 5_000 },
+    );
   }
 
   private async ensureSingleHelperInstance(): Promise<void> {

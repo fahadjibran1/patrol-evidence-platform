@@ -22,6 +22,7 @@ export function CollectorPage(): JSX.Element {
     stop,
     resetSession,
     createFreshProfile,
+    retryLink,
     relink,
   } = useMonitoring();
 
@@ -70,6 +71,8 @@ export function CollectorPage(): JSX.Element {
                 <p className="muted-text">
                   {view.phase === 'relink-required'
                     ? 'WhatsApp could not restore the saved linked session. Relink WhatsApp to continue.'
+                    : view.phase === 'link-retry-required'
+                      ? 'WhatsApp could not initialise. Check your internet connection and try again.'
                     : view.isLive
                     ? 'Patrol images from mapped sources will appear on the dashboard and in Evidence.'
                     : view.isLinking
@@ -101,6 +104,15 @@ export function CollectorPage(): JSX.Element {
                 >
                   Relink WhatsApp
                 </button>
+              ) : view.phase === 'link-retry-required' ? (
+                <button
+                  type="button"
+                  className="primary-button"
+                  disabled={isBusy}
+                  onClick={() => void retryLink()}
+                >
+                  Try Again
+                </button>
               ) : view.isLinking ? (
                 <button type="button" className="secondary-button" disabled={isBusy} onClick={() => void stop()}>
                   Cancel linking
@@ -119,22 +131,24 @@ export function CollectorPage(): JSX.Element {
                   Re-link WhatsApp
                 </button>
               ) : null}
-              <button
-                type="button"
-                className="secondary-button"
-                disabled={isBusy}
-                onClick={() => {
-                  if (
-                    window.confirm(
-                      'Create a completely fresh WhatsApp browser profile? The current app profile will be archived and a new QR will be shown.',
-                    )
-                  ) {
-                    void createFreshProfile();
-                  }
-                }}
-              >
-                Create fresh WhatsApp profile
-              </button>
+              {view.phase !== 'link-retry-required' ? (
+                <button
+                  type="button"
+                  className="secondary-button"
+                  disabled={isBusy}
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        'Create a completely fresh WhatsApp browser profile? The current app profile will be archived and a new QR will be shown.',
+                      )
+                    ) {
+                      void createFreshProfile();
+                    }
+                  }}
+                >
+                  Create fresh WhatsApp profile
+                </button>
+              ) : null}
               <Link className="secondary-button" to="/setup">
                 Source & site setup
               </Link>

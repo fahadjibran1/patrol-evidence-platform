@@ -113,6 +113,8 @@ function collectorStateLabel(state: WhatsAppCollectorStatus['state']): string {
       return 'Waiting for QR';
     case 'qr-ready':
       return 'QR ready';
+    case 'LINK_RETRY_REQUIRED':
+      return 'Try again';
     case 'authenticated':
       return 'Authenticated';
     case 'ready':
@@ -705,7 +707,11 @@ export function DesktopSetupPage(): JSX.Element {
   }
 
   async function collectorAction(
-    path: '/collectors/whatsapp/start' | '/collectors/whatsapp/reset-session' | '/collectors/whatsapp/stop',
+    path:
+      | '/collectors/whatsapp/start'
+      | '/collectors/whatsapp/retry-link'
+      | '/collectors/whatsapp/reset-session'
+      | '/collectors/whatsapp/stop',
   ): Promise<void> {
     if (!token) {
       return;
@@ -1175,9 +1181,15 @@ export function DesktopSetupPage(): JSX.Element {
                   type="button"
                   className="primary-button setup-action-button"
                   disabled={isBusy}
-                  onClick={() => void collectorAction('/collectors/whatsapp/start')}
+                  onClick={() =>
+                    void collectorAction(
+                      collectorStatus.state === 'LINK_RETRY_REQUIRED'
+                        ? '/collectors/whatsapp/retry-link'
+                        : '/collectors/whatsapp/start',
+                    )
+                  }
                 >
-                  Connect WhatsApp
+                  {collectorStatus.state === 'LINK_RETRY_REQUIRED' ? 'Try Again' : 'Connect WhatsApp'}
                 </button>
                 <button
                   type="button"
@@ -1227,14 +1239,18 @@ export function DesktopSetupPage(): JSX.Element {
               {collectorStatus.lastError || collectorStatus.failureCode || showQrTimeoutPanel ? (
                 <Card className="wizard-card">
                   <h3>
-                    {collectorStatus.failureCode === 'WWEBJS_MODULE_COMPATIBILITY_ERROR'
+                    {collectorStatus.state === 'LINK_RETRY_REQUIRED'
+                      ? 'WhatsApp could not initialise'
+                      : collectorStatus.failureCode === 'WWEBJS_MODULE_COMPATIBILITY_ERROR'
                       ? 'WhatsApp Web compatibility'
                       : showQrTimeoutPanel
                         ? 'QR is taking longer than expected'
                         : 'Connection issue'}
                   </h3>
                   <p className="muted-text">
-                    {collectorStatus.failureCode === 'WWEBJS_MODULE_COMPATIBILITY_ERROR' ||
+                    {collectorStatus.state === 'LINK_RETRY_REQUIRED'
+                      ? 'Check your internet connection and try again.'
+                      : collectorStatus.failureCode === 'WWEBJS_MODULE_COMPATIBILITY_ERROR' ||
                     collectorStatus.lastError?.toLowerCase().includes('not compatible')
                       ? 'WhatsApp connected, but this WhatsApp Web version is not compatible with the installed collector runtime.'
                       : (collectorStatus.lastError ?? 'Retry Connect WhatsApp.')}

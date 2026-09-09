@@ -77,6 +77,11 @@ import {
   type WwebjsStoreProbeResult,
 } from './wwebjs-compatibility';
 import { shouldPreserveFreshQrLinkClient } from './whatsapp-qr-link-transition.util';
+import {
+  classifyBootstrapFailureCode,
+  shouldFallbackToNextBrowser,
+  startupAttemptCount,
+} from './whatsapp-link-retry.util';
 
 type MessageSource = 'live' | 'backfill';
 type MessageProcessingResult = 'imported' | 'duplicate' | 'skipped';
@@ -89,6 +94,7 @@ const QR_AFTER_PAGE_LOAD_TIMEOUT_MS = Number(
   process.env.PATROL_HELPER_QR_TIMEOUT_MS ?? process.env.PATROL_HELPER_STARTUP_TIMEOUT_MS ?? 120_000,
 );
 const MAX_BLANK_QR_STARTUP_RETRIES = Number(process.env.PATROL_HELPER_STARTUP_RETRIES ?? 2);
+const FIRST_LINK_ATTEMPT = process.env.PATROL_HELPER_FIRST_LINK_ATTEMPT === 'true';
 const SESSION_PROFILE_DIR = 'session-patrol-evidence-platform';
 const LOCAL_AUTH_CLIENT_ID = 'patrol-evidence-platform';
 const BROWSER_HEADLESS = false;
@@ -154,6 +160,7 @@ const RECENT_PAGE_CONSOLE_LIMIT = 40;
 const moduleCompatibilitySignals: string[] = [];
 const MODULE_COMPAT_SIGNAL_LIMIT = 40;
 let moduleCompatibilityFailureReported = false;
+let criticalBootstrapResourceFailure = false;
 const diagnosedPages = new WeakSet<object>();
 let startupResolve: ((value: StartupGateOutcome) => void) | null = null;
 let startupReject: ((reason?: unknown) => void) | null = null;
@@ -2129,6 +2136,22 @@ async function attachPageDiagnostics(currentClient: Client): Promise<void> {
 
   page.on('response', (response) => {
     if (response.status() >= 400) {
+      try {
+        const responseUrl = new URL(response.url());
+        if (
+          response.status() === 404 &&
+          responseUrl.hostname === 'static.whatsapp.net' &&
+          responseUrl.pathname.startsWith('/rsrc.php/')
+        ) {
+          criticalBootstrapResourceFailure = true;
+          appendCollectorLog(
+            'whatsapp-remote-bootstrap-failure',
+            `status=404 resource=static-bootstrap attemptId=${activeStartupAttemptId}`,
+          );
+        }
+      } catch {
+        // The diagnostic classification remains best-effort; never alter page behavior.
+      }
       appendCollectorLog('page-response-error', `status=${response.status()} url=${response.url()}`);
     }
   });
@@ -3587,6 +3610,7 @@ function scheduleBrowserLaunchGraceTimeout(startupAttemptId: number, edgeExecuta
     updateStatus(
       {
         state: 'failed',
+        failureCode: 'BROWSER_LAUNCH_FAILURE',
         lastError: 'Microsoft Edge opened slowly or WhatsApp Web did not load in time.',
         info: 'Browser startup timed out. Retrying may help on first launch.',
         lastDisconnectAt: new Date().toISOString(),
@@ -3639,6 +3663,9 @@ function scheduleQrWaitTimeout(startupAttemptId: number, edgeExecutablePath: str
     updateStatus(
       {
         state: 'failed',
+        failureCode: criticalBootstrapResourceFailure
+          ? 'REMOTE_BOOTSTRAP_FAILURE'
+          : 'QR_INITIALIZATION_TIMEOUT',
         lastError: 'WhatsApp Web loaded but no QR code appeared.',
         info: 'QR did not render. Retrying may help on first launch.',
         lastDisconnectAt: new Date().toISOString(),
@@ -3926,6 +3953,9 @@ function wireCommands(): void {
 }
 
 function hasExistingLocalAuthSessionCandidate(): boolean {
+  if (FIRST_LINK_ATTEMPT) {
+    return false;
+  }
   const profileDir = path.join(SESSION_PATH, SESSION_PROFILE_DIR);
   if (!existsSync(profileDir)) {
     return false;
@@ -4111,6 +4141,7 @@ async function runBrowserAttempt(
   logBrowserLaunchConfiguration(executablePath, browserSource);
   moduleCompatibilitySignals.length = 0;
   moduleCompatibilityFailureReported = false;
+  criticalBootstrapResourceFailure = false;
   setReadinessFinalized(false, 'browser-attempt-restart');
   liveMediaListenersAttached = false;
   resetLiveMessageListenerState();
@@ -4677,7 +4708,10 @@ async function startCollector(): Promise<void> {
     return;
   }
 
-  const maxAttempts = 1 + MAX_BLANK_QR_STARTUP_RETRIES;
+  const maxAttempts = startupAttemptCount({
+    firstLinkAttempt: FIRST_LINK_ATTEMPT,
+    configuredRetries: MAX_BLANK_QR_STARTUP_RETRIES,
+  });
 
   try {
     let lastOutcome: StartupGateOutcome = 'failed';
@@ -4791,6 +4825,8 @@ async function startCollector(): Promise<void> {
         } catch (error) {
           const launchError = error instanceof Error ? error : new Error(String(error));
           const lockAfterFailure = detectProfileLock(profileDir);
+          const currentBrowserRootPid = client?.pupBrowser?.process()?.pid ?? null;
+          const browserStarted = Boolean(currentBrowserRootPid || browserLaunchCompletedAt || whatsappPageLoadedAt);
 
           appendCollectorLog(
             'browser-launch-failed',
@@ -4801,7 +4837,6 @@ async function startCollector(): Promise<void> {
             primaryLaunchError = launchError;
           }
 
-          const currentBrowserRootPid = client?.pupBrowser?.process()?.pid ?? null;
           const ownerClassification = classifyProfileOwners(lockAfterFailure.owners, currentBrowserRootPid);
           const hasConflictingOwner = ownerClassification.conflictingOwners.length > 0;
           const hasUnownedLockFiles = lockAfterFailure.lockFilesPresent.length > 0 && !currentBrowserRootPid;
@@ -4828,8 +4863,20 @@ async function startCollector(): Promise<void> {
             );
           }
 
-          if (browserIndex < launchPlan.length - 1) {
+          if (
+            shouldFallbackToNextBrowser({
+              hasNextCandidate: browserIndex < launchPlan.length - 1,
+              browserStarted,
+            })
+          ) {
             continue;
+          }
+
+          if (browserStarted && browserIndex < launchPlan.length - 1) {
+            appendCollectorLog(
+              'browser-fallback-suppressed-after-launch',
+              `source=${browser.source} next=${launchPlan[browserIndex + 1].source} reason=bootstrap-failure`,
+            );
           }
 
           if (primaryLaunchError && launchPlan.length > 1) {
@@ -4880,6 +4927,12 @@ async function startCollector(): Promise<void> {
       updateStatus(
         {
           state: 'failed',
+          failureCode: classifyBootstrapFailureCode({
+            message,
+            browserStarted: Boolean(client?.pupBrowser?.process()?.pid || browserLaunchCompletedAt),
+            pageLoaded: Boolean(whatsappPageLoadedAt),
+            criticalBootstrapResourceFailure,
+          }),
           info: BROWSER_AUTOMATION_FAILED_MESSAGE,
           lastError: message || BROWSER_AUTOMATION_FAILED_MESSAGE,
           lastDisconnectAt: new Date().toISOString(),

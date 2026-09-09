@@ -120,6 +120,7 @@ export interface WhatsAppCollectorStatus {
     | 'starting'
     | 'RECONNECT_AUTHORIZATION_PENDING'
     | 'RELINK_REQUIRED'
+    | 'LINK_RETRY_REQUIRED'
     | 'browser-launching'
     | 'whatsapp-loading'
     | 'waiting-for-qr'

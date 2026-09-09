@@ -510,6 +510,127 @@ describe('WhatsAppCollectorService', () => {
     );
   });
 
+  it('enters LINK_RETRY_REQUIRED only after failed-generation cleanup and profile release', async () => {
+    const service = createService();
+    const internal = service as unknown as {
+      activeHelperGeneration: number;
+      currentGenerationAuthenticationObserved: boolean;
+      currentGenerationProfileSafety: 'NEVER_AUTHENTICATED_FIRST_LINK';
+      linkRetryCleanupPromise: Promise<void> | null;
+      stopHelperProcess(): Promise<void>;
+      releaseCurrentProfileOwnership(profileDir: string, generation: number): Promise<void>;
+    };
+    internal.activeHelperGeneration = 1;
+    internal.currentGenerationAuthenticationObserved = false;
+    internal.currentGenerationProfileSafety = 'NEVER_AUTHENTICATED_FIRST_LINK';
+    const order: string[] = [];
+    jest.spyOn(internal, 'stopHelperProcess').mockImplementation(async () => { order.push('helper-stopped'); });
+    jest.spyOn(internal, 'releaseCurrentProfileOwnership').mockImplementation(async () => { order.push('profile-released'); });
+
+    emitHelperStatus(service, readyStatus({
+      state: 'failed',
+      connected: false,
+      ready: false,
+      connectedAccount: null,
+      qrCode: 'stale-qr',
+      qrPayloadLength: 8,
+      failureCode: 'REMOTE_BOOTSTRAP_FAILURE',
+      lastError: 'bootstrap failed',
+    }));
+    await internal.linkRetryCleanupPromise;
+
+    expect(order).toEqual(['helper-stopped', 'profile-released']);
+    await expect(service.getStatus()).resolves.toMatchObject({
+      state: 'LINK_RETRY_REQUIRED',
+      qrCode: null,
+      qrPayloadLength: null,
+      connectedAccount: null,
+      failureCode: 'REMOTE_BOOTSTRAP_FAILURE',
+      info: 'WhatsApp could not initialise. Check your internet connection and try again.',
+    });
+  });
+
+  it('Try Again starts exactly one generation and rejects a rapid second click', async () => {
+    const service = createService();
+    const internal = service as unknown as {
+      helperStatus: WhatsAppHelperStatusSnapshot;
+      linkRetryReleaseVerified: boolean;
+      linkRetryCleanupPromise: Promise<void> | null;
+      currentGenerationProfileSafety: 'NEVER_AUTHENTICATED_FIRST_LINK';
+    };
+    internal.helperStatus = readyStatus({ state: 'LINK_RETRY_REQUIRED', connected: false, ready: false, connectedAccount: null });
+    internal.linkRetryReleaseVerified = true;
+    internal.linkRetryCleanupPromise = null;
+    internal.currentGenerationProfileSafety = 'NEVER_AUTHENTICATED_FIRST_LINK';
+    const start = jest.spyOn(service, 'start').mockResolvedValue({} as never);
+
+    await service.retryLink();
+    await expect(service.retryLink()).rejects.toThrow(
+      'Try Again is available only after a recoverable WhatsApp linking failure.',
+    );
+    expect(start).toHaveBeenCalledTimes(1);
+  });
+
+  it('ignores status callbacks from an older helper generation', async () => {
+    const service = createService();
+    const internal = service as unknown as {
+      activeHelperGeneration: number;
+      helperStatus: WhatsAppHelperStatusSnapshot;
+      handleHelperStdoutLine(line: string, generation: number): void;
+    };
+    internal.activeHelperGeneration = 2;
+    internal.helperStatus = readyStatus({ state: 'starting', connected: false, ready: false });
+    const staleLine = `${WHATSAPP_HELPER_EVENT_PREFIX}${JSON.stringify({
+      type: 'status',
+      payload: readyStatus({ state: 'failed', connected: false, ready: false }),
+    })}`;
+    internal.handleHelperStdoutLine(staleLine, 1);
+
+    await expect(service.getStatus()).resolves.toMatchObject({ state: 'starting' });
+  });
+
+  it('does not offer destructive first-link recovery after authentication was observed', () => {
+    const service = createService();
+    const internal = service as unknown as {
+      activeHelperGeneration: number;
+      currentGenerationAuthenticationObserved: boolean;
+      currentGenerationProfileSafety: 'NEVER_AUTHENTICATED_FIRST_LINK';
+      linkRetryCleanupPromise: Promise<void> | null;
+    };
+    internal.activeHelperGeneration = 1;
+    internal.currentGenerationAuthenticationObserved = true;
+    internal.currentGenerationProfileSafety = 'NEVER_AUTHENTICATED_FIRST_LINK';
+
+    emitHelperStatus(service, readyStatus({
+      state: 'failed',
+      connected: false,
+      ready: false,
+      connectedAccount: null,
+      failureCode: 'QR_INITIALIZATION_TIMEOUT',
+    }));
+    expect(internal.linkRetryCleanupPromise).toBeNull();
+  });
+
+  it('keeps RELINK_REQUIRED distinct from LINK_RETRY_REQUIRED', async () => {
+    const service = createService();
+    attachRunningHelper(service);
+    emitHelperStatus(service, readyStatus({
+      state: 'RELINK_REQUIRED',
+      connected: false,
+      ready: false,
+      connectedAccount: null,
+      failureCode: 'WHATSAPP_RELINK_REQUIRED',
+    }));
+
+    await expect(service.getStatus()).resolves.toMatchObject({
+      state: 'RELINK_REQUIRED',
+      failureCode: 'WHATSAPP_RELINK_REQUIRED',
+    });
+    await expect(service.retryLink()).rejects.toThrow(
+      'Try Again is available only after a recoverable WhatsApp linking failure.',
+    );
+  });
+
   it('does not start or auto-recover after an unexpected-authentication terminal state', async () => {
     const service = createService();
     (service as unknown as { certificationTerminal: boolean }).certificationTerminal = true;

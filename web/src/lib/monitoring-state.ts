@@ -8,6 +8,7 @@ export type MonitoringPhase =
   | 'loading-whatsapp'
   | 'waiting-for-qr'
   | 'qr-ready'
+  | 'link-retry-required'
   | 'relink-required'
   | 'authenticated'
   | 'ready'
@@ -63,6 +64,8 @@ function phaseLabel(phase: MonitoringPhase, backfillRunning: boolean): string {
       return 'QR Ready';
     case 'authenticated':
       return 'Authenticating';
+    case 'link-retry-required':
+      return 'Try again';
     case 'error':
       return 'Error';
     case 'relink-required':
@@ -79,7 +82,7 @@ function phaseTone(phase: MonitoringPhase): MonitoringView['tone'] {
     return 'ready';
   }
 
-  if (phase === 'error' || phase === 'relink-required') {
+  if (phase === 'error' || phase === 'relink-required' || phase === 'link-retry-required') {
     return 'error';
   }
 
@@ -113,6 +116,10 @@ function derivePhase(status: WhatsAppCollectorStatus): MonitoringPhase {
 
   if (status.state === 'RELINK_REQUIRED') {
     return 'relink-required';
+  }
+
+  if (status.state === 'LINK_RETRY_REQUIRED') {
+    return 'link-retry-required';
   }
 
   if (status.state === 'failed' || status.state === 'disconnected') {
@@ -155,6 +162,7 @@ function isLinkingStatus(status: WhatsAppCollectorStatus): boolean {
     status.state === 'failed' ||
     status.state === 'disconnected' ||
     status.state === 'RELINK_REQUIRED' ||
+    status.state === 'LINK_RETRY_REQUIRED' ||
     status.state === 'idle' ||
     status.state === 'disabled'
   ) {
@@ -190,7 +198,7 @@ export function deriveMonitoringView(status: WhatsAppCollectorStatus | null): Mo
   const tone = phaseTone(phase);
   const isLive = phase === 'ready';
   const isLinking = isLinkingStatus(status);
-  const isError = phase === 'error' || phase === 'relink-required';
+  const isError = phase === 'error' || phase === 'relink-required' || phase === 'link-retry-required';
   const isOffline = phase === 'offline' || phase === 'disabled';
   const stageLabel = status.startupStage?.trim() || label;
 
@@ -198,6 +206,8 @@ export function deriveMonitoringView(status: WhatsAppCollectorStatus | null): Mo
     ? 'Live'
     : phase === 'relink-required'
       ? 'Session expired'
+    : phase === 'link-retry-required'
+      ? 'WhatsApp could not initialise'
     : isError
       ? 'Error'
       : isLinking
@@ -208,6 +218,8 @@ export function deriveMonitoringView(status: WhatsAppCollectorStatus | null): Mo
     ? 'Monitoring live'
     : phase === 'relink-required'
       ? 'WhatsApp session expired'
+    : phase === 'link-retry-required'
+      ? 'WhatsApp needs another try'
     : isError
       ? 'Monitoring error'
       : isLinking
@@ -218,6 +230,8 @@ export function deriveMonitoringView(status: WhatsAppCollectorStatus | null): Mo
     ? status.connectedAccount || 'Patrol WhatsApp linked'
     : phase === 'relink-required'
       ? 'Session expired'
+    : phase === 'link-retry-required'
+      ? 'WhatsApp could not initialise'
     : isLinking
       ? stageLabel
       : 'Not linked yet';
@@ -226,6 +240,8 @@ export function deriveMonitoringView(status: WhatsAppCollectorStatus | null): Mo
     ? 'CONNECTED'
     : phase === 'relink-required'
       ? 'RELINK REQUIRED'
+    : phase === 'link-retry-required'
+      ? 'TRY AGAIN'
     : isError
       ? 'FAILED'
       : isLinking
@@ -270,6 +286,8 @@ export function monitoringHelperStateLabel(state: WhatsAppCollectorStatus['state
       return 'Reconnect authorization required';
     case 'RELINK_REQUIRED':
       return 'Relink required';
+    case 'LINK_RETRY_REQUIRED':
+      return 'Try again';
     case 'authenticated':
       return 'Authenticated';
     case 'waiting-for-client-info':
