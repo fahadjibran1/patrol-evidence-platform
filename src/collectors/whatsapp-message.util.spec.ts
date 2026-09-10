@@ -3,7 +3,10 @@ import {
   getMessageGroupId,
   getMessageSourceId,
   isDetachedFrameError,
+  normalizeCanonicalWhatsAppMessageId,
   resolveWhatsAppSenderName,
+  resolveCanonicalWhatsAppMessageId,
+  runCanonicalMessageOperationOnce,
   shouldSkipWhatsAppFromMe,
   withDetachedFrameRetry,
 } from './whatsapp-message.util';
@@ -124,5 +127,67 @@ describe('detached-frame retry', () => {
     const operation = jest.fn().mockRejectedValue(new Error('network failure'));
     await expect(withDetachedFrameRetry(() => operation())).rejects.toThrow('network failure');
     expect(operation).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('current WhatsApp message identity compatibility', () => {
+  it('accepts the legacy canonical serialized identity', () => {
+    const message = { id: { _serialized: 'false_group_message' } };
+    expect(resolveCanonicalWhatsAppMessageId(message)).toBe('false_group_message');
+    expect(normalizeCanonicalWhatsAppMessageId(message)).toBe('false_group_message');
+  });
+
+  it('normalizes the current live MsgKey $1 identity for whatsapp-web.js 1.34.7', () => {
+    const message: { id: { $1: string; _serialized?: string }; _data: { id: { $1: string } } } = {
+      id: { $1: 'false_group_message' },
+      _data: { id: { $1: 'false_group_message' } },
+    };
+    expect(resolveCanonicalWhatsAppMessageId(message)).toBe('false_group_message');
+    expect(normalizeCanonicalWhatsAppMessageId(message)).toBe('false_group_message');
+    expect(message.id._serialized).toBe('false_group_message');
+  });
+
+  it('uses the same canonical identity for duplicate event wrappers', () => {
+    const created = { id: { $1: 'false_group_message' } };
+    const received = { id: { $1: 'false_group_message' } };
+    expect(normalizeCanonicalWhatsAppMessageId(created)).toBe(
+      normalizeCanonicalWhatsAppMessageId(received),
+    );
+  });
+
+  it('rejects unsupported message identity shapes without inventing an id', () => {
+    const message = { id: { id: 'component-only', remote: 'group@g.us' } };
+    expect(resolveCanonicalWhatsAppMessageId(message)).toBeNull();
+    expect(normalizeCanonicalWhatsAppMessageId(message)).toBeNull();
+  });
+
+  it('coalesces duplicate callbacks into one media operation', async () => {
+    const inFlight = new Map<string, Promise<string>>();
+    let release!: (value: string) => void;
+    const mediaOperation = jest.fn(
+      () => new Promise<string>((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    const first = runCanonicalMessageOperationOnce(inFlight, 'false_group_message', mediaOperation);
+    const second = runCanonicalMessageOperationOnce(inFlight, 'false_group_message', mediaOperation);
+    await Promise.resolve();
+    expect(mediaOperation).toHaveBeenCalledTimes(1);
+    release('downloaded');
+
+    await expect(first).resolves.toEqual({ joined: false, result: 'downloaded' });
+    await expect(second).resolves.toEqual({ joined: true, result: 'downloaded' });
+    expect(inFlight.size).toBe(0);
+  });
+
+  it('clears a failed in-flight operation without treating it as success', async () => {
+    const inFlight = new Map<string, Promise<string>>();
+    await expect(
+      runCanonicalMessageOperationOnce(inFlight, 'false_group_message', async () => {
+        throw new Error('download failed');
+      }),
+    ).rejects.toThrow('download failed');
+    expect(inFlight.size).toBe(0);
   });
 });

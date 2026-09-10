@@ -38,7 +38,9 @@ import { projectCertificationGroupMatches, type CertificationChatMetadata } from
 import { PatrolSourceType } from '@/common/enums/patrol-source-type.enum';
 import {
   getMessageSourceId,
+  normalizeCanonicalWhatsAppMessageId,
   resolveWhatsAppSenderName,
+  runCanonicalMessageOperationOnce,
   shouldSkipWhatsAppFromMe,
   withDetachedFrameRetry,
   type WhatsAppMessageSource,
@@ -198,6 +200,7 @@ let readyHeartbeatInterval: NodeJS.Timeout | null = null;
 let navigationReattachTimer: NodeJS.Timeout | null = null;
 let helperMutex: HelperMutexHandle | null = null;
 const processedMessageIds = new Set<string>();
+const inFlightLiveMessageOperations = new Map<string, Promise<MessageProcessingResult>>();
 const pendingLiveMediaChecks = new Map<string, NodeJS.Timeout>();
 const LIVE_MEDIA_RECHECK_MS = 1_000;
 const LIVE_MEDIA_RECHECK_MAX = 10;
@@ -2466,9 +2469,17 @@ async function buildIncomingPayload(
   sourceExternalId: string,
   sourceType: 'group' | 'contact',
 ): Promise<WhatsAppHelperIngestPayload | null> {
+  const messageExternalId = normalizeCanonicalWhatsAppMessageId(message);
+  if (!messageExternalId) {
+    appendCollectorLog(
+      'process-download-rejected',
+      `sourceExternalId=${sourceExternalId} sourceType=${sourceType} reason=canonical-message-id-unavailable`,
+    );
+    return null;
+  }
   appendCollectorLog(
     'process-download-start',
-    `sourceExternalId=${sourceExternalId} sourceType=${sourceType} id=${message.id?._serialized ?? 'unknown'}`,
+    `sourceExternalId=${sourceExternalId} sourceType=${sourceType} id=${messageExternalId}`,
   );
 
   let media: MessageMedia | null = null;
@@ -2477,13 +2488,13 @@ async function buildIncomingPayload(
   } catch (error) {
     appendCollectorLog(
       'pipeline:download-failure',
-      `sourceExternalId=${sourceExternalId} sourceType=${sourceType} id=${message.id._serialized} error=${error instanceof Error ? error.message : String(error)}`,
+      `sourceExternalId=${sourceExternalId} sourceType=${sourceType} id=${messageExternalId} error=${error instanceof Error ? error.message : String(error)}`,
     );
     return null;
   }
 
   const mimetype = media?.mimetype ?? 'none';
-  appendCollectorLog('media-mimetype', `id=${message.id._serialized} mimetype=${mimetype}`);
+  appendCollectorLog('media-mimetype', `id=${messageExternalId} mimetype=${mimetype}`);
 
   if (!media || !media.mimetype?.startsWith('image/')) {
     if (isQrOnlyCertificationMode() && certificationLiveGate.armed) {
@@ -2492,18 +2503,18 @@ async function buildIncomingPayload(
     }
     appendCollectorLog(
       'pipeline:skip-not-image',
-      `sourceExternalId=${sourceExternalId} sourceType=${sourceType} id=${message.id._serialized} mimetype=${mimetype}`,
+      `sourceExternalId=${sourceExternalId} sourceType=${sourceType} id=${messageExternalId} mimetype=${mimetype}`,
     );
     return null;
   }
 
   appendCollectorLog(
     'pipeline:download-success',
-    `sourceExternalId=${sourceExternalId} sourceType=${sourceType} id=${message.id._serialized} mimetype=${media.mimetype} bytes=${Buffer.byteLength(media.data, 'base64')}`,
+    `sourceExternalId=${sourceExternalId} sourceType=${sourceType} id=${messageExternalId} mimetype=${media.mimetype} bytes=${Buffer.byteLength(media.data, 'base64')}`,
   );
   appendCollectorLog(
     'process-download-success',
-    `sourceExternalId=${sourceExternalId} sourceType=${sourceType} id=${message.id._serialized}`,
+    `sourceExternalId=${sourceExternalId} sourceType=${sourceType} id=${messageExternalId}`,
   );
 
   const mapping = runtimeConfig.mappedGroups.find((entry) => entry.externalGroupId === sourceExternalId);
@@ -2550,7 +2561,7 @@ async function buildIncomingPayload(
     senderName,
     senderNumber,
     senderExternalId: senderPreview.senderId,
-    messageExternalId: message.id._serialized,
+    messageExternalId,
     linkedAccountId: status.connectedAccount ?? undefined,
     originalFileName: media.filename ?? `whatsapp-${message.id.id}.${extensionFromMedia(media)}`,
     mimeType: media.mimetype,
@@ -2795,13 +2806,21 @@ async function dispatchLiveMessage(
   message: Message,
   eventName: 'message' | 'message_create' | 'media_uploaded',
 ): Promise<void> {
-  const messageId = message.id?._serialized ?? 'unknown';
+  const messageId = normalizeCanonicalWhatsAppMessageId(message);
   const previewSource = getMessageSourceId(message);
 
   appendCollectorLog(
     'live-message-event',
-    `event=${eventName} id=${messageId} chat=${previewSource?.externalId ?? 'none'} sourceType=${previewSource?.sourceType ?? 'none'} hasMedia=${message.hasMedia} fromMe=${message.fromMe} type=${message.type ?? 'unknown'}`,
+    `event=${eventName} id=${messageId ?? 'unavailable'} chat=${previewSource?.externalId ?? 'none'} sourceType=${previewSource?.sourceType ?? 'none'} hasMedia=${message.hasMedia} fromMe=${message.fromMe} type=${message.type ?? 'unknown'}`,
   );
+
+  if (!messageId) {
+    appendCollectorLog(
+      'live-message-rejected',
+      `event=${eventName} reason=canonical-message-id-unavailable`,
+    );
+    return;
+  }
 
   if (isQrOnlyCertificationMode()) {
     const sourceAllowed =
@@ -2842,7 +2861,15 @@ async function dispatchLiveMessage(
   }
 
   try {
-    await processMessage(message, 'live');
+    const operationKey = `${activeStartupAttemptId}:${messageId}`;
+    const operation = await runCanonicalMessageOperationOnce(
+      inFlightLiveMessageOperations,
+      operationKey,
+      () => processMessage(message, 'live'),
+    );
+    if (operation.joined) {
+      appendCollectorLog('live-message-operation-joined', `event=${eventName} id=${messageId}`);
+    }
   } catch (error) {
     appendCollectorLog('live-message-error', formatRuntimeError(error));
     if (isRecoverableContextError(error)) {
@@ -2878,7 +2905,11 @@ function startReadyHeartbeat(): void {
 }
 
 async function processMessage(message: Message, source: MessageSource): Promise<MessageProcessingResult> {
-  const messageExternalId = message.id?._serialized ?? 'unknown';
+  const messageExternalId = normalizeCanonicalWhatsAppMessageId(message);
+  if (!messageExternalId) {
+    appendCollectorLog('process-return-invalid-identity', `source=${source}`);
+    return 'skipped';
+  }
 
   appendCollectorLog(
     'process-start',

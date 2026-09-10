@@ -10,6 +10,28 @@ export interface WhatsAppGroupAddressMessage {
   id?: {
     remote?: string;
     _serialized?: string;
+    $1?: string;
+  };
+}
+
+export interface WhatsAppCanonicalMessageIdentity {
+  id?: {
+    _serialized?: unknown;
+    $1?: unknown;
+    id?: unknown;
+    remote?: unknown;
+    fromMe?: unknown;
+    participant?: unknown;
+  };
+  _data?: {
+    id?: {
+      _serialized?: unknown;
+      $1?: unknown;
+      id?: unknown;
+      remote?: unknown;
+      fromMe?: unknown;
+      participant?: unknown;
+    };
   };
 }
 
@@ -67,6 +89,79 @@ export function getMessageGroupId(message: WhatsAppGroupAddressMessage): string 
  */
 export function shouldSkipWhatsAppFromMe(fromMe: boolean, allowFromMe: boolean): boolean {
   return Boolean(fromMe) && !allowFromMe;
+}
+
+function nonEmptyIdentity(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value : null;
+}
+
+/**
+ * Resolve the canonical WhatsApp message key across legacy and current live
+ * WhatsApp Web model serialization. Current MsgKey.serialize() exposes its
+ * canonical toString() value as `$1`; older builds expose `_serialized`.
+ */
+export function resolveCanonicalWhatsAppMessageId(
+  message: WhatsAppCanonicalMessageIdentity,
+): string | null {
+  return (
+    nonEmptyIdentity(message.id?._serialized) ??
+    nonEmptyIdentity(message.id?.$1) ??
+    nonEmptyIdentity(message._data?.id?._serialized) ??
+    nonEmptyIdentity(message._data?.id?.$1)
+  );
+}
+
+/**
+ * Restore the legacy field expected internally by whatsapp-web.js 1.34.7.
+ * Returns null rather than synthesizing an identity when no canonical field
+ * is present or the received model is immutable.
+ */
+export function normalizeCanonicalWhatsAppMessageId(
+  message: WhatsAppCanonicalMessageIdentity,
+): string | null {
+  const canonical = resolveCanonicalWhatsAppMessageId(message);
+  if (!canonical || !message.id || typeof message.id !== 'object') {
+    return null;
+  }
+
+  if (message.id._serialized === canonical) {
+    return canonical;
+  }
+
+  try {
+    message.id._serialized = canonical;
+  } catch {
+    return null;
+  }
+
+  return message.id._serialized === canonical ? canonical : null;
+}
+
+export interface CanonicalMessageOperationResult<T> {
+  joined: boolean;
+  result: T;
+}
+
+/** Serialize duplicate live callbacks while retaining the canonical ID as the persistence identity. */
+export async function runCanonicalMessageOperationOnce<T>(
+  inFlight: Map<string, Promise<T>>,
+  canonicalId: string,
+  operation: () => Promise<T>,
+): Promise<CanonicalMessageOperationResult<T>> {
+  const existing = inFlight.get(canonicalId);
+  if (existing) {
+    return { joined: true, result: await existing };
+  }
+
+  const pending = Promise.resolve().then(operation);
+  inFlight.set(canonicalId, pending);
+  try {
+    return { joined: false, result: await pending };
+  } finally {
+    if (inFlight.get(canonicalId) === pending) {
+      inFlight.delete(canonicalId);
+    }
+  }
 }
 
 /**

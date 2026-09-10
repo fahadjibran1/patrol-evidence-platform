@@ -45,6 +45,18 @@ describe('bounded certification live-ingestion gate contract', () => {
     expect(dispatchBody.indexOf('certification-live-message-rejected')).toBeLessThan(dispatchBody.indexOf('processMessage(message'));
   });
 
+  it('requires a canonical live message id and coalesces duplicate callbacks before download', () => {
+    const dispatchStart = helper.indexOf('async function dispatchLiveMessage');
+    const dispatchEnd = helper.indexOf('function clearReadyHeartbeat', dispatchStart);
+    const dispatchBody = helper.slice(dispatchStart, dispatchEnd);
+    expect(dispatchBody).toContain('normalizeCanonicalWhatsAppMessageId(message)');
+    expect(dispatchBody).toContain('canonical-message-id-unavailable');
+    expect(dispatchBody).toContain('runCanonicalMessageOperationOnce');
+    expect(dispatchBody.indexOf('runCanonicalMessageOperationOnce')).toBeLessThan(
+      dispatchBody.indexOf('processMessage(message'),
+    );
+  });
+
   it('keeps unsupported media and non-media out of evidence and preserves validation', () => {
     expect(helper).toContain('rejectedUnsupportedMediaCount');
     expect(helper).toContain("!media.mimetype?.startsWith('image/')");
