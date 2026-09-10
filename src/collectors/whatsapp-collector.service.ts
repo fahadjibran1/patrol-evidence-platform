@@ -1021,7 +1021,7 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       PATROL_WHATSAPP_WEB_VERSION_MODE:
         process.env.PATROL_WHATSAPP_WEB_VERSION_MODE ??
         process.env.WHATSAPP_WEB_VERSION_MODE ??
-        'pinned',
+        'live',
       PATROL_HELPER_BACKFILL_MESSAGE_LIMIT: String(this.configService.get<number>('whatsappBackfillMessageLimit') ?? 150),
       PATROL_HELPER_BROWSER_LAUNCH_GRACE_MS: process.env.PATROL_HELPER_BROWSER_LAUNCH_GRACE_MS ?? '90000',
       PATROL_HELPER_QR_TIMEOUT_MS: process.env.PATROL_HELPER_QR_TIMEOUT_MS ?? '120000',

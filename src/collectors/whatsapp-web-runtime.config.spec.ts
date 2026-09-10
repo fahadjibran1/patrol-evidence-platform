@@ -56,6 +56,20 @@ describe('whatsapp-web-runtime browser and version selection', () => {
     expect(options.puppeteer.executablePath).toContain('chrome.exe');
   });
 
+  it('defaults production to live WhatsApp Web without stale pinned HTML', () => {
+    delete process.env.PATROL_WHATSAPP_WEB_VERSION_MODE;
+    delete process.env.WHATSAPP_WEB_VERSION_MODE;
+
+    expect(resolveWhatsAppWebVersionMode()).toBe('live');
+    const options = buildWhatsAppWebClientOptions({
+      headless: true,
+      executablePath: 'C:\\fake\\edge.exe',
+    });
+
+    expect(options.webVersion).toBeUndefined();
+    expect(options.webVersionCache).toEqual({ type: 'none', strict: true });
+  });
+
   it('keeps pinned mode explicit and separate from live', () => {
     process.env.PATROL_WHATSAPP_WEB_VERSION_MODE = 'pinned';
     expect(resolveWhatsAppWebVersionMode()).toBe('pinned');

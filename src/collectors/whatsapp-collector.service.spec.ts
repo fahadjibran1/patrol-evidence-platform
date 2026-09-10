@@ -151,6 +151,41 @@ describe('WhatsAppCollectorService', () => {
     });
   });
 
+  describe('helper WhatsApp Web version mode', () => {
+    const originalPatrolMode = process.env.PATROL_WHATSAPP_WEB_VERSION_MODE;
+    const originalLegacyMode = process.env.WHATSAPP_WEB_VERSION_MODE;
+
+    beforeEach(() => {
+      delete process.env.PATROL_WHATSAPP_WEB_VERSION_MODE;
+      delete process.env.WHATSAPP_WEB_VERSION_MODE;
+    });
+
+    afterAll(() => {
+      if (originalPatrolMode === undefined) delete process.env.PATROL_WHATSAPP_WEB_VERSION_MODE;
+      else process.env.PATROL_WHATSAPP_WEB_VERSION_MODE = originalPatrolMode;
+      if (originalLegacyMode === undefined) delete process.env.WHATSAPP_WEB_VERSION_MODE;
+      else process.env.WHATSAPP_WEB_VERSION_MODE = originalLegacyMode;
+    });
+
+    const helperMode = (service: WhatsAppCollectorService) =>
+      (service as unknown as { buildHelperEnv(): NodeJS.ProcessEnv }).buildHelperEnv()
+        .PATROL_WHATSAPP_WEB_VERSION_MODE;
+
+    it('propagates live mode to the helper by default', () => {
+      expect(helperMode(createService())).toBe('live');
+    });
+
+    it('keeps an explicit production mode authoritative', () => {
+      process.env.PATROL_WHATSAPP_WEB_VERSION_MODE = 'pinned';
+      expect(helperMode(createService())).toBe('pinned');
+    });
+
+    it('continues to support the legacy explicit mode variable', () => {
+      process.env.WHATSAPP_WEB_VERSION_MODE = 'library-default';
+      expect(helperMode(createService())).toBe('library-default');
+    });
+  });
+
   function attachRunningHelper(service: WhatsAppCollectorService): { write: jest.Mock } {
     const write = jest.fn();
     (service as unknown as {

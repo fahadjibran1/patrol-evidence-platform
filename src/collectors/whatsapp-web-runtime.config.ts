@@ -99,8 +99,9 @@ export function resolveWhatsAppWebVersionMode(): WhatsAppWebVersionMode {
   const raw = (
     process.env.PATROL_WHATSAPP_WEB_VERSION_MODE?.trim() ||
     process.env.WHATSAPP_WEB_VERSION_MODE?.trim() ||
-    // Production default: known-compatible local pin (Test C). Never silently fall back to live.
-    'pinned'
+    // Production default: current WhatsApp Web. The former strict local pin failed
+    // authenticated-session durability while live mode passed independent restart controls.
+    'live'
   ).toLowerCase();
 
   if (raw === 'live' || raw === 'current' || raw === 'unpinned' || raw === 'test-b') {
