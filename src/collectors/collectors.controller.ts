@@ -69,8 +69,13 @@ export class CollectorsController {
 
   @Post('certification/live-ingestion/arm')
   @RequireLicenceFeature('whatsappMonitoring')
-  armCertificationLiveIngestion(@Body() body: { sourceExternalId?: string }): Promise<WhatsAppCollectorStatus> {
-    return this.whatsAppCollectorService.armCertificationLiveIngestion(body?.sourceExternalId ?? '');
+  armCertificationLiveIngestion(
+    @Body() body: { sourceExternalId?: string; targetSiteId?: string },
+  ): Promise<WhatsAppCollectorStatus> {
+    return this.whatsAppCollectorService.armCertificationLiveIngestion(
+      body?.sourceExternalId ?? '',
+      body?.targetSiteId ?? '',
+    );
   }
 
   @Post('certification/live-ingestion/disarm')

@@ -25,6 +25,7 @@ describe('WhatsAppCollectorService', () => {
     persistLinkedWhatsAppAccount: jest.fn(),
     getConfiguredLinkedAccountId: jest.fn(),
     findActiveMappingsForIngest: jest.fn(),
+    findActiveCertificationMappings: jest.fn(),
   };
 
   const patrolImageIngestionService = {
@@ -238,6 +239,20 @@ describe('WhatsAppCollectorService', () => {
     };
   }
 
+  async function withQrOnlyCertification<T>(callback: () => Promise<T>): Promise<T> {
+    const originalArgv = process.argv;
+    const originalEnvironment = process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED;
+    process.argv = [...process.argv, '--patrol-certification-qr-only'];
+    process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED = 'true';
+    try {
+      return await callback();
+    } finally {
+      process.argv = originalArgv;
+      if (originalEnvironment === undefined) delete process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED;
+      else process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED = originalEnvironment;
+    }
+  }
+
   beforeEach(() => {
     jest.clearAllMocks();
     process.env.PATROL_HELPER_INTERNAL_TOKEN = HELPER_TOKEN;
@@ -263,6 +278,16 @@ describe('WhatsAppCollectorService', () => {
     });
     whatsAppSourceMappingService.getConfiguredLinkedAccountId.mockReturnValue('linked-account-1');
     whatsAppSourceMappingService.findActiveMappingsForIngest.mockResolvedValue([]);
+    whatsAppSourceMappingService.findActiveCertificationMappings.mockResolvedValue([
+      {
+        id: 'group-1',
+        siteId: 'site-1',
+        externalGroupId: '120363375746387624@g.us',
+        linkedAccountId: 'linked-account-1',
+        active: true,
+        site: { id: 'site-1', siteCode: 'SWI01', active: true },
+      },
+    ]);
     patrolImageIngestionService.findExistingByExternalMessageId.mockResolvedValue(null);
     patrolImageIngestionService.ingestPatrolImage.mockResolvedValue({
       id: 'img-1',
@@ -925,5 +950,85 @@ describe('WhatsAppCollectorService', () => {
       if (originalEnvironment === undefined) delete process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED;
       else process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED = originalEnvironment;
     }
+  });
+
+  describe('certification live-ingestion mapping guard', () => {
+    const sourceExternalId = '120363375746387624@g.us';
+    const targetSiteId = 'site-1';
+
+    function prepareAuthorizedService(): { service: WhatsAppCollectorService; write: jest.Mock } {
+      const service = createService();
+      const { write } = attachRunningHelper(service);
+      (service as unknown as { helperStatus: WhatsAppHelperStatusSnapshot }).helperStatus = readyStatus({
+        connectedAccount: 'linked-account-1',
+      });
+      (service as unknown as { certificationAuthorizationState: string }).certificationAuthorizationState =
+        'AUTHENTICATION_AUTHORIZED';
+      return { service, write };
+    }
+
+    it('arms exactly the requested active tuple while unrelated account mappings are irrelevant', async () => {
+      await withQrOnlyCertification(async () => {
+        const { service, write } = prepareAuthorizedService();
+
+        await service.armCertificationLiveIngestion(sourceExternalId, targetSiteId);
+
+        expect(whatsAppSourceMappingService.findActiveCertificationMappings).toHaveBeenCalledWith(
+          'linked-account-1',
+          sourceExternalId,
+          targetSiteId,
+        );
+        expect(write).toHaveBeenCalledTimes(1);
+        expect(JSON.parse(write.mock.calls[0][0])).toMatchObject({
+          type: 'arm-certification-live-ingestion',
+          linkedAccountId: 'linked-account-1',
+          sourceExternalId,
+          mappedGroupId: 'group-1',
+          siteCode: 'SWI01',
+        });
+      });
+    });
+
+    it('fails closed when the exact tuple does not exist', async () => {
+      await withQrOnlyCertification(async () => {
+        const { service, write } = prepareAuthorizedService();
+        whatsAppSourceMappingService.findActiveCertificationMappings.mockResolvedValue([]);
+
+        await expect(service.armCertificationLiveIngestion(sourceExternalId, targetSiteId)).rejects.toThrow(
+          'Exactly one active account-scoped source/site certification mapping is required.',
+        );
+        expect(write).not.toHaveBeenCalled();
+      });
+    });
+
+    it('fails closed when duplicate exact tuples exist', async () => {
+      await withQrOnlyCertification(async () => {
+        const { service, write } = prepareAuthorizedService();
+        whatsAppSourceMappingService.findActiveCertificationMappings.mockResolvedValue([
+          { id: 'group-1', site: { siteCode: 'SWI01' } },
+          { id: 'group-2', site: { siteCode: 'SWI01' } },
+        ]);
+
+        await expect(service.armCertificationLiveIngestion(sourceExternalId, targetSiteId)).rejects.toThrow(
+          'Exactly one active account-scoped source/site certification mapping is required.',
+        );
+        expect(write).not.toHaveBeenCalled();
+      });
+    });
+
+    it('enforces the currently authenticated account and performs no mapping or operational mutation', async () => {
+      await withQrOnlyCertification(async () => {
+        const { service, write } = prepareAuthorizedService();
+        whatsAppSourceMappingService.resolveActiveLinkedAccountId.mockReturnValue('different-account');
+
+        await expect(service.armCertificationLiveIngestion(sourceExternalId, targetSiteId)).rejects.toThrow(
+          'Exactly one active account-scoped source/site certification mapping is required.',
+        );
+        expect(whatsAppSourceMappingService.findActiveCertificationMappings).not.toHaveBeenCalled();
+        expect(whatsAppSourceMappingService.persistLinkedWhatsAppAccount).not.toHaveBeenCalled();
+        expect(patrolImageIngestionService.ingestPatrolImage).not.toHaveBeenCalled();
+        expect(write).not.toHaveBeenCalled();
+      });
+    });
   });
 });

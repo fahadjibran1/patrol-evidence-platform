@@ -19,8 +19,9 @@ describe('bounded certification live-ingestion gate contract', () => {
     expect(service).toContain('isQrOnlyCertificationMode()');
     expect(service).toContain("certificationAuthorizationState !== 'AUTHENTICATION_AUTHORIZED'");
     expect(service).toContain('resolveActiveLinkedAccountId');
-    expect(service).toContain('findActiveMappingsForIngest');
-    expect(service).toContain('mappings.length !== 1');
+    expect(service).toContain('findActiveCertificationMappings');
+    expect(service).toContain('matchingMappings.length !== 1');
+    expect(controller).toContain('targetSiteId?: string');
     expect(helper).toContain("qrOnlyCertificationGuard.currentState !== 'AUTHENTICATION_AUTHORIZED'");
     expect(helper).toContain('status.connectedAccount !== command.linkedAccountId');
     expect(helper).toContain('exact-mapping-not-present');

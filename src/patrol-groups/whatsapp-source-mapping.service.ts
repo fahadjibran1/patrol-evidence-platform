@@ -127,6 +127,31 @@ export class WhatsAppSourceMappingService {
     return groups.filter((group) => this.isMappingEligibleForIngest(group, accountId));
   }
 
+  async findActiveCertificationMappings(
+    linkedAccountId: string,
+    sourceExternalId: string,
+    targetSiteId: string,
+  ): Promise<PatrolGroup[]> {
+    const accountId = linkedAccountId.trim();
+    const normalizedSource = sourceExternalId.trim();
+    const normalizedSiteId = targetSiteId.trim();
+    if (!accountId || !normalizedSource || !normalizedSiteId) {
+      return [];
+    }
+
+    const groups = await this.patrolGroupRepo.find({
+      where: { active: true },
+      relations: ['site', 'site.company'],
+    });
+
+    return groups.filter((group) =>
+      this.isMappingEligibleForIngest(group, accountId) &&
+      group.linkedAccountId?.trim() === accountId &&
+      group.externalGroupId?.trim() === normalizedSource &&
+      group.siteId === normalizedSiteId,
+    );
+  }
+
   async resolveMappingForIngest(
     externalGroupId: string,
     linkedAccountId?: string | null,

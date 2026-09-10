@@ -217,20 +217,36 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  async armCertificationLiveIngestion(sourceExternalId: string): Promise<WhatsAppCollectorStatus> {
+  async armCertificationLiveIngestion(
+    sourceExternalId: string,
+    targetSiteId: string,
+  ): Promise<WhatsAppCollectorStatus> {
     if (!isQrOnlyCertificationMode() || this.certificationAuthorizationState !== 'AUTHENTICATION_AUTHORIZED') {
       throw new BadRequestException('Certification live ingestion requires both certification factors.');
     }
     if (!this.isHelperRunning() || this.helperStatus.state !== 'ready' || !this.helperStatus.connectedAccount) {
       throw new BadRequestException('An authenticated, ready certification helper session is required.');
     }
-    const linkedAccountId = this.whatsAppSourceMappingService.resolveActiveLinkedAccountId(this.helperStatus.connectedAccount);
-    const mappings = await this.whatsAppSourceMappingService.findActiveMappingsForIngest(linkedAccountId);
+    const connectedAccount = this.helperStatus.connectedAccount.trim();
+    const linkedAccountId = this.whatsAppSourceMappingService.resolveActiveLinkedAccountId(connectedAccount);
     const requestedSource = sourceExternalId.trim();
-    if (mappings.length !== 1 || !requestedSource || mappings[0].externalGroupId?.trim() !== requestedSource) {
-      throw new BadRequestException('Exactly one active account-scoped certification mapping is required.');
+    const requestedSiteId = targetSiteId.trim();
+    if (!linkedAccountId || linkedAccountId !== connectedAccount || !requestedSource || !requestedSiteId) {
+      throw new BadRequestException(
+        'Exactly one active account-scoped source/site certification mapping is required.',
+      );
     }
-    const mapping = mappings[0];
+    const matchingMappings = await this.whatsAppSourceMappingService.findActiveCertificationMappings(
+      linkedAccountId,
+      requestedSource,
+      requestedSiteId,
+    );
+    if (matchingMappings.length !== 1) {
+      throw new BadRequestException(
+        'Exactly one active account-scoped source/site certification mapping is required.',
+      );
+    }
+    const mapping = matchingMappings[0];
     const generationId = randomUUID();
     this.sendHelperCommand({
       type: 'arm-certification-live-ingestion',

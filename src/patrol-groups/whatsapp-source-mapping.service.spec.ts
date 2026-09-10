@@ -2,7 +2,16 @@ import { WhatsAppSourceMappingService } from './whatsapp-source-mapping.service'
 import { PatrolGroup } from './entities/patrol-group.entity';
 
 describe('WhatsAppSourceMappingService', () => {
-  const service = new WhatsAppSourceMappingService({} as never);
+  const patrolGroupRepo = {
+    find: jest.fn(),
+    save: jest.fn(),
+  };
+  const service = new WhatsAppSourceMappingService(patrolGroupRepo as never);
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    patrolGroupRepo.find.mockResolvedValue([]);
+  });
 
   function createGroup(overrides: Partial<PatrolGroup>): PatrolGroup {
     return {
@@ -54,5 +63,85 @@ describe('WhatsAppSourceMappingService', () => {
     });
 
     expect(service.isMappingEligibleForIngest(archivedSite, '447700000001@c.us')).toBe(false);
+  });
+
+  describe('certification tuple scope', () => {
+    const accountId = '447700000001@c.us';
+    const sourceId = '120363000000000000@g.us';
+    const siteId = 'site-1';
+
+    async function findMatches(groups: PatrolGroup[]): Promise<PatrolGroup[]> {
+      patrolGroupRepo.find.mockResolvedValue(groups);
+      return service.findActiveCertificationMappings(accountId, sourceId, siteId);
+    }
+
+    it('returns one exact tuple when there are no unrelated mappings', async () => {
+      const exact = createGroup({ linkedAccountId: accountId });
+
+      await expect(findMatches([exact])).resolves.toEqual([exact]);
+    });
+
+    it('returns one exact tuple while ignoring seven unrelated mappings', async () => {
+      const exact = createGroup({ linkedAccountId: accountId });
+      const unrelated = Array.from({ length: 7 }, (_, index) =>
+        createGroup({
+          id: `unrelated-${index}`,
+          externalGroupId: `12036310000000000${index}@g.us`,
+          linkedAccountId: accountId,
+        }),
+      );
+
+      await expect(findMatches([exact, ...unrelated])).resolves.toEqual([exact]);
+    });
+
+    it('returns no match when only unrelated mappings exist', async () => {
+      const unrelated = createGroup({ externalGroupId: '120363999999999999@g.us', linkedAccountId: accountId });
+
+      await expect(findMatches([unrelated])).resolves.toEqual([]);
+    });
+
+    it('returns both duplicate exact tuples so the caller can fail closed', async () => {
+      const first = createGroup({ id: 'exact-1', linkedAccountId: accountId });
+      const second = createGroup({ id: 'exact-2', linkedAccountId: accountId });
+
+      await expect(findMatches([first, second])).resolves.toEqual([first, second]);
+    });
+
+    it('does not count the same source mapped to a different site', async () => {
+      const differentSite = createGroup({ siteId: 'site-2', linkedAccountId: accountId });
+
+      await expect(findMatches([differentSite])).resolves.toEqual([]);
+    });
+
+    it('does not count the same site mapped to a different source', async () => {
+      const differentSource = createGroup({ externalGroupId: '120363999999999999@g.us', linkedAccountId: accountId });
+
+      await expect(findMatches([differentSource])).resolves.toEqual([]);
+    });
+
+    it('does not count another account or an unscoped legacy mapping', async () => {
+      const differentAccount = createGroup({ id: 'other-account', linkedAccountId: '447700000002@c.us' });
+      const unscoped = createGroup({ id: 'legacy-unscoped', linkedAccountId: undefined });
+
+      await expect(findMatches([differentAccount, unscoped])).resolves.toEqual([]);
+    });
+
+    it('does not count an inactive exact mapping', async () => {
+      const inactive = createGroup({ linkedAccountId: accountId, active: false });
+
+      await expect(findMatches([inactive])).resolves.toEqual([]);
+    });
+
+    it('does not mutate mappings while validating the tuple', async () => {
+      const exact = createGroup({ linkedAccountId: accountId });
+
+      await findMatches([exact]);
+
+      expect(patrolGroupRepo.save).not.toHaveBeenCalled();
+      expect(patrolGroupRepo.find).toHaveBeenCalledWith({
+        where: { active: true },
+        relations: ['site', 'site.company'],
+      });
+    });
   });
 });
