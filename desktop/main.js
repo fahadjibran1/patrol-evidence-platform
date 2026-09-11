@@ -47,8 +47,9 @@ const PRODUCT_METADATA = {
     packageMetadata.displayBuild ||
     packageMetadata.buildId ||
     '2026.07.20.1',
-  copyright: packageMetadata.copyright || '© 2026 TechGuard Security Ltd',
-  companyName: packageMetadata.companyName || 'TechGuard Security Ltd',
+  copyright:
+    packageMetadata.copyright || '© 2026 Vesoft Services Limited. All rights reserved.',
+  companyName: packageMetadata.companyName || 'Vesoft Services Limited',
   supportEmail: packageMetadata.supportEmail || 'support@techguardsecurity.com',
 };
 
@@ -2480,6 +2481,7 @@ async function createMainWindow() {
   isShowingFrontendFallback = false;
   mainWindow = new BrowserWindow({
     title: PRODUCT_METADATA.productName,
+    icon: path.join(__dirname, 'assets', 'patrolsafe.ico'),
     width: 1480,
     height: 980,
     minWidth: 1200,

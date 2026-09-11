@@ -11,6 +11,13 @@ export function AboutDialog({ open, onClose }: { open: boolean; onClose: () => v
     <div className="lightbox-backdrop" role="dialog" aria-modal="true" aria-label="About PatrolSafe by S4" onClick={onClose}>
       <div className="lightbox-panel about-dialog-panel" onClick={(event) => event.stopPropagation()}>
         <header className="lightbox-header">
+          <img
+            className="about-dialog-logo"
+            src="./patrolsafe-icon.png"
+            alt="PatrolSafe by S4"
+            width="72"
+            height="72"
+          />
           <div>
             <h3>{PRODUCT_INFO.productName}</h3>
             <p className="muted-text">{PRODUCT_INFO.tagline}</p>

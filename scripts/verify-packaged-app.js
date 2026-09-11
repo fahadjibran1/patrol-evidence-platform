@@ -130,6 +130,8 @@ const backendEntry = backendResolution.resolved;
 const helperEntry = helperResolution.resolved;
 const frontendEntry = frontendResolution.resolved;
 const frontendAssetsDir = path.join(appRoot, 'web', 'dist', 'assets');
+const packagedWindowsIcon = path.join(appRoot, 'desktop', 'assets', 'patrolsafe.ico');
+const packagedAboutIcon = path.join(appRoot, 'web', 'dist', 'patrolsafe-icon.png');
 const betterSqliteRoot = path.join(appRoot, 'node_modules', 'better-sqlite3');
 const sharpRoot = path.join(appRoot, 'node_modules', 'sharp');
 const imgRoot = path.join(appRoot, 'node_modules', '@img');
@@ -178,6 +180,8 @@ if (!helperEntry) {
 }
 
 ensureNonEmptyDirectory(frontendAssetsDir, 'Built frontend assets directory');
+ensureExists(packagedWindowsIcon, 'Packaged PatrolSafe Windows icon');
+ensureExists(packagedAboutIcon, 'Packaged PatrolSafe About icon');
 
 const {
   resolvePackagedPublicKeyPath,
@@ -249,6 +253,16 @@ if (fs.existsSync(packagedPackageJsonPath)) {
     fail(`Packaged package.json version looks invalid: ${packagedPackageJson.version}`);
   } else {
     pass(`Packaged product version=${packagedPackageJson.version}`);
+  }
+  if (packagedPackageJson.displayName !== 'PatrolSafe by S4') {
+    fail(`Packaged displayName is not PatrolSafe by S4: ${packagedPackageJson.displayName}`);
+  } else {
+    pass('Packaged displayName=PatrolSafe by S4');
+  }
+  if (packagedPackageJson.companyName !== 'Vesoft Services Limited') {
+    fail(`Packaged companyName is not Vesoft Services Limited: ${packagedPackageJson.companyName}`);
+  } else {
+    pass('Packaged companyName=Vesoft Services Limited');
   }
   const packagedWindowsBuild = packagedPackageJson.windowsBuild;
   if (packagedWindowsBuild && String(packagedWindowsBuild).split('.').length > 4) {

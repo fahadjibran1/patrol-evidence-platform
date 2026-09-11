@@ -7,7 +7,7 @@ import { useAuth } from '../state/auth';
 import type { LicenseStatusResponse } from '../types';
 import { StatusBadge } from '../components/ui';
 
-const SUPPLIER_CONTACT = 'mailto:support@techguards.co.uk?subject=Patrol%20Evidence%20Platform%20Licence';
+const SUPPLIER_CONTACT = 'mailto:support@techguards.co.uk?subject=PatrolSafe%20by%20S4%20Licence';
 
 export function LicensePage(): JSX.Element {
   const navigate = useNavigate();

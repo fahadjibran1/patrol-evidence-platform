@@ -6,17 +6,18 @@
   "endorsement": "by S4",
   "tagline": "Patrol evidence. Automatically organised.",
   "version": "1.0.0",
-  "buildId": "2026.07.29.01.03.11",
+  "buildId": "2026.09.11.14.15.21",
   "private": true,
   "workspaces": [
     "packages/*",
     "apps/*",
     "web"
   ],
-  "description": "Securely captures and organises patrol images from approved WhatsApp groups as searchable site records",
-  "author": "TechGuard Security Ltd",
-  "companyName": "TechGuard Security Ltd",
-  "copyright": "© 2026 TechGuard Security Ltd",
+  "description": "Patrol evidence. Automatically organised.",
+  "author": "Vesoft Services Limited",
+  "companyName": "Vesoft Services Limited",
+  "copyright": "© 2026 Vesoft Services Limited. All rights reserved.",
+  "windowsIconUrl": "https://raw.githubusercontent.com/fahadjibran1/patrol-evidence-platform/main/desktop/assets/patrolsafe.ico",
   "supportEmail": "support@techguardsecurity.com",
   "license": "UNLICENSED",
   "main": "desktop/main.js",
@@ -148,5 +149,5 @@
       "path-to-regexp": "0.1.13"
     }
   },
-  "windowsBuild": "2026.7.29.63"
+  "windowsBuild": "2026.9.11.855"
 }

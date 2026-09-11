@@ -15,6 +15,8 @@ describe('PatrolSafe release branding contract', () => {
     expect(packageMetadata.brandName).toBe('PatrolSafe');
     expect(packageMetadata.endorsement).toBe('by S4');
     expect(packageMetadata.tagline).toBe('Patrol evidence. Automatically organised.');
+    expect(packageMetadata.companyName).toBe('Vesoft Services Limited');
+    expect(packageMetadata.copyright).toBe('© 2026 Vesoft Services Limited. All rights reserved.');
     expect(read('web/index.html')).toContain('<title>PatrolSafe by S4</title>');
     expect(read('web/src/lib/product-info.ts')).toContain("productName: 'PatrolSafe by S4'");
   });

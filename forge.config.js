@@ -38,9 +38,17 @@ if (String(windowsBuildVersion).split('.').length > 4) {
   );
 }
 
-const iconBasePath = path.resolve(__dirname, 'desktop', 'assets', 'icon');
+const iconBasePath = path.resolve(__dirname, 'desktop', 'assets', 'patrolsafe');
 const hasWindowsIcon = fs.existsSync(`${iconBasePath}.ico`);
 const hasMacIcon = fs.existsSync(`${iconBasePath}.icns`);
+const windowsIconUrl = String(packageMetadata.windowsIconUrl || '').trim();
+const windowsSigningHookModule = String(process.env.PATROLSAFE_WINDOWS_SIGN_HOOK || '').trim();
+const windowsSign = windowsSigningHookModule
+  ? {
+      hookModulePath: path.resolve(windowsSigningHookModule),
+      description: releaseDisplayName,
+    }
+  : undefined;
 const packagerIgnore = [
   /^\/out($|\/)/,
   /^\/\.git($|\/)/,
@@ -342,9 +350,11 @@ module.exports = {
     appVersion: packageMetadata.version,
     // Electron FILEVERSION / productVersion — must be 1–4 numeric components.
     buildVersion: windowsBuildVersion,
-    appCopyright: packageMetadata.copyright || '© 2026 TechGuard Security Ltd',
+    appCopyright:
+      packageMetadata.copyright || '© 2026 Vesoft Services Limited. All rights reserved.',
     electronDist: path.join(__dirname, 'node_modules', 'electron', 'dist'),
     icon: hasWindowsIcon || hasMacIcon ? iconBasePath : undefined,
+    windowsSign,
     extraResource: [
       ...(fs.existsSync(trackedPublicKeyPath) ? [trackedPublicKeyPath] : []),
       // Vendored WhatsApp Web HTML pin for whatsapp-web.js LocalWebCache (survives src prune).
@@ -358,12 +368,13 @@ module.exports = {
     ignore: shouldIgnorePackagePath,
     afterCopy: [pruneCopiedApp],
     win32metadata: {
-      CompanyName: packageMetadata.companyName || 'TechGuard Security Ltd',
+      CompanyName: packageMetadata.companyName || 'Vesoft Services Limited',
       FileDescription: releaseDisplayName,
       OriginalFilename: 'PatrolEvidencePlatform.exe',
       ProductName: releaseDisplayName,
       InternalName: 'PatrolEvidencePlatform',
-      LegalCopyright: packageMetadata.copyright || '© 2026 TechGuard Security Ltd',
+      LegalCopyright:
+        packageMetadata.copyright || '© 2026 Vesoft Services Limited. All rights reserved.',
     },
     osxSign: process.env.APPLE_IDENTITY
       ? {
@@ -387,12 +398,16 @@ module.exports = {
     new MakerSquirrel({
       name: 'patrol_evidence_platform',
       title: releaseDisplayName,
-      authors: packageMetadata.companyName || packageMetadata.author || 'TechGuard Security Ltd',
-      owners: packageMetadata.companyName || packageMetadata.author || 'TechGuard Security Ltd',
-      description: packageMetadata.description,
+      authors: packageMetadata.companyName || packageMetadata.author || 'Vesoft Services Limited',
+      owners: packageMetadata.companyName || packageMetadata.author || 'Vesoft Services Limited',
+      // Squirrel maps this field into Setup.exe ProductName/FileDescription.
+      description: releaseDisplayName,
       exe: 'PatrolEvidencePlatform.exe',
       setupExe: 'PatrolEvidencePlatformSetup.exe',
       setupIcon: hasWindowsIcon ? `${iconBasePath}.ico` : undefined,
+      iconUrl: windowsIconUrl || undefined,
+      skipUpdateIcon: false,
+      windowsSign,
       // Full installs avoid Squirrel delta packages missing Chromium ICU/snapshot files on target PCs.
       noDelta: true,
     }),
