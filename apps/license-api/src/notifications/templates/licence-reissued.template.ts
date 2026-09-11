@@ -2,13 +2,13 @@ import type { LicenceIssuedTemplateData } from '../dto/send-email.dto';
 import { escapeHtml, renderBaseTemplate, type RenderedNotificationTemplate } from './base.template';
 
 export function buildDefaultLicenceReissuedSubject(licenseId: string): string {
-  return `Your Patrol Evidence Platform Licence Has Been Reissued – ${licenseId}`;
+  return `Your PatrolSafe Licence Has Been Reissued – ${licenseId}`;
 }
 
 export function renderLicenceReissuedTemplate(
   data: LicenceIssuedTemplateData,
 ): RenderedNotificationTemplate {
-  const brand = data.companyBrandName?.trim() || 'Patrol Evidence Platform';
+  const brand = data.companyBrandName?.trim() || 'PatrolSafe by S4';
   const subject = buildDefaultLicenceReissuedSubject(data.licenseId);
   const adminNoteHtml = data.adminNote?.trim()
     ? `<p style="margin:0 0 16px;">${escapeHtml(data.adminNote.trim())}</p>`
@@ -22,7 +22,7 @@ export function renderLicenceReissuedTemplate(
   const bodyHtml = `
     <p style="margin:0 0 16px;">Hello ${escapeHtml(data.contactName)},</p>
     ${adminNoteHtml}
-    <p style="margin:0 0 16px;">A fresh copy of your Patrol Evidence Platform commercial licence has been reissued.</p>
+    <p style="margin:0 0 16px;">A fresh copy of your PatrolSafe commercial licence has been reissued.</p>
     <table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;margin:0 0 20px;">
       <tr><td style="padding:8px 0;color:#64748b;width:160px;">Company</td><td style="padding:8px 0;font-weight:600;">${escapeHtml(data.companyName)}</td></tr>
       <tr><td style="padding:8px 0;color:#64748b;">Licence ID</td><td style="padding:8px 0;font-weight:600;">${escapeHtml(data.licenseId)}</td></tr>
@@ -44,7 +44,7 @@ export function renderLicenceReissuedTemplate(
     '',
     adminNoteText.trimEnd(),
     adminNoteText ? '' : null,
-    'A fresh copy of your Patrol Evidence Platform commercial licence has been reissued.',
+    'A fresh copy of your PatrolSafe commercial licence has been reissued.',
     '',
     `Company:\n${data.companyName}`,
     '',

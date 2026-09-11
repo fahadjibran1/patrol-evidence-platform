@@ -1,6 +1,6 @@
 # Trial Release Checklist
 
-This checklist is for the internal team preparing a Windows trial release of the Patrol Evidence Platform desktop app.
+This checklist is for the internal team preparing a Windows trial release of the PatrolSafe by S4 desktop app.
 
 ## 1. Pre-release checks
 

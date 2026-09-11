@@ -323,7 +323,7 @@ export function RenewLicencePage(): JSX.Element {
             licenceId={renewResult.id}
             humanLicenseId={renewResult.licenseId}
             defaultRecipient={renewResult.customerEmail ?? ''}
-            defaultSubject={`Your renewed Patrol Evidence Platform Licence – ${renewResult.licenseId}`}
+            defaultSubject={`Your renewed PatrolSafe Licence – ${renewResult.licenseId}`}
             accessToken={accessToken}
             source="licence-detail"
             requirePassword

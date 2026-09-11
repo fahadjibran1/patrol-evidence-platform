@@ -1,6 +1,6 @@
 # RC1 Go-Live Report
 
-**Product:** Patrol Evidence Platform — Licence & Billing SaaS  
+**Product:** PatrolSafe by S4 — Licence & Billing SaaS
 **Candidate:** RC1 / v1.0.0 readiness  
 **Date:** 2026-07-23
 

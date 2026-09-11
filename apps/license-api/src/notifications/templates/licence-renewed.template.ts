@@ -2,13 +2,13 @@ import type { LicenceIssuedTemplateData } from '../dto/send-email.dto';
 import { escapeHtml, renderBaseTemplate, type RenderedNotificationTemplate } from './base.template';
 
 export function buildDefaultLicenceRenewedSubject(licenseId: string): string {
-  return `Your Patrol Evidence Platform Licence Has Been Renewed – ${licenseId}`;
+  return `Your PatrolSafe Licence Has Been Renewed – ${licenseId}`;
 }
 
 export function renderLicenceRenewedTemplate(
   data: LicenceIssuedTemplateData,
 ): RenderedNotificationTemplate {
-  const brand = data.companyBrandName?.trim() || 'Patrol Evidence Platform';
+  const brand = data.companyBrandName?.trim() || 'PatrolSafe by S4';
   const subject = buildDefaultLicenceRenewedSubject(data.licenseId);
   const adminNoteHtml = data.adminNote?.trim()
     ? `<p style="margin:0 0 16px;">${escapeHtml(data.adminNote.trim())}</p>`
@@ -22,7 +22,7 @@ export function renderLicenceRenewedTemplate(
   const bodyHtml = `
     <p style="margin:0 0 16px;">Hello ${escapeHtml(data.contactName)},</p>
     ${adminNoteHtml}
-    <p style="margin:0 0 16px;">Your Patrol Evidence Platform commercial licence has been renewed.</p>
+    <p style="margin:0 0 16px;">Your PatrolSafe commercial licence has been renewed.</p>
     <table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;margin:0 0 20px;">
       <tr><td style="padding:8px 0;color:#64748b;width:160px;">Company</td><td style="padding:8px 0;font-weight:600;">${escapeHtml(data.companyName)}</td></tr>
       <tr><td style="padding:8px 0;color:#64748b;">Licence ID</td><td style="padding:8px 0;font-weight:600;">${escapeHtml(data.licenseId)}</td></tr>
@@ -44,7 +44,7 @@ export function renderLicenceRenewedTemplate(
     '',
     adminNoteText.trimEnd(),
     adminNoteText ? '' : null,
-    'Your Patrol Evidence Platform commercial licence has been renewed.',
+    'Your PatrolSafe commercial licence has been renewed.',
     '',
     `Company:\n${data.companyName}`,
     '',

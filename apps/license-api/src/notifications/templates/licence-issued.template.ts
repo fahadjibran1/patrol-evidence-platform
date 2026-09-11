@@ -2,12 +2,12 @@ import type { LicenceIssuedTemplateData } from '../dto/send-email.dto';
 import { escapeHtml, renderBaseTemplate, type RenderedNotificationTemplate } from './base.template';
 
 export function buildDefaultLicenceIssuedSubject(licenseId: string): string {
-  return `Your Patrol Evidence Platform Licence – ${licenseId}`;
+  return `Your PatrolSafe Licence – ${licenseId}`;
 }
 
 export function buildLicenceActivationInstructions(): string {
   return [
-    '1. Open Patrol Evidence Platform.',
+    '1. Open PatrolSafe.',
     '2. Go to Licence.',
     '3. Select Import licence file.',
     '4. Choose the attached .lic file.',
@@ -19,7 +19,7 @@ export function buildLicenceActivationInstructions(): string {
 export function renderLicenceIssuedTemplate(
   data: LicenceIssuedTemplateData,
 ): RenderedNotificationTemplate {
-  const brand = data.companyBrandName?.trim() || 'Patrol Evidence Platform';
+  const brand = data.companyBrandName?.trim() || 'PatrolSafe by S4';
   const subject = buildDefaultLicenceIssuedTemplateSubject(data);
   const adminNoteHtml = data.adminNote?.trim()
     ? `<p style="margin:0 0 16px;">${escapeHtml(data.adminNote.trim())}</p>`
@@ -34,7 +34,7 @@ export function renderLicenceIssuedTemplate(
     <p style="margin:0 0 16px;">Hello ${escapeHtml(data.contactName)},</p>
     ${adminNoteHtml}
     <p style="margin:0 0 16px;">Thank you for your purchase.</p>
-    <p style="margin:0 0 16px;">Your Patrol Evidence Platform commercial licence has now been issued.</p>
+    <p style="margin:0 0 16px;">Your PatrolSafe commercial licence has now been issued.</p>
     <table role="presentation" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:collapse;margin:0 0 20px;">
       <tr><td style="padding:8px 0;color:#64748b;width:160px;">Company</td><td style="padding:8px 0;font-weight:600;">${escapeHtml(data.companyName)}</td></tr>
       <tr><td style="padding:8px 0;color:#64748b;">Licence ID</td><td style="padding:8px 0;font-weight:600;">${escapeHtml(data.licenseId)}</td></tr>
@@ -58,7 +58,7 @@ export function renderLicenceIssuedTemplate(
     adminNoteText ? '' : null,
     'Thank you for your purchase.',
     '',
-    'Your Patrol Evidence Platform commercial licence has now been issued.',
+    'Your PatrolSafe commercial licence has now been issued.',
     '',
     `Company:\n${data.companyName}`,
     '',

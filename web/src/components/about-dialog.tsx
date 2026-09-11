@@ -8,12 +8,12 @@ export function AboutDialog({ open, onClose }: { open: boolean; onClose: () => v
   }
 
   return (
-    <div className="lightbox-backdrop" role="dialog" aria-modal="true" aria-label="About Patrol Evidence Platform" onClick={onClose}>
+    <div className="lightbox-backdrop" role="dialog" aria-modal="true" aria-label="About PatrolSafe by S4" onClick={onClose}>
       <div className="lightbox-panel about-dialog-panel" onClick={(event) => event.stopPropagation()}>
         <header className="lightbox-header">
           <div>
             <h3>{PRODUCT_INFO.productName}</h3>
-            <p className="muted-text">Product information</p>
+            <p className="muted-text">{PRODUCT_INFO.tagline}</p>
           </div>
           <button type="button" className="secondary-button" onClick={onClose}>
             Close

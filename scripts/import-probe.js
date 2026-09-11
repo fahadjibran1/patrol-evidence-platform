@@ -2,40 +2,40 @@ const { appendFileSync, mkdirSync } = require('fs');
 const path = require('path');
 
 const appModulePath =
-  'C:/Users/Admin/patrol-evidence-platform/out/Patrol Evidence Platform-win32-x64/resources/app/dist/app.module.js';
+  'C:/Users/Admin/patrol-evidence-platform/out/PatrolSafe by S4-win32-x64/resources/app/dist/app.module.js';
 
 const modulesToProbe = [
   '@nestjs/common',
   '@nestjs/core',
-  'C:/Users/Admin/patrol-evidence-platform/out/Patrol Evidence Platform-win32-x64/resources/app/dist/config/app.config.js',
-  'C:/Users/Admin/patrol-evidence-platform/out/Patrol Evidence Platform-win32-x64/resources/app/dist/config/database.config.js',
-  'C:/Users/Admin/patrol-evidence-platform/out/Patrol Evidence Platform-win32-x64/resources/app/dist/storage/storage.service.js',
+  'C:/Users/Admin/patrol-evidence-platform/out/PatrolSafe by S4-win32-x64/resources/app/dist/config/app.config.js',
+  'C:/Users/Admin/patrol-evidence-platform/out/PatrolSafe by S4-win32-x64/resources/app/dist/config/database.config.js',
+  'C:/Users/Admin/patrol-evidence-platform/out/PatrolSafe by S4-win32-x64/resources/app/dist/storage/storage.service.js',
   'whatsapp-web.js',
   'better-sqlite3',
   'sharp',
-  'C:/Users/Admin/patrol-evidence-platform/out/Patrol Evidence Platform-win32-x64/resources/app/dist/auth/auth.module.js',
-  'C:/Users/Admin/patrol-evidence-platform/out/Patrol Evidence Platform-win32-x64/resources/app/dist/users/users.module.js',
-  'C:/Users/Admin/patrol-evidence-platform/out/Patrol Evidence Platform-win32-x64/resources/app/dist/health/health.module.js',
-  'C:/Users/Admin/patrol-evidence-platform/out/Patrol Evidence Platform-win32-x64/resources/app/dist/storage/storage.module.js',
-  'C:/Users/Admin/patrol-evidence-platform/out/Patrol Evidence Platform-win32-x64/resources/app/dist/companies/entities/company.entity.js',
-  'C:/Users/Admin/patrol-evidence-platform/out/Patrol Evidence Platform-win32-x64/resources/app/dist/sites/entities/site.entity.js',
-  'C:/Users/Admin/patrol-evidence-platform/out/Patrol Evidence Platform-win32-x64/resources/app/dist/auth/guards/jwt-auth.guard.js',
-  'C:/Users/Admin/patrol-evidence-platform/out/Patrol Evidence Platform-win32-x64/resources/app/dist/auth/guards/roles.guard.js',
-  'C:/Users/Admin/patrol-evidence-platform/out/Patrol Evidence Platform-win32-x64/resources/app/dist/sites/sites.service.js',
-  'C:/Users/Admin/patrol-evidence-platform/out/Patrol Evidence Platform-win32-x64/resources/app/dist/sites/sites.controller.js',
-  'C:/Users/Admin/patrol-evidence-platform/out/Patrol Evidence Platform-win32-x64/resources/app/dist/sites/sites.module.js',
-  'C:/Users/Admin/patrol-evidence-platform/out/Patrol Evidence Platform-win32-x64/resources/app/dist/patrol-groups/patrol-groups.module.js',
-  'C:/Users/Admin/patrol-evidence-platform/out/Patrol Evidence Platform-win32-x64/resources/app/dist/patrol-schedules/patrol-schedules.module.js',
-  'C:/Users/Admin/patrol-evidence-platform/out/Patrol Evidence Platform-win32-x64/resources/app/dist/patrol-images/patrol-images.module.js',
-  'C:/Users/Admin/patrol-evidence-platform/out/Patrol Evidence Platform-win32-x64/resources/app/dist/patrol-slots/patrol-slots.module.js',
-  'C:/Users/Admin/patrol-evidence-platform/out/Patrol Evidence Platform-win32-x64/resources/app/dist/patrol-alerts/patrol-alerts.module.js',
-  'C:/Users/Admin/patrol-evidence-platform/out/Patrol Evidence Platform-win32-x64/resources/app/dist/collectors/collectors.module.js',
-  'C:/Users/Admin/patrol-evidence-platform/out/Patrol Evidence Platform-win32-x64/resources/app/dist/compliance/compliance.module.js',
-  'C:/Users/Admin/patrol-evidence-platform/out/Patrol Evidence Platform-win32-x64/resources/app/dist/incidents/incidents.module.js',
-  'C:/Users/Admin/patrol-evidence-platform/out/Patrol Evidence Platform-win32-x64/resources/app/dist/dashboard/dashboard.module.js',
-  'C:/Users/Admin/patrol-evidence-platform/out/Patrol Evidence Platform-win32-x64/resources/app/dist/ops/ops.module.js',
-  'C:/Users/Admin/patrol-evidence-platform/out/Patrol Evidence Platform-win32-x64/resources/app/dist/licensing/licensing.module.js',
-  'C:/Users/Admin/patrol-evidence-platform/out/Patrol Evidence Platform-win32-x64/resources/app/dist/desktop/desktop.module.js',
+  'C:/Users/Admin/patrol-evidence-platform/out/PatrolSafe by S4-win32-x64/resources/app/dist/auth/auth.module.js',
+  'C:/Users/Admin/patrol-evidence-platform/out/PatrolSafe by S4-win32-x64/resources/app/dist/users/users.module.js',
+  'C:/Users/Admin/patrol-evidence-platform/out/PatrolSafe by S4-win32-x64/resources/app/dist/health/health.module.js',
+  'C:/Users/Admin/patrol-evidence-platform/out/PatrolSafe by S4-win32-x64/resources/app/dist/storage/storage.module.js',
+  'C:/Users/Admin/patrol-evidence-platform/out/PatrolSafe by S4-win32-x64/resources/app/dist/companies/entities/company.entity.js',
+  'C:/Users/Admin/patrol-evidence-platform/out/PatrolSafe by S4-win32-x64/resources/app/dist/sites/entities/site.entity.js',
+  'C:/Users/Admin/patrol-evidence-platform/out/PatrolSafe by S4-win32-x64/resources/app/dist/auth/guards/jwt-auth.guard.js',
+  'C:/Users/Admin/patrol-evidence-platform/out/PatrolSafe by S4-win32-x64/resources/app/dist/auth/guards/roles.guard.js',
+  'C:/Users/Admin/patrol-evidence-platform/out/PatrolSafe by S4-win32-x64/resources/app/dist/sites/sites.service.js',
+  'C:/Users/Admin/patrol-evidence-platform/out/PatrolSafe by S4-win32-x64/resources/app/dist/sites/sites.controller.js',
+  'C:/Users/Admin/patrol-evidence-platform/out/PatrolSafe by S4-win32-x64/resources/app/dist/sites/sites.module.js',
+  'C:/Users/Admin/patrol-evidence-platform/out/PatrolSafe by S4-win32-x64/resources/app/dist/patrol-groups/patrol-groups.module.js',
+  'C:/Users/Admin/patrol-evidence-platform/out/PatrolSafe by S4-win32-x64/resources/app/dist/patrol-schedules/patrol-schedules.module.js',
+  'C:/Users/Admin/patrol-evidence-platform/out/PatrolSafe by S4-win32-x64/resources/app/dist/patrol-images/patrol-images.module.js',
+  'C:/Users/Admin/patrol-evidence-platform/out/PatrolSafe by S4-win32-x64/resources/app/dist/patrol-slots/patrol-slots.module.js',
+  'C:/Users/Admin/patrol-evidence-platform/out/PatrolSafe by S4-win32-x64/resources/app/dist/patrol-alerts/patrol-alerts.module.js',
+  'C:/Users/Admin/patrol-evidence-platform/out/PatrolSafe by S4-win32-x64/resources/app/dist/collectors/collectors.module.js',
+  'C:/Users/Admin/patrol-evidence-platform/out/PatrolSafe by S4-win32-x64/resources/app/dist/compliance/compliance.module.js',
+  'C:/Users/Admin/patrol-evidence-platform/out/PatrolSafe by S4-win32-x64/resources/app/dist/incidents/incidents.module.js',
+  'C:/Users/Admin/patrol-evidence-platform/out/PatrolSafe by S4-win32-x64/resources/app/dist/dashboard/dashboard.module.js',
+  'C:/Users/Admin/patrol-evidence-platform/out/PatrolSafe by S4-win32-x64/resources/app/dist/ops/ops.module.js',
+  'C:/Users/Admin/patrol-evidence-platform/out/PatrolSafe by S4-win32-x64/resources/app/dist/licensing/licensing.module.js',
+  'C:/Users/Admin/patrol-evidence-platform/out/PatrolSafe by S4-win32-x64/resources/app/dist/desktop/desktop.module.js',
   appModulePath,
 ];
 
@@ -83,7 +83,7 @@ try {
 async function runDataSourceProbe() {
   const { DataSource } = require('typeorm');
   const { databaseConfig } = require(
-    'C:/Users/Admin/patrol-evidence-platform/out/Patrol Evidence Platform-win32-x64/resources/app/dist/config/database.config.js',
+    'C:/Users/Admin/patrol-evidence-platform/out/PatrolSafe by S4-win32-x64/resources/app/dist/config/database.config.js',
   );
 
   logLine('DATASOURCE_STEP_BEFORE_INIT');

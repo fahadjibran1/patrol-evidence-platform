@@ -77,7 +77,7 @@ export function CollectorPage(): JSX.Element {
                     ? 'Patrol images from mapped sources will appear on the dashboard and in Evidence.'
                     : view.isLinking
                       ? status.info
-                      : 'WhatsApp is not linked. Link it when you are ready; the rest of Patrol Evidence remains available.'}
+                    : 'WhatsApp is not linked. Link it when you are ready; the rest of PatrolSafe remains available.'}
                 </p>
               </div>
               <OpsStatusPill tone={view.opsTone} label={view.label} />
@@ -159,7 +159,7 @@ export function CollectorPage(): JSX.Element {
             <Card className="collector-qr-card collector-qr-hero">
               <h3>Scan to link WhatsApp</h3>
               <p className="collector-qr-hero-lead">
-                Scan only the current QR shown here in Patrol Evidence. On the patrol phone: WhatsApp → Linked devices → Link a device.
+                Scan only the current QR shown here in PatrolSafe. On the patrol phone: WhatsApp → Linked devices → Link a device.
               </p>
               <div className="collector-qr-hero-layout">
                 <div className="collector-qr-actions">

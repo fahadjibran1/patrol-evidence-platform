@@ -1,6 +1,6 @@
 # Customer Handover Guide
 
-This guide is for trial customers installing and using the Patrol Evidence Platform desktop app for the first time.
+This guide is for trial customers installing and using the PatrolSafe by S4 desktop app for the first time.
 
 ## What you will receive
 
@@ -33,7 +33,7 @@ Recommended:
 
 1. Run the Windows installer provided by your support contact.
 2. Complete the normal Windows install prompts.
-3. Open the Patrol Evidence Platform desktop app.
+3. Open the PatrolSafe desktop app.
 
 If Windows shows a warning, contact support before bypassing it.
 
@@ -273,7 +273,7 @@ What to do:
 
 ### Database missing
 
-This means PostgreSQL is reachable, but the Patrol Evidence database has not been created yet.
+This means PostgreSQL is reachable, but the PatrolSafe database has not been created yet.
 
 What to do:
 
@@ -282,7 +282,7 @@ What to do:
 
 ### App tables missing
 
-This means the database exists, but the Patrol Evidence tables are not ready yet.
+This means the database exists, but the PatrolSafe records are not ready yet.
 
 What to do:
 

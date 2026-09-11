@@ -1,5 +1,8 @@
 export const PRODUCT_INFO = {
-  productName: 'Patrol Evidence Platform',
+  productName: 'PatrolSafe by S4',
+  brandName: 'PatrolSafe',
+  endorsement: 'by S4',
+  tagline: 'Patrol evidence. Automatically organised.',
   version: '1.0.0',
   buildId: '2026.07.20.1',
   copyright: '© 2026 TechGuard Security Ltd',

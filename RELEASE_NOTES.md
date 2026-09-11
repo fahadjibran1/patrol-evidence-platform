@@ -2,7 +2,7 @@
 
 ## Version 0.1 Trial
 
-Patrol Evidence Platform `0.1` is the first trial-ready desktop release for customer evaluation.
+PatrolSafe by S4 `0.1` is the first trial-ready desktop release for customer evaluation.
 
 ### Included in this trial release
 

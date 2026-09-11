@@ -4,6 +4,8 @@ const { MakerSquirrel } = require('@electron-forge/maker-squirrel');
 const { MakerZIP } = require('@electron-forge/maker-zip');
 const { MakerDMG } = require('@electron-forge/maker-dmg');
 const packageMetadata = require('./package.json');
+const releaseDisplayName =
+  packageMetadata.displayName || packageMetadata.productName || 'PatrolSafe by S4';
 const { getPackagerRuntimeIgnoreBlocklist } = require('./scripts/lib/electron-runtime-manifest');
 const { ensureElectronRuntimeFiles } = require('./scripts/ensure-electron-runtime-files');
 const {
@@ -335,7 +337,7 @@ module.exports = {
     prune: true,
     // Windows packaging must copy workspace package contents instead of recreating npm symlinks.
     derefSymlinks: true,
-    name: packageMetadata.productName || 'Patrol Evidence Platform',
+    name: releaseDisplayName,
     executableName: 'PatrolEvidencePlatform',
     appVersion: packageMetadata.version,
     // Electron FILEVERSION / productVersion — must be 1–4 numeric components.
@@ -357,9 +359,9 @@ module.exports = {
     afterCopy: [pruneCopiedApp],
     win32metadata: {
       CompanyName: packageMetadata.companyName || 'TechGuard Security Ltd',
-      FileDescription: packageMetadata.productName || 'Patrol Evidence Platform',
+      FileDescription: releaseDisplayName,
       OriginalFilename: 'PatrolEvidencePlatform.exe',
-      ProductName: packageMetadata.productName || 'Patrol Evidence Platform',
+      ProductName: releaseDisplayName,
       InternalName: 'PatrolEvidencePlatform',
       LegalCopyright: packageMetadata.copyright || '© 2026 TechGuard Security Ltd',
     },
@@ -384,7 +386,7 @@ module.exports = {
   makers: [
     new MakerSquirrel({
       name: 'patrol_evidence_platform',
-      title: packageMetadata.productName || 'Patrol Evidence Platform',
+      title: releaseDisplayName,
       authors: packageMetadata.companyName || packageMetadata.author || 'TechGuard Security Ltd',
       owners: packageMetadata.companyName || packageMetadata.author || 'TechGuard Security Ltd',
       description: packageMetadata.description,

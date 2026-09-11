@@ -47,7 +47,7 @@ Register-ScheduledTask `
   -Trigger $TaskTrigger `
   -Principal $Principal `
   -Settings $Settings `
-  -Description "Starts the Patrol Evidence Platform backend on $Trigger." `
+  -Description "Starts the PatrolSafe local service on $Trigger." `
   -Force
 
 Write-Host "Scheduled task '$TaskName' installed."

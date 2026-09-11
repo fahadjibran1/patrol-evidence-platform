@@ -1,6 +1,6 @@
 # System Status — Release Freeze Snapshot
 
-**Product:** Patrol Evidence Platform  
+**Product:** PatrolSafe by S4
 **Freeze label:** `0.1.1` (see `package.json`)  
 **Snapshot date:** 2026-05-19  
 **Purpose:** Single source of truth for what is working and frozen at trial release.

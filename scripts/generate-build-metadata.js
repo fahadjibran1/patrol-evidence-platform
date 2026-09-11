@@ -80,7 +80,7 @@ function main() {
   fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`, 'utf8');
 
   const buildInfo = {
-    productName: packageJson.productName || 'Patrol Evidence Platform',
+    productName: packageJson.displayName || packageJson.productName || 'PatrolSafe by S4',
     version: packageJson.version,
     displayBuild,
     windowsBuild,

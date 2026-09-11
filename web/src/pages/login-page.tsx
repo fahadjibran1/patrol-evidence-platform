@@ -5,6 +5,7 @@ import { BuildLabel } from '../components/build-label';
 import { isDesktopApp } from '../lib/desktop';
 import { useAuth } from '../state/auth';
 import type { DesktopBootstrapStatus } from '../types';
+import { PRODUCT_INFO } from '../lib/product-info';
 
 export function LoginPage(): JSX.Element {
   const navigate = useNavigate();
@@ -109,10 +110,11 @@ export function LoginPage(): JSX.Element {
   return (
     <div className="login-shell">
       <div className="login-hero">
-        <p className="eyebrow">Pilot Ready</p>
-        <h1>Security patrol operations, in one place.</h1>
+        <p className="eyebrow">{PRODUCT_INFO.productName}</p>
+        <h1>{PRODUCT_INFO.tagline}</h1>
         <p>
-          Track sites, upload evidence, review incidents, and resolve alerts with a session-aware React dashboard.
+          Turn everyday patrol photos into secure, organised and searchable site records while your guards continue
+          using the WhatsApp workflow they already know.
         </p>
       </div>
 

@@ -50,9 +50,9 @@ export function buildActivationInstructions(input: {
   expiresAtDisplay: string;
 }): string {
   return [
-    'Patrol Evidence Platform activation',
+    'PatrolSafe by S4 activation',
     '',
-    '1. Open Patrol Evidence Platform.',
+    '1. Open PatrolSafe.',
     '2. Go to Licence.',
     '3. Select Activate licence.',
     '4. Open the supplied .lic file in a text editor.',

@@ -31,7 +31,7 @@ export function LoginPage(): JSX.Element {
   return (
     <div className="login-shell">
       <section className="login-hero">
-        <p className="eyebrow">Patrol Evidence</p>
+        <p className="eyebrow">PatrolSafe by S4</p>
         <h1>Customer Portal</h1>
         <p>Sign in to manage your organisation licences, team members, and downloads.</p>
       </section>

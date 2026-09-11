@@ -14,7 +14,7 @@ export interface BaseTemplateSections {
 }
 
 export function renderBaseTemplate(sections: BaseTemplateSections): RenderedNotificationTemplate {
-  const brand = sections.brandName?.trim() || 'Patrol Evidence Platform';
+  const brand = sections.brandName?.trim() || 'PatrolSafe by S4';
   const signature = sections.signatureName?.trim() || brand;
   const footer =
     sections.footerNote?.trim() ||

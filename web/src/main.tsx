@@ -63,7 +63,7 @@ class FrontendErrorBoundary extends React.Component<
       <div className="frontend-diagnostics-shell">
         <div className="frontend-diagnostics-card">
           <p className="eyebrow">Frontend Error</p>
-          <h1>Patrol Evidence Platform could not finish loading</h1>
+          <h1>PatrolSafe could not finish loading</h1>
           <p className="muted-text">
             The desktop screen started, but React hit an error before it could render the setup wizard or dashboard.
           </p>

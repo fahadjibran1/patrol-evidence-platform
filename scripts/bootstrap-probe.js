@@ -2,7 +2,7 @@ const { appendFileSync, mkdirSync } = require('fs');
 const path = require('path');
 const { ValidationPipe } = require('@nestjs/common');
 const { NestFactory } = require('@nestjs/core');
-const { AppModule } = require('C:/Users/Admin/patrol-evidence-platform/out/Patrol Evidence Platform-win32-x64/resources/app/dist/app.module.js');
+const { AppModule } = require('C:/Users/Admin/patrol-evidence-platform/out/PatrolSafe by S4-win32-x64/resources/app/dist/app.module.js');
 
 const probeLogPath =
   process.env.BOOTSTRAP_PROBE_LOG ||

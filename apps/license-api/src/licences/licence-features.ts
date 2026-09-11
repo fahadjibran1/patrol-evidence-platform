@@ -1,6 +1,6 @@
 /**
  * Administratively recorded TG1 feature identifiers.
- * These match product surfaces in the Patrol Evidence Platform.
+ * These match product surfaces in PatrolSafe by S4.
  * Phase 2 stores them on the signed payload; online enforcement is Phase 3.
  */
 export const SUPPORTED_LICENCE_FEATURES = [

@@ -97,6 +97,8 @@ a { color: inherit; text-decoration: none; }
 .sidebar { padding: 1.6rem; border-radius: 0 24px 24px 0; margin: 1rem 0 1rem 1rem; display: flex; flex-direction: column; gap: 1.5rem; }
 .sidebar h1 { margin: 0.2rem 0 0.6rem; font-size: 2rem; line-height: 0.95; }
 .sidebar-copy, .page-subtitle, .muted-text, .user-card p, .list-row p, .metric-card p { color: var(--text-soft); margin: 0; }
+.brand-endorsement { margin: -0.35rem 0 0.6rem; color: var(--accent-2); font-size: 0.82rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
+.sidebar-workspace { margin: 0.65rem 0 0; color: var(--text-soft); font-size: 0.82rem; }
 .sidebar-status-strip { display: inline-flex; align-items: center; gap: 0.5rem; margin-top: 0.9rem; padding: 0.45rem 0.7rem; border-radius: 999px; background: rgba(15, 23, 42, 0.85); border: 1px solid var(--border); color: #cbd5e1; font-size: 0.84rem; }
 .status-dot, .nav-indicator { width: 0.6rem; height: 0.6rem; border-radius: 999px; display: inline-flex; flex-shrink: 0; }
 .status-dot.ready, .nav-indicator.ready { background: var(--success); box-shadow: 0 0 0 4px rgba(15, 123, 95, 0.14); }

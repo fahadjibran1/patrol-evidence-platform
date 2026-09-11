@@ -1,6 +1,6 @@
 # Architecture
 
-Patrol Evidence Platform — commercial licensing SaaS stack.
+PatrolSafe by S4 — commercial licensing SaaS stack.
 
 ## Bounded contexts
 

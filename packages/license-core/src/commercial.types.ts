@@ -1,4 +1,4 @@
-/** Commercial offline licensing schemas for Patrol Evidence Platform. */
+/** Commercial offline licensing schemas for PatrolSafe by S4. */
 
 export type LicenceMode = 'trial' | 'commercial' | 'unlicensed' | 'invalid';
 
@@ -23,6 +23,7 @@ export interface LicenceFeatures {
 
 export const COMMERCIAL_LICENCE_PAYLOAD_VERSION = 1;
 export const LICENCE_REQUEST_FILE_VERSION = 1;
+// Compatibility identity embedded in already-issued signed TG1 licence payloads.
 export const LICENCE_PRODUCT_NAME = 'Patrol Evidence Platform';
 
 export const ALL_LICENCE_FEATURES: LicenceFeatures = {

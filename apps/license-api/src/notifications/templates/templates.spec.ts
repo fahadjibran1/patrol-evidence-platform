@@ -11,13 +11,13 @@ describe('notification templates', () => {
       headerTitle: 'Test notice',
       bodyHtml: '<p>Body HTML</p>',
       bodyText: 'Body text',
-      brandName: 'Patrol Evidence Platform',
+      brandName: 'PatrolSafe by S4',
       signatureName: 'Licence Administration',
       footerNote: 'Do not share keys.',
     });
 
     expect(rendered.subject).toBe('Test notice');
-    expect(rendered.html).toContain('Patrol Evidence Platform');
+    expect(rendered.html).toContain('PatrolSafe by S4');
     expect(rendered.html).toContain('Body HTML');
     expect(rendered.html).toContain('Licence Administration');
     expect(rendered.html).toContain('Do not share keys.');
@@ -35,7 +35,7 @@ describe('notification templates', () => {
       expiresAtDisplay: '20/07/2027',
       maxDevices: 2,
       featuresDisplay: 'Evidence Collector',
-      activationInstructions: '1. Open Patrol Evidence Platform.\n2. Activate licence.',
+      activationInstructions: '1. Open PatrolSafe.\n2. Activate licence.',
       supportEmail: 'support@techguards.co.uk',
       fromName: 'Patrol Licence Portal',
       attachmentFilename: 'PEL-2026-000001.lic',

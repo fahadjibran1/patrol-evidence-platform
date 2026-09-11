@@ -2,7 +2,7 @@
   "name": "@patrol/license-core",
   "version": "0.1.0",
   "private": true,
-  "description": "Shared TG1 Ed25519 licence payload and signing for Patrol Evidence Platform",
+  "description": "Shared TG1 Ed25519 licence payload and signing for PatrolSafe by S4",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {

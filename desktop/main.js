@@ -25,7 +25,7 @@ const {
 } = require('./packaged-runtime-paths');
 
 const PRODUCT_METADATA = {
-  productName: packageMetadata.productName || 'Patrol Evidence Platform',
+  productName: packageMetadata.displayName || packageMetadata.productName || 'PatrolSafe by S4',
   version: packageMetadata.version || '1.0.0',
   // Prefer human-readable display build; never show windowsBuild as the About build label.
   buildId:
@@ -1248,7 +1248,7 @@ function renderStartupFailurePage(title, reason, errorMessage) {
       <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Patrol Evidence Platform - Frontend Load Failed</title>
+        <title>PatrolSafe by S4 - Frontend Load Failed</title>
         <style>
           body {
             margin: 0;
@@ -1445,7 +1445,7 @@ function renderStartupFailurePage(title, reason, errorMessage) {
 
 function renderFrontendFailurePage(reason, errorMessage) {
   renderStartupFailurePage(
-    'Patrol Evidence Platform could not open the desktop screen',
+    'PatrolSafe could not open the desktop screen',
     reason,
     errorMessage,
   );
@@ -1458,7 +1458,7 @@ function renderBackendFailurePage(reason, errorMessage) {
   }
 
   renderStartupFailurePage(
-    'Patrol Evidence Platform could not start the local backend',
+    'PatrolSafe could not start the local service',
     reason,
     errorMessage,
   );
@@ -1478,7 +1478,7 @@ function renderBackendRestartingPage() {
       <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Patrol Evidence Platform - Restarting</title>
+        <title>PatrolSafe by S4 - Restarting</title>
         <style>
           body { margin: 0; font-family: "Segoe UI", Arial, sans-serif; background: #f4f6f8; color: #182430; }
           .wrap { max-width: 720px; margin: 48px auto; padding: 32px; }
@@ -1496,7 +1496,7 @@ function renderBackendRestartingPage() {
         <div class="wrap">
           <div class="card">
             <h1>Restarting local service…</h1>
-            <p id="status-line">Patrol Evidence Platform is applying your setup changes and restarting the local backend on port ${getBackendPort()}.</p>
+            <p id="status-line">PatrolSafe is applying your setup changes and restarting the local service on port ${getBackendPort()}.</p>
             <p>This can take up to ${Math.round(timeoutMs / 1000)} seconds during first-run setup. The desktop screen will reload automatically when ${escapeHtml(healthUrl)} responds.</p>
             <div id="recovery-panel" class="hidden">
               <p class="error">Restart is taking longer than expected. You can retry the health check or return to setup.</p>
@@ -1686,7 +1686,7 @@ async function checkPostgres(overrides = {}) {
         status,
         POSTGRES_ISSUE_CODES.READY,
         'Database ready',
-        'PostgreSQL is working and the Patrol Evidence tables are ready on this workstation.',
+        'PostgreSQL is working and the PatrolSafe site records are ready on this workstation.',
         'You can continue with setup or restart services if you recently changed settings.',
       );
       status.message = 'PostgreSQL is ready for the desktop workspace.';
@@ -1695,7 +1695,7 @@ async function checkPostgres(overrides = {}) {
         status,
         POSTGRES_ISSUE_CODES.MIGRATIONS_MISSING,
         'App tables missing',
-        'The database exists, but Patrol Evidence tables are still missing or incomplete.',
+        'The database exists, but PatrolSafe records are still missing or incomplete.',
         'Select Create DB and run migrations to prepare the required app tables.',
       );
       status.message = 'Database exists but still needs migrations.';
@@ -1782,7 +1782,7 @@ async function provisionPostgres(overrides = {}) {
         status,
         POSTGRES_ISSUE_CODES.READY,
         'Database ready',
-        'The workspace database and Patrol Evidence tables were prepared successfully.',
+        'The workspace database and PatrolSafe records were prepared successfully.',
         'You can continue with setup or restart services if you recently changed settings.',
       );
       status.message = 'PostgreSQL is ready and the patrol evidence schema has been prepared.';
@@ -1791,7 +1791,7 @@ async function provisionPostgres(overrides = {}) {
         status,
         POSTGRES_ISSUE_CODES.MIGRATIONS_MISSING,
         'App tables missing',
-        'The database was created, but Patrol Evidence tables still appear incomplete.',
+        'The database was created, but PatrolSafe records still appear incomplete.',
         'Retry Create DB and run migrations, then use Test Database to confirm the schema is ready.',
       );
       status.message = 'Database was created, but the schema check did not complete successfully.';
@@ -2059,7 +2059,7 @@ async function startBackend() {
       backendExitDetails = { code: 1, signal: null };
       notifyDesktopState();
       renderStartupFailurePage(
-        'Patrol Evidence Platform – Frontend Load Failed',
+        'PatrolSafe by S4 – Frontend Load Failed',
         'failed-to-start-local-backend',
         'Compiled backend entry file was not found. Run npm run build before launching the desktop application.',
       );
@@ -2382,6 +2382,7 @@ async function restartBackend() {
 async function createMainWindow() {
   isShowingFrontendFallback = false;
   mainWindow = new BrowserWindow({
+    title: PRODUCT_METADATA.productName,
     width: 1480,
     height: 980,
     minWidth: 1200,

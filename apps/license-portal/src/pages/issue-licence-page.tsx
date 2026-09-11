@@ -427,7 +427,7 @@ export function IssueLicencePage(): JSX.Element {
             licenceId={issueResult.licence.id}
             humanLicenseId={issueResult.licence.licenseId}
             defaultRecipient={selectedCustomer?.email ?? issueResult.licence.customerEmail ?? ''}
-            defaultSubject={`Your Patrol Evidence Platform Licence – ${issueResult.licence.licenseId}`}
+            defaultSubject={`Your PatrolSafe Licence – ${issueResult.licence.licenseId}`}
             accessToken={accessToken}
             source="issue-success"
             fullLicenseKey={key}

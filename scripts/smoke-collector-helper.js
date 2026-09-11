@@ -201,7 +201,7 @@ async function bootstrapWorkspace(apiBaseUrl) {
       adminLastName: SMOKE_ADMIN.lastName,
       adminEmail: SMOKE_ADMIN.email,
       adminPassword: SMOKE_ADMIN.password,
-      workspaceName: 'Patrol Evidence Workspace',
+      workspaceName: 'PatrolSafe Workspace',
       licenseKey: 'TG-TRIAL-DEV',
       autoStartCollector: true,
       autoLaunchApp: false,

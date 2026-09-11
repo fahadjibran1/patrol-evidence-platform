@@ -8,6 +8,7 @@ import { useMonitoring } from '../state/monitoring';
 import type { DesktopBootstrapStatus, UserRole } from '../types';
 import { AboutButton } from './about-dialog';
 import { BuildLabel } from './build-label';
+import { PRODUCT_INFO } from '../lib/product-info';
 
 const navItems: Array<{ to: string; label: string; roles: UserRole[] }> = [
   { to: '/', label: 'Dashboard', roles: ['ADMIN', 'COMPANY_ADMIN'] },
@@ -55,7 +56,7 @@ export function AppLayout(): JSX.Element {
   }, [token, user?.role]);
 
   const workspaceLabel = useMemo(() => {
-    return bootstrapStatus?.workspaceName || bootstrapStatus?.companyName || 'Patrol Evidence Workspace';
+    return bootstrapStatus?.workspaceName || bootstrapStatus?.companyName || 'PatrolSafe Workspace';
   }, [bootstrapStatus?.companyName, bootstrapStatus?.workspaceName]);
 
   const licenceSummary = useMemo(() => {
@@ -91,9 +92,10 @@ export function AppLayout(): JSX.Element {
     <div className="shell">
       <aside className="sidebar">
         <div>
-          <p className="eyebrow">SOC · Patrol</p>
-          <h1>Command Center</h1>
-          <p className="sidebar-copy">{workspaceLabel}</p>
+          <h1>{PRODUCT_INFO.brandName}</h1>
+          <p className="brand-endorsement">{PRODUCT_INFO.endorsement}</p>
+          <p className="sidebar-copy">{PRODUCT_INFO.tagline}</p>
+          <p className="sidebar-workspace">{workspaceLabel}</p>
           {user?.role !== 'GUARD' ? (
             <div className="sidebar-status-strip">
               <span className={`status-dot ${sidebarDotClass(view.tone)}`} />

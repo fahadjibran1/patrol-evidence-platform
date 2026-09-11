@@ -1,6 +1,10 @@
-# Patrol Evidence Platform
+# PatrolSafe by S4
 
-Desktop-first patrol evidence software built on a local NestJS backend, an automatic local SQLite database for desktop trial installs, optional PostgreSQL for advanced deployments, and a React operations UI.
+**Patrol evidence. Automatically organised.**
+
+PatrolSafe turns everyday patrol photos into secure, organised and searchable site records while guards continue using the WhatsApp workflow they already know.
+
+It is desktop-first software built on a local NestJS backend, an automatic local SQLite database for desktop trial installs, optional PostgreSQL for advanced deployments, and a React operations UI.
 
 This repository supports:
 
@@ -10,7 +14,7 @@ This repository supports:
 
 ## What This Product Does
 
-The Patrol Evidence Platform is intended for security companies that want to:
+PatrolSafe is intended for security companies that want to:
 
 - connect a patrol WhatsApp account
 - map WhatsApp groups to sites
@@ -315,7 +319,7 @@ On Windows, this command now uses a temporary `subst` drive automatically before
 Portable desktop app output:
 
 ```text
-out/Patrol Evidence Platform-win32-x64/
+out/PatrolSafe by S4-win32-x64/
 ```
 
 This is the unpacked portable app folder. It is useful for internal testing or copying the app manually, but it is not the Windows installer.
@@ -370,7 +374,7 @@ Difference between the two outputs:
 Portable trial package recommendation:
 
 - if you need the fastest customer handover, send the unpacked portable app folder from `out/` after you have verified it runs locally
-- if you want a single-file portable customer package, send `out\portable\Patrol Evidence Platform-win32-x64.zip`
+- if you want a single-file portable customer package, send `out\portable\PatrolSafe by S4-win32-x64.zip`
 - if you need the Windows installer, send `PatrolEvidencePlatformSetup.exe` from `out/make/squirrel.windows/x64/`
 - do not send old `Setup.exe` files from earlier builds because Squirrel can reuse the same version unless you rebuild cleanly
 
@@ -435,7 +439,7 @@ Debug mode does the following:
 
 Recommended clean-machine verification steps:
 
-1. Uninstall any old Patrol Evidence Platform install first
+1. Uninstall any older PatrolSafe or Patrol Evidence Platform install first
 2. Delete:
 
 ```text
@@ -453,7 +457,7 @@ npm run desktop:verify-package
 4. Launch the unpacked portable app first from:
 
 ```text
-out\Patrol Evidence Platform-win32-x64\PatrolEvidencePlatform.exe
+out\PatrolSafe by S4-win32-x64\PatrolEvidencePlatform.exe
 ```
 
 5. Confirm `desktop-runtime.log` shows:
@@ -486,6 +490,8 @@ Desktop runtime data is stored under:
 AppData/Roaming/Patrol Evidence Platform/
 ```
 
+This legacy-compatible data directory name is intentionally retained so upgrades preserve existing sites, evidence, licences, and WhatsApp sessions.
+
 Typical files and folders:
 
 - `workspace-config.json`
@@ -496,7 +502,7 @@ Typical files and folders:
 Files to send to a trial customer:
 
 - `PatrolEvidencePlatformSetup.exe` for installer delivery
-- or the unpacked portable app folder from `out\Patrol Evidence Platform-win32-x64\`
+- or the unpacked portable app folder from `out\PatrolSafe by S4-win32-x64\`
 - optionally [Start-PatrolEvidence-Debug.bat](C:\Users\Admin\patrol-evidence-platform\scripts\windows\Start-PatrolEvidence-Debug.bat) beside the portable app for support-assisted diagnostics
 - plus any customer handover notes from [CUSTOMER_HANDOVER_GUIDE.md](C:\Users\Admin\patrol-evidence-platform\CUSTOMER_HANDOVER_GUIDE.md)
 

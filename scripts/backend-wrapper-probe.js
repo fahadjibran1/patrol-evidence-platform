@@ -12,7 +12,7 @@ process.on('unhandledRejection', (reason) => {
 
 try {
   console.log('BACKEND_WRAPPER_BEFORE_REQUIRE');
-  require('C:/Users/Admin/patrol-evidence-platform/out/Patrol Evidence Platform-win32-x64/resources/app/dist/main.js');
+  require('C:/Users/Admin/patrol-evidence-platform/out/PatrolSafe by S4-win32-x64/resources/app/dist/main.js');
   console.log('BACKEND_WRAPPER_AFTER_REQUIRE');
 } catch (error) {
   console.error('BACKEND_WRAPPER_REQUIRE_ERROR');

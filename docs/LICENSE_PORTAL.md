@@ -1,6 +1,6 @@
 # Licence Administration Portal (Phase 2)
 
-Private web portal for issuing and managing TG1 offline licences. This is separate from the desktop Patrol Evidence Platform application.
+Private web portal for issuing and managing TG1 offline licences. This is separate from the desktop PatrolSafe application.
 
 ## Architecture
 

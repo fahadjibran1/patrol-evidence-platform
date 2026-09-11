@@ -165,7 +165,7 @@ export function DesktopSetupPage(): JSX.Element {
   const [now, setNow] = useState(() => Date.now());
   const [qrRenderedAt, setQrRenderedAt] = useState<string | null>(null);
   const [setupForm, setSetupForm] = useState({
-    workspaceName: 'Patrol Evidence Workspace',
+    workspaceName: 'PatrolSafe Workspace',
     companyName: 'Tech Guards Security',
     storageRootPath: '',
     adminFirstName: 'Local',
@@ -975,7 +975,7 @@ export function DesktopSetupPage(): JSX.Element {
     return (
       <EmptyState
         title="Desktop setup is only available in the installed app"
-        description="Open the Patrol Evidence Platform desktop app to run first-launch setup."
+        description="Open the PatrolSafe desktop app to run first-launch setup."
       />
     );
   }

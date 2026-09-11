@@ -1,6 +1,10 @@
 {
   "name": "patrol-evidence-platform",
   "productName": "Patrol Evidence Platform",
+  "displayName": "PatrolSafe by S4",
+  "brandName": "PatrolSafe",
+  "endorsement": "by S4",
+  "tagline": "Patrol evidence. Automatically organised.",
   "version": "1.0.0",
   "buildId": "2026.07.29.01.03.11",
   "private": true,
@@ -9,7 +13,7 @@
     "apps/*",
     "web"
   ],
-  "description": "Security patrol evidence and monitoring platform",
+  "description": "Securely captures and organises patrol images from approved WhatsApp groups as searchable site records",
   "author": "TechGuard Security Ltd",
   "companyName": "TechGuard Security Ltd",
   "copyright": "© 2026 TechGuard Security Ltd",

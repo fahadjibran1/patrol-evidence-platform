@@ -515,7 +515,7 @@ export function LicenceDetailPage(): JSX.Element {
           licenceId={licence.id}
           humanLicenseId={licence.licenseId}
           defaultRecipient={licence.customerEmail ?? licence.payloadSummary?.customerEmail ?? ''}
-          defaultSubject={`Your Patrol Evidence Platform Licence – ${licence.licenseId}`}
+          defaultSubject={`Your PatrolSafe Licence – ${licence.licenseId}`}
           accessToken={accessToken}
           source="licence-detail"
           requirePassword

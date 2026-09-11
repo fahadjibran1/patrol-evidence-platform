@@ -98,7 +98,7 @@ export async function apiRequest<T>(
   } catch (error) {
     if (timedSignal.didTimeout()) {
       throw new ApiError(
-        `The local Patrol Evidence service did not respond within ${LOCAL_API_TIMEOUT_MS / 1000} seconds. Retry after the desktop backend is ready.`,
+        `The local PatrolSafe service did not respond within ${LOCAL_API_TIMEOUT_MS / 1000} seconds. Retry after the desktop service is ready.`,
         408,
       );
     }

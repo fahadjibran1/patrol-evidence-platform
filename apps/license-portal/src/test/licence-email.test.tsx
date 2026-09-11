@@ -90,7 +90,7 @@ async function reachSuccessScreen(user: ReturnType<typeof userEvent.setup>) {
       return mockJson({
         success: true,
         recipient: 'billing@abc.security',
-        subject: 'Your Patrol Evidence Platform Licence – PEL-2026-000001',
+        subject: 'Your PatrolSafe Licence – PEL-2026-000001',
         attachmentFilename: 'PEL-2026-000001.lic',
       });
     }
@@ -136,7 +136,7 @@ function licenceDetailPayload() {
         notificationType: 'LICENSE_ISSUED',
         provider: 'EMAIL',
         recipient: 'billing@abc.security',
-        subject: 'Your Patrol Evidence Platform Licence – PEL-2026-000001',
+        subject: 'Your PatrolSafe Licence – PEL-2026-000001',
         status: 'SENT',
         attempts: 1,
         sentAt: '2026-07-21T10:00:00.000Z',
@@ -149,7 +149,7 @@ function licenceDetailPayload() {
         notificationType: 'LICENSE_ISSUED',
         provider: 'EMAIL',
         recipient: 'billing@abc.security',
-        subject: 'Your Patrol Evidence Platform Licence – PEL-2026-000001',
+        subject: 'Your PatrolSafe Licence – PEL-2026-000001',
         status: 'FAILED',
         attempts: 1,
         sentAt: null,
@@ -187,7 +187,7 @@ describe('issue success email licence', () => {
     expect(await screen.findByRole('heading', { name: 'Email licence' })).toBeInTheDocument();
     expect(screen.getByDisplayValue('billing@abc.security')).toBeInTheDocument();
     expect(
-      screen.getByDisplayValue('Your Patrol Evidence Platform Licence – PEL-2026-000001'),
+      screen.getByDisplayValue('Your PatrolSafe Licence – PEL-2026-000001'),
     ).toBeInTheDocument();
     expect(screen.getByText('PEL-2026-000001.lic')).toBeInTheDocument();
 
@@ -216,7 +216,7 @@ describe('issue success email licence', () => {
         return mockJson({
           success: false,
           recipient: 'billing@abc.security',
-          subject: 'Your Patrol Evidence Platform Licence – PEL-2026-000001',
+          subject: 'Your PatrolSafe Licence – PEL-2026-000001',
           attachmentFilename: 'PEL-2026-000001.lic',
           errorMessage: 'SMTP is not configured',
           errorCode: 'NOTIFICATION_SMTP_NOT_CONFIGURED',
@@ -258,7 +258,7 @@ describe('licence detail email and notification history', () => {
         return mockJson({
           success: true,
           recipient: 'billing@abc.security',
-          subject: 'Your Patrol Evidence Platform Licence – PEL-2026-000001',
+          subject: 'Your PatrolSafe Licence – PEL-2026-000001',
           attachmentFilename: 'PEL-2026-000001.lic',
         });
       }
@@ -319,7 +319,7 @@ describe('licence detail email and notification history', () => {
             licenceId="lic-1"
             humanLicenseId="PEL-2026-000001"
             defaultRecipient="billing@abc.security"
-            defaultSubject="Your Patrol Evidence Platform Licence – PEL-2026-000001"
+            defaultSubject="Your PatrolSafe Licence – PEL-2026-000001"
             accessToken="access-token"
             source="licence-detail"
             requirePassword

@@ -25,7 +25,7 @@ describe('user-initiated WhatsApp linking contract', () => {
     expect(collectorPage).toContain('Cancel linking');
     expect(collectorPage).toContain('onClick={() => void start()}');
     expect(collectorPage).toContain('onClick={() => void stop()}');
-    expect(collectorPage).toContain('Scan only the current QR shown here in Patrol Evidence.');
+    expect(collectorPage).toContain('Scan only the current QR shown here in PatrolSafe.');
   });
 
   it('never hydrates a prior QR and accepts QR only from current helper status events', () => {

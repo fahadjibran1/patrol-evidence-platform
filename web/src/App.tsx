@@ -247,7 +247,7 @@ export function App(): JSX.Element {
   if (startupTimeoutReached && (isLoading || isBootstrapLoading)) {
     return (
       <StartupRecoveryPage
-        title="Starting Patrol Evidence Platform is taking longer than expected"
+        title="Starting PatrolSafe is taking longer than expected"
         reason="The desktop app is still waiting for local startup checks to complete."
         status={frontendBootStatus}
       />
@@ -323,7 +323,7 @@ function StartupLoadingPage({ status }: { status: FrontendBootStatus }): JSX.Ele
     <div className="frontend-diagnostics-shell">
       <div className="frontend-diagnostics-card">
         <p className="eyebrow">Desktop Startup</p>
-        <h1>Starting Patrol Evidence Platform...</h1>
+        <h1>Starting PatrolSafe...</h1>
         <p className="muted-text">
           The desktop screen is loading local services and checking the workstation status.
         </p>
@@ -348,7 +348,7 @@ function StartupRecoveryPage({
         <p className="eyebrow">Startup Recovery</p>
         <h1>{title}</h1>
         <p className="muted-text">
-          Patrol Evidence Platform did not move past startup normally, so this recovery screen is shown instead of leaving the desktop window on the background.
+          PatrolSafe did not move past startup normally, so this recovery screen is shown instead of leaving the desktop window on the background.
         </p>
         <div className="frontend-diagnostics-log">
           <strong>Last startup issue</strong>
