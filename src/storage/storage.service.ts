@@ -6,6 +6,17 @@ import { createHash, randomUUID } from 'crypto';
 const sharp = require('sharp') as typeof import('sharp').default;
 import { getPatrolTimeParts, patrolTimeZone } from '@/common/utils/patrol-time.util';
 
+const STORAGE_HEADROOM_BYTES = 64 * 1024 * 1024;
+
+export function normalizeStorageWriteError(error: unknown): Error {
+  if ((error as NodeJS.ErrnoException)?.code === 'ENOSPC') {
+    const storageError = new Error('Storage full or insufficient space. Free disk space before PatrolSafe can save more evidence.');
+    (storageError as NodeJS.ErrnoException).code = 'PATROLSAFE_INSUFFICIENT_SPACE';
+    return storageError;
+  }
+  return error instanceof Error ? error : new Error(String(error));
+}
+
 export interface StoredFileResult {
   storedFileName: string;
   filePath: string;
@@ -67,9 +78,15 @@ export class StorageService {
     this.assertContained(targetDir);
     this.assertContained(filePath);
 
-    await fs.mkdir(targetDir, { recursive: true });
+    try {
+      await fs.mkdir(targetDir, { recursive: true });
+    } catch (error) {
+      throw normalizeStorageWriteError(error);
+    }
+    await this.assertStorageHeadroom(params.buffer.length);
 
     const storedBuffer = await this.stampEvidenceImage(params);
+    await this.assertStorageHeadroom(storedBuffer.length);
     const contentSha256 = createHash('sha256').update(storedBuffer).digest('hex');
     const tempPath = path.join(targetDir, `.staging-${randomUUID()}.tmp`);
     this.assertContained(tempPath);
@@ -81,7 +98,7 @@ export class StorageService {
       }
     } catch (error) {
       await fs.unlink(tempPath).catch(() => undefined);
-      throw error;
+      throw normalizeStorageWriteError(error);
     }
 
     return {
@@ -100,7 +117,11 @@ export class StorageService {
     try { await fs.access(staged.filePath); throw new Error('Evidence destination already exists'); } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     }
-    await fs.rename(staged.tempPath, staged.filePath);
+    try {
+      await fs.rename(staged.tempPath, staged.filePath);
+    } catch (error) {
+      throw normalizeStorageWriteError(error);
+    }
   }
 
   async removeOwnedFile(filePath: string): Promise<void> {
@@ -116,6 +137,20 @@ export class StorageService {
 
   private assertContained(candidate: string): void {
     if (!this.isContained(candidate)) throw new Error('Evidence path escapes configured storage root');
+  }
+
+  private async assertStorageHeadroom(payloadBytes: number): Promise<void> {
+    try {
+      const stats = await fs.statfs(this.rootPath);
+      const availableBytes = Number(stats.bavail) * Number(stats.bsize);
+      if (availableBytes < payloadBytes + STORAGE_HEADROOM_BYTES) {
+        const error = new Error('Insufficient storage capacity');
+        (error as NodeJS.ErrnoException).code = 'ENOSPC';
+        throw error;
+      }
+    } catch (error) {
+      throw normalizeStorageWriteError(error);
+    }
   }
 
   private async stampEvidenceImage(params: {

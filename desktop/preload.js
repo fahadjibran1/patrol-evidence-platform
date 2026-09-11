@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld('desktopBridge', {
   beginAdminRecovery: () => ipcRenderer.invoke('desktop:begin-admin-recovery'),
   getState: () => ipcRenderer.invoke('desktop:get-state'),
   chooseStoragePath: () => ipcRenderer.invoke('desktop:choose-storage-path'),
+  createDataBackup: () => ipcRenderer.invoke('desktop:create-data-backup'),
+  restoreDataBackup: () => ipcRenderer.invoke('desktop:restore-data-backup'),
   saveConfig: (partialConfig) => ipcRenderer.invoke('desktop:save-config', partialConfig),
   checkPostgres: (partialConfig) => ipcRenderer.invoke('desktop:postgres-check', partialConfig),
   provisionPostgres: (partialConfig) => ipcRenderer.invoke('desktop:postgres-provision', partialConfig),

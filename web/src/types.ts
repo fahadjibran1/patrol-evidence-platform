@@ -403,6 +403,24 @@ export interface DesktopPostgresConfig {
   dbName: string;
 }
 
+export interface DesktopBackupResult {
+  backupPath: string;
+  createdAt: string;
+  schemaVersion: number;
+  evidenceFileCount: number;
+  totalBytes: number;
+  localAuthPortability: 'SAME_MACHINE_ONLY';
+}
+
+export interface DesktopRestoreResult {
+  restored: true;
+  sameMachine: boolean;
+  requiresWhatsAppRelink: boolean;
+  recoveryBackupPath: string;
+  schemaVersion: number;
+  evidenceFileCount: number;
+}
+
 export interface DesktopState {
   isDesktop: boolean;
   apiBaseUrl: string;

@@ -29,6 +29,7 @@ describe('databaseConfig', () => {
 
     const config = databaseConfig();
     expect(config.type).toBe('better-sqlite3');
+    expect(config.synchronize).toBe(false);
     expect(resolveSqliteDatabasePath()).toContain(path.join('data', 'patrol-evidence.db'));
   });
 

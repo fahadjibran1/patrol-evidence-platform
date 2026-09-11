@@ -1,7 +1,13 @@
 ﻿import { useEffect, useState } from 'react';
 import QRCode from 'react-qr-code';
 import { apiRequest } from '../lib/api';
-import { getDesktopState, openDesktopPath, saveDesktopConfig } from '../lib/desktop';
+import {
+  createDesktopDataBackup,
+  getDesktopState,
+  openDesktopPath,
+  restoreDesktopDataBackup,
+  saveDesktopConfig,
+} from '../lib/desktop';
 import { formatMonitoringStateUpdateTime, monitoringHelperStateLabel } from '../lib/monitoring-state';
 import { MonitoringStatusBar } from '../components/monitoring-status-bar';
 import { useAuth } from '../state/auth';
@@ -40,6 +46,7 @@ export function CollectorDiagnosticsPage(): JSX.Element {
   const [browserPreference, setBrowserPreference] = useState<'chrome' | 'edge' | 'auto'>('chrome');
   const [now, setNow] = useState(() => Date.now());
   const [qrRenderedAt, setQrRenderedAt] = useState<string | null>(null);
+  const [dataProtectionMessage, setDataProtectionMessage] = useState<string | null>(null);
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -175,6 +182,45 @@ export function CollectorDiagnosticsPage(): JSX.Element {
       await refresh();
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : 'Unable to clear browser path');
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function createDataBackup(): Promise<void> {
+    setIsBusy(true);
+    setError(null);
+    setDataProtectionMessage(null);
+    try {
+      const result = await createDesktopDataBackup();
+      if (result) {
+        setDataProtectionMessage(
+          `Verified backup created with ${result.evidenceFileCount} evidence files. WhatsApp session data is restorable on this workstation only.`,
+        );
+      }
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : 'Unable to create the PatrolSafe backup');
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function restoreDataBackup(): Promise<void> {
+    setIsBusy(true);
+    setError(null);
+    setDataProtectionMessage(null);
+    try {
+      const result = await restoreDesktopDataBackup();
+      if (result) {
+        setDataProtectionMessage(
+          result.requiresWhatsAppRelink
+            ? `Backup restored with ${result.evidenceFileCount} evidence files. Relink WhatsApp on this workstation before monitoring resumes.`
+            : `Backup restored with ${result.evidenceFileCount} evidence files. PatrolSafe has restarted its local service.`,
+        );
+        await refresh();
+      }
+    } catch (actionError) {
+      setError(actionError instanceof Error ? actionError.message : 'Unable to restore the PatrolSafe backup');
     } finally {
       setIsBusy(false);
     }
@@ -494,6 +540,27 @@ export function CollectorDiagnosticsPage(): JSX.Element {
                       <strong>{bootstrapStatus?.settingsApplied === false ? 'No' : 'Yes'}</strong>
                     </div>
                   </div>
+                </Card>
+
+                <Card className="wizard-card">
+                  <h3>Backup and recovery</h3>
+                  <p className="muted-text">
+                    Create a verified backup of your PatrolSafe database, site records, evidence files and workspace
+                    settings. Restoring replaces the current data only after the backup has passed integrity checks.
+                  </p>
+                  <p className="muted-text">
+                    WhatsApp connection state can be restored on this same workstation. On a replacement PC, your
+                    sites, mappings and evidence are restored, then WhatsApp must be relinked.
+                  </p>
+                  <div className="button-row">
+                    <button type="button" className="secondary-button" disabled={isBusy} onClick={() => void createDataBackup()}>
+                      Backup PatrolSafe data
+                    </button>
+                    <button type="button" className="secondary-button" disabled={isBusy} onClick={() => void restoreDataBackup()}>
+                      Restore PatrolSafe backup
+                    </button>
+                  </div>
+                  {dataProtectionMessage ? <p className="success-text">{dataProtectionMessage}</p> : null}
                 </Card>
 
                 <Card className="wizard-card">

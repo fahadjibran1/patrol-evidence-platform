@@ -3,7 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { createHash } from 'crypto';
 const sharp = require('sharp') as typeof import('sharp').default;
-import { StorageService } from './storage.service';
+import { normalizeStorageWriteError, StorageService } from './storage.service';
 
 describe('StorageService', () => {
   let rootPath: string;
@@ -112,6 +112,26 @@ describe('StorageService', () => {
       buffer: Buffer.alloc(25 * 1024 * 1024 + 1),
       mimeType: 'image/jpeg',
     })).rejects.toThrow('Evidence image exceeds the 25MB limit');
+  });
+
+  it('returns customer-safe guidance for disk-full writes', () => {
+    const error = normalizeStorageWriteError(Object.assign(new Error('no space'), { code: 'ENOSPC' }));
+    expect(error.message).toContain('Storage full or insufficient space');
+    expect((error as NodeJS.ErrnoException).code).toBe('PATROLSAFE_INSUFFICIENT_SPACE');
+  });
+
+  it('fails closed before image processing when evidence storage lacks headroom', async () => {
+    const statfs = jest.spyOn(fs, 'statfs').mockResolvedValue({ bavail: 0, bsize: 4096 } as never);
+    try {
+      await expect(service.savePatrolEvidence({
+        siteCode: 'SWI01',
+        timestamp: new Date('2026-04-04T16:03:22.000Z'),
+        buffer: Buffer.from('not-processed'),
+        mimeType: 'image/jpeg',
+      })).rejects.toThrow('Storage full or insufficient space');
+    } finally {
+      statfs.mockRestore();
+    }
   });
 
   it('gives simultaneous messages distinct final files', async () => {

@@ -1,4 +1,4 @@
-import type { DesktopPostgresConfig, DesktopPostgresStatus, DesktopState, DesktopWorkspaceConfig } from '../types';
+import type { DesktopBackupResult, DesktopPostgresConfig, DesktopPostgresStatus, DesktopRestoreResult, DesktopState, DesktopWorkspaceConfig } from '../types';
 
 declare global {
   interface Window {
@@ -9,6 +9,8 @@ declare global {
       beginAdminRecovery: () => Promise<string | null>;
       getState: () => Promise<DesktopState>;
       chooseStoragePath: () => Promise<string | null>;
+      createDataBackup: () => Promise<DesktopBackupResult | null>;
+      restoreDataBackup: () => Promise<DesktopRestoreResult | null>;
       saveConfig: (partialConfig: Partial<DesktopWorkspaceConfig>) => Promise<DesktopState>;
       checkPostgres: (partialConfig: DesktopPostgresConfig) => Promise<DesktopPostgresStatus>;
       provisionPostgres: (partialConfig: DesktopPostgresConfig) => Promise<DesktopPostgresStatus>;
@@ -61,6 +63,14 @@ export async function chooseDesktopStoragePath(): Promise<string | null> {
   }
 
   return window.desktopBridge.chooseStoragePath();
+}
+
+export async function createDesktopDataBackup(): Promise<DesktopBackupResult | null> {
+  return window.desktopBridge?.createDataBackup?.() ?? null;
+}
+
+export async function restoreDesktopDataBackup(): Promise<DesktopRestoreResult | null> {
+  return window.desktopBridge?.restoreDataBackup?.() ?? null;
 }
 
 export async function saveDesktopConfig(partialConfig: Partial<DesktopWorkspaceConfig>): Promise<DesktopState | null> {

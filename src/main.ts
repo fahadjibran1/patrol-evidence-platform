@@ -8,6 +8,7 @@ import { AppModule } from './app.module';
 import { validateSqliteNativeModule } from './config/validate-sqlite-native';
 import { resolveBackendListenConfig } from './config/backend-listen.config';
 import { createPatrolSafeCorsOriginValidator, DESKTOP_API_TOKEN_HEADER } from './config/cors-origin.util';
+import { resolveDatabaseType, resolveSqliteDatabasePath } from './config/database-settings.util';
 
 /** Binary patrol images up to 25MB need ~34MB+ as base64 inside JSON. */
 const PATROL_IMAGE_MAX_BYTES = 25 * 1024 * 1024;
@@ -61,6 +62,28 @@ process.on('unhandledRejection', (reason) => {
 
 async function bootstrap(): Promise<void> {
   validateSqliteNativeModule();
+  if (resolveDatabaseType() === 'sqlite') {
+    // Keep direct backend launches fail-closed too. Packaged Electron performs
+    // the same idempotent preparation before spawning this process.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { prepareSqliteDatabase } = require(path.resolve(__dirname, '..', 'desktop', 'data-durability.js')) as {
+      prepareSqliteDatabase: (options: Record<string, unknown>) => {
+        schemaVersion: number;
+        applied: string[];
+      };
+    };
+    const sqlitePath = resolveSqliteDatabasePath();
+    const migration = prepareSqliteDatabase({
+      databasePath: sqlitePath,
+      preUpgradeBackupRoot: path.join(path.dirname(sqlitePath), 'pre-upgrade-backups'),
+      appVersion: process.env.PATROLSAFE_APP_VERSION ?? 'development',
+      buildId: process.env.PATROLSAFE_BUILD_ID ?? 'development',
+    });
+    writeBackendRuntimeLog(
+      'sqlite-schema-ready',
+      `version=${migration.schemaVersion} applied=${migration.applied.join(',') || 'none'}`,
+    );
+  }
   writeBackendRuntimeLog(
     'bootstrap:start',
     `port=${process.env.PORT ?? 3000} cwd=${process.cwd()} dbType=${process.env.DB_TYPE ?? 'unset'} desktopConfig=${

@@ -44,7 +44,9 @@ export function databaseConfig(): DataSourceOptions {
       type: 'better-sqlite3',
       database: sqlitePath,
       entities: databaseEntities,
-      synchronize: true,
+      // The desktop entry point applies the explicit, versioned SQLite
+      // migrations before Nest/TypeORM is allowed to open the database.
+      synchronize: false,
       logging: false,
     };
   }

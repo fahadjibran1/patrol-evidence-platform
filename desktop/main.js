@@ -26,6 +26,12 @@ const {
   validateSecureStoreKey,
   validateSecureStoreValue,
 } = require('./security-policy');
+const {
+  createPatrolSafeBackup,
+  prepareSqliteDatabase,
+  restorePatrolSafeBackup,
+  verifyPatrolSafeBackup,
+} = require('./data-durability');
 
 const packageMetadata = require('../package.json');
 const {
@@ -1688,6 +1694,191 @@ async function beginAdminRecovery() {
   return token;
 }
 
+function requestAuthenticatedDesktopUser(accessToken) {
+  const target = new URL('/auth/me', getApiBaseUrl());
+  return new Promise((resolve, reject) => {
+    const request = http.request(
+      target,
+      {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'x-patrolsafe-desktop-token': getDesktopApiToken(),
+        },
+      },
+      (response) => {
+        let body = '';
+        response.setEncoding('utf8');
+        response.on('data', (chunk) => {
+          body += chunk;
+        });
+        response.on('end', () => {
+          if (!response.statusCode || response.statusCode < 200 || response.statusCode >= 300) {
+            reject(new Error('Administrator sign-in is required for backup and restore.'));
+            return;
+          }
+          try {
+            resolve(JSON.parse(body));
+          } catch {
+            reject(new Error('PatrolSafe could not verify the current administrator session.'));
+          }
+        });
+      },
+    );
+    request.setTimeout(10_000, () => request.destroy(new Error('Administrator verification timed out.')));
+    request.on('error', reject);
+    request.end();
+  });
+}
+
+async function assertDataProtectionAdministrator(options = {}) {
+  const rawSession = readSecureStoreValue('desktop-auth-session');
+  if (!rawSession) throw new Error('Sign in as a company administrator before backing up or restoring data.');
+  let session;
+  try {
+    session = JSON.parse(rawSession);
+  } catch {
+    throw new Error('The saved administrator session is unavailable. Sign in again.');
+  }
+  const role = String(session?.user?.role || '').toUpperCase();
+  if (!['ADMIN', 'COMPANY_ADMIN'].includes(role) || !String(session?.accessToken || '').trim()) {
+    throw new Error('Company administrator access is required for backup and restore.');
+  }
+  let verified;
+  try {
+    verified = await requestAuthenticatedDesktopUser(String(session.accessToken));
+  } catch (error) {
+    // A corrupt database can prevent the backend from starting. Restore remains
+    // available only from the trusted Electron frame, with a DPAPI-protected
+    // previously authenticated administrator session and native confirmation.
+    if (options.allowBackendUnavailable !== true || !['stopped', 'error'].includes(backendState.status)) {
+      throw error;
+    }
+    appendDesktopLog('DATA_RESTORE_OFFLINE_ADMIN_VERIFICATION', `backend=${backendState.status}`);
+    return session.user;
+  }
+  const verifiedRole = String(verified?.role || '').toUpperCase();
+  if (!['ADMIN', 'COMPANY_ADMIN'].includes(verifiedRole)) {
+    throw new Error('Company administrator access is required for backup and restore.');
+  }
+  return verified;
+}
+
+function getDataProtectionPaths() {
+  const runtimeValues = getConfiguredRuntimeValues();
+  return {
+    databasePath: runtimeValues.sqliteDbPath,
+    evidenceRoot: runtimeValues.storageRootPath,
+    configPath: getConfigPath(),
+    userDataRoot: app.getPath('userData'),
+  };
+}
+
+function assertBackupDestinationSafe(destinationParent, evidenceRoot, userDataRoot) {
+  const destination = path.resolve(destinationParent);
+  const evidence = path.resolve(evidenceRoot);
+  const userData = path.resolve(userDataRoot);
+  if (
+    isPathInsideDirectory(evidence, destination)
+    || isPathInsideDirectory(destination, evidence)
+    || isPathInsideDirectory(userData, destination)
+    || isPathInsideDirectory(destination, userData)
+  ) {
+    throw new Error('Choose a backup location outside PatrolSafe active data folders.');
+  }
+  return destination;
+}
+
+async function createCustomerBackup(destinationParent) {
+  await assertDataProtectionAdministrator();
+  const paths = getDataProtectionPaths();
+  const safeDestination = assertBackupDestinationSafe(destinationParent, paths.evidenceRoot, paths.userDataRoot);
+  const confirmation = await dialog.showMessageBox(mainWindow, {
+    type: 'question',
+    buttons: ['Cancel', 'Create backup'],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+    title: 'Backup PatrolSafe data',
+    message: 'Create a verified PatrolSafe data backup?',
+    detail: 'Monitoring pauses briefly while PatrolSafe checkpoints the database and copies evidence. No WhatsApp logout or unlink is performed.',
+  });
+  if (confirmation.response !== 1) return null;
+  await stopBackend();
+  try {
+    const result = await createPatrolSafeBackup({
+      ...paths,
+      destinationParent: safeDestination,
+      appVersion: PRODUCT_METADATA.version,
+      buildId: PRODUCT_METADATA.displayBuild || PRODUCT_METADATA.buildId,
+    });
+    appendDesktopLog(
+      'DATA_BACKUP_COMPLETE',
+      `path=${result.backupPath} schemaVersion=${result.manifest.schemaVersion} evidenceFiles=${result.manifest.evidence.fileCount}`,
+    );
+    return {
+      backupPath: result.backupPath,
+      createdAt: result.manifest.createdAt,
+      schemaVersion: result.manifest.schemaVersion,
+      evidenceFileCount: result.manifest.evidence.fileCount,
+      totalBytes: result.manifest.evidence.totalBytes,
+      localAuthPortability: result.manifest.sameMachine.portability,
+    };
+  } finally {
+    await startBackend();
+    await waitForBackendReady(RESTART_BACKEND_HEALTH_TIMEOUT_MS);
+  }
+}
+
+async function restoreCustomerBackup(backupRoot) {
+  await assertDataProtectionAdministrator({ allowBackendUnavailable: true });
+  const paths = getDataProtectionPaths();
+  const verification = await verifyPatrolSafeBackup(path.resolve(backupRoot));
+  const confirmation = await dialog.showMessageBox(mainWindow, {
+    type: 'warning',
+    buttons: ['Cancel', 'Restore backup'],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+    title: 'Restore PatrolSafe backup',
+    message: 'Restore this verified PatrolSafe backup?',
+    detail: 'Current database, evidence and configuration will be replaced after a recovery snapshot is created. PatrolSafe will restart its local service when complete.',
+  });
+  if (confirmation.response !== 1) return null;
+  await stopBackend();
+  try {
+    const recoveryParent = path.join(paths.userDataRoot, 'recovery-backups');
+    let recovery = null;
+    try {
+      recovery = await createPatrolSafeBackup({
+        ...paths,
+        destinationParent: recoveryParent,
+        appVersion: PRODUCT_METADATA.version,
+        buildId: PRODUCT_METADATA.displayBuild || PRODUCT_METADATA.buildId,
+      });
+    } catch (error) {
+      if (error?.code !== 'PATROLSAFE_DATABASE_CORRUPT') throw error;
+      appendDesktopLog('DATA_RESTORE_RECOVERY_BACKUP_SKIPPED', 'reason=active-database-corrupt');
+    }
+    const result = await restorePatrolSafeBackup({ ...paths, backupRoot: path.resolve(backupRoot) });
+    appendDesktopLog(
+      'DATA_RESTORE_COMPLETE',
+      `backup=${path.resolve(backupRoot)} recovery=${recovery?.backupPath || result.rollbackPath} sameMachine=${result.sameMachine} relinkRequired=${result.requiresWhatsAppRelink}`,
+    );
+    return {
+      restored: true,
+      sameMachine: result.sameMachine,
+      requiresWhatsAppRelink: result.requiresWhatsAppRelink,
+      recoveryBackupPath: recovery?.backupPath || result.rollbackPath,
+      schemaVersion: verification.manifest.schemaVersion,
+      evidenceFileCount: verification.evidenceFileCount,
+    };
+  } finally {
+    await startBackend();
+    await waitForBackendReady(RESTART_BACKEND_HEALTH_TIMEOUT_MS);
+  }
+}
+
 function clearBackendRecoveryTimeout() {
   if (!backendRecoveryTimeout) {
     return;
@@ -2082,6 +2273,43 @@ async function startBackend() {
     fs.mkdirSync(runtimeValues.whatsappSessionPath, { recursive: true });
   }
 
+  if (runtimeValues.dbType === 'sqlite') {
+    try {
+      const migration = prepareSqliteDatabase({
+        databasePath: runtimeValues.sqliteDbPath,
+        preUpgradeBackupRoot: path.join(getUserDataDataDirectory(), 'pre-upgrade-backups'),
+        appVersion: PRODUCT_METADATA.version,
+        buildId: PRODUCT_METADATA.displayBuild || PRODUCT_METADATA.buildId,
+      });
+      appendDesktopLog(
+        'SQLITE_SCHEMA_READY',
+        `version=${migration.schemaVersion} applied=${migration.applied.join(',') || 'none'} adopted=${migration.adopted} mappingConflictsPaused=${migration.mappingConflictsPaused || 0} preUpgradeBackup=${migration.preUpgradeBackup?.databaseBackupPath || 'none'}`,
+      );
+      if (migration.mappingConflictsPaused > 0) {
+        void dialog.showMessageBox({
+          type: 'warning',
+          title: 'Review WhatsApp group mappings',
+          message: 'PatrolSafe paused conflicting group mappings during the data upgrade.',
+          detail: `${migration.mappingConflictsPaused} ambiguous mappings were preserved but paused. Sign in as a company administrator and reactivate only the correct mapping for each group before monitoring it.`,
+          buttons: ['OK'],
+          defaultId: 0,
+          noLink: true,
+        });
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const backupPath = error?.preUpgradeBackup || 'none';
+      appendDesktopLog('SQLITE_SCHEMA_STARTUP_BLOCKED', `error=${message} preUpgradeBackup=${backupPath}`);
+      dialog.showErrorBox(
+        'PatrolSafe data needs recovery',
+        error?.code === 'PATROLSAFE_DATABASE_CORRUPT'
+          ? 'The PatrolSafe database did not pass its integrity check. It has not been replaced or reset. Restore a verified PatrolSafe backup or contact support.'
+          : 'PatrolSafe could not safely upgrade the local database. The application has stopped before opening customer data. A pre-upgrade backup was retained where possible.',
+      );
+      throw error;
+    }
+  }
+
   // Keep Nest's config-driven path resolver aligned with packaged writable roots.
   const desktopConfigPath = getConfigPath();
   if (app.isPackaged) {
@@ -2109,6 +2337,8 @@ async function startBackend() {
     JWT_SECRET: ensureDesktopJwtSecret(),
     PATROLSAFE_DESKTOP_API_TOKEN: getDesktopApiToken(),
     PATROLSAFE_DESKTOP_RECOVERY_AUTHORITY: getDesktopRecoveryAuthority(),
+    PATROLSAFE_APP_VERSION: PRODUCT_METADATA.version,
+    PATROLSAFE_BUILD_ID: PRODUCT_METADATA.displayBuild || PRODUCT_METADATA.buildId,
     JWT_REFRESH_EXPIRES_IN_DAYS: process.env.JWT_REFRESH_EXPIRES_IN_DAYS || '90',
   });
   appendDesktopLog(
@@ -2692,6 +2922,22 @@ if (handleSquirrelEvent()) {
     }
 
     return result.filePaths[0];
+  });
+  handleTrusted('desktop:create-data-backup', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Choose a location for the PatrolSafe backup',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (result.canceled || !result.filePaths[0]) return null;
+    return createCustomerBackup(result.filePaths[0]);
+  });
+  handleTrusted('desktop:restore-data-backup', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Choose a PatrolSafe backup folder to restore',
+      properties: ['openDirectory'],
+    });
+    if (result.canceled || !result.filePaths[0]) return null;
+    return restoreCustomerBackup(result.filePaths[0]);
   });
   handleTrusted('desktop:save-config', async (rawPartialConfig) => {
     const partialConfig = sanitizeDesktopConfigPatch(rawPartialConfig);
