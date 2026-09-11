@@ -106,7 +106,7 @@
     "qrcode-terminal": "^0.12.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
-    "sharp": "^0.34.5",
+    "sharp": "^0.35.4",
     "typeorm": "^0.3.20",
     "whatsapp-web.js": "1.34.7"
   },
@@ -139,6 +139,14 @@
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.5.4",
     "wait-on": "^9.0.4"
+  },
+  "overrides": {
+    "@nestjs/platform-express": {
+      "multer": "2.3.0"
+    },
+    "express": {
+      "path-to-regexp": "0.1.13"
+    }
   },
   "windowsBuild": "2026.7.29.63"
 }

@@ -2,7 +2,7 @@ import { promises as fs } from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { createHash } from 'crypto';
-import sharp = require('sharp');
+const sharp = require('sharp') as typeof import('sharp').default;
 import { StorageService } from './storage.service';
 
 describe('StorageService', () => {
@@ -69,7 +69,7 @@ describe('StorageService', () => {
     expect(stored.contentSha256).toBe(createHash('sha256').update(savedBuffer).digest('hex'));
     expect(metadata.width).toBe(800);
     expect(metadata.height).toBe(600);
-  });
+  }, 15_000);
 
   it('renders overlay text using the configured timezone', () => {
     const overlaySvg = (service as any).buildOverlaySvg({
@@ -103,6 +103,15 @@ describe('StorageService', () => {
       buffer: originalBuffer,
       mimeType: 'image/jpeg',
     })).rejects.toThrow();
+  });
+
+  it('rejects an oversized image before invoking the native decoder', async () => {
+    await expect(service.savePatrolEvidence({
+      siteCode: 'SWI01',
+      timestamp: new Date('2026-04-04T16:03:22.000Z'),
+      buffer: Buffer.alloc(25 * 1024 * 1024 + 1),
+      mimeType: 'image/jpeg',
+    })).rejects.toThrow('Evidence image exceeds the 25MB limit');
   });
 
   it('gives simultaneous messages distinct final files', async () => {

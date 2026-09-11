@@ -282,7 +282,7 @@ if (!betterSqliteBinary) {
 
 const sharpBinary = findFirstRecursive(
   imgRoot,
-  (_candidatePath, fileName) => fileName === 'sharp-win32-x64.node',
+  (_candidatePath, fileName) => /^sharp-win32-x64(?:-[0-9.]+)?\.node$/.test(fileName),
 );
 
 if (!sharpBinary) {

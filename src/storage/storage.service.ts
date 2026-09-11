@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import { createHash, randomUUID } from 'crypto';
-import sharp = require('sharp');
+const sharp = require('sharp') as typeof import('sharp').default;
 import { getPatrolTimeParts, patrolTimeZone } from '@/common/utils/patrol-time.util';
 
 export interface StoredFileResult {
