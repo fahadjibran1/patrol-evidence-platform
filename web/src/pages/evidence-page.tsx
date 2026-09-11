@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { apiRequest, getApiBaseUrl } from '../lib/api';
+import { apiRequest } from '../lib/api';
+import { useAuthenticatedPatrolImageUrls } from '../lib/use-authenticated-media';
 import { formatHourLabel, formatOperatorDateTime, formatSentByLabel } from '../lib/operator-ui';
 import { getPatrolToday } from '../lib/patrol-time';
 import { useLiveRefresh } from '../lib/use-live-refresh';
@@ -109,7 +110,6 @@ export function EvidencePage(): JSX.Element {
     markFiltersChanged();
   }, [markFiltersChanged, selectedDate, selectedHour, selectedSiteId]);
 
-  const baseUrl = useMemo(() => getApiBaseUrl(), []);
 
   const filteredImages = useMemo(() => {
     if (!selectedSender.trim()) {
@@ -146,8 +146,11 @@ export function EvidencePage(): JSX.Element {
     return [...groups.entries()].sort((left, right) => right[0] - left[0]);
   }, [filteredImages]);
 
-  const imageUrl = (image: PatrolImageRecord): string =>
-    `${baseUrl}/patrol-images/${image.id}/content?access_token=${encodeURIComponent(token ?? '')}`;
+  const resolveImageUrl = useAuthenticatedPatrolImageUrls(
+    useMemo(() => images.map((image) => image.id), [images]),
+    token,
+  );
+  const imageUrl = (image: PatrolImageRecord): string => resolveImageUrl(image.id);
 
   function renderCaption(image: PatrolImageRecord): JSX.Element {
     const sourceLabel = image.group?.groupName ?? null;

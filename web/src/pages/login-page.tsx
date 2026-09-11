@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../lib/api';
 import { BuildLabel } from '../components/build-label';
-import { isDesktopApp } from '../lib/desktop';
+import { beginDesktopAdminRecovery, isDesktopApp } from '../lib/desktop';
 import { useAuth } from '../state/auth';
 import type { DesktopBootstrapStatus } from '../types';
 import { PRODUCT_INFO } from '../lib/product-info';
@@ -73,24 +73,22 @@ export function LoginPage(): JSX.Element {
       return;
     }
 
-    const confirmed = window.confirm(
-      'Reset the local admin password on this workstation? Your sites, images, mappings, and WhatsApp session will be kept.',
-    );
-    if (!confirmed) {
+    const recoveryToken = await beginDesktopAdminRecovery();
+    if (!recoveryToken) {
       return;
     }
 
     setIsResettingPassword(true);
 
     try {
-      const result = await apiRequest<{ ok: true; email: string }>('/desktop/bootstrap/reset-admin-password', {
-        method: 'POST',
-        body: JSON.stringify({
-          newPassword,
-          confirmPassword,
-          confirmed: true,
-        }),
-      });
+      const result = await apiRequest<{ ok: true; email: string }>(
+        '/desktop/bootstrap/reset-admin-password',
+        {
+          method: 'POST',
+          headers: { 'X-PatrolSafe-Recovery-Token': recoveryToken },
+          body: JSON.stringify({ newPassword, confirmPassword, confirmed: true }),
+        },
+      );
       setPassword('');
       setNewPassword('');
       setConfirmPassword('');

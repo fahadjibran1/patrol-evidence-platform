@@ -275,7 +275,7 @@ export function SitesPage(): JSX.Element {
           )}
 
           {includeArchived && archivedSites.length > 0 ? (
-            <div className="stack-list" style={{ marginTop: '1.5rem' }}>
+            <div className="stack-list stack-list-spaced">
               <h4>Archived sites</h4>
               <p className="muted-text">Historical evidence is retained. Monitoring is stopped until restore.</p>
               {archivedSites.map((site) => (
@@ -299,7 +299,7 @@ export function SitesPage(): JSX.Element {
 
       {archiveTarget && archivePreview ? (
         <div className="lightbox-backdrop" role="dialog" aria-modal="true" aria-label="Archive site confirmation">
-          <div className="lightbox-panel" style={{ maxWidth: '32rem' }}>
+          <div className="lightbox-panel lightbox-panel-narrow">
             <header className="lightbox-header">
               <div>
                 <h3>Archive site</h3>

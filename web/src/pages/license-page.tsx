@@ -241,7 +241,7 @@ export function LicensePage(): JSX.Element {
           </dl>
           <p className="muted-text">{status?.message}</p>
           {status?.diagnostics?.lastTrialBootstrapError ? (
-            <div className="frontend-diagnostics-log" style={{ marginTop: 12 }}>
+            <div className="frontend-diagnostics-log frontend-diagnostics-log-spaced">
               <p className="muted-text">Licence bootstrap diagnostic</p>
               <pre>{status.diagnostics.lastTrialBootstrapError}</pre>
               <pre>

@@ -6,6 +6,8 @@ const apiBaseUrl = apiBaseUrlArgument?.slice('--patrol-api-base-url='.length) ||
 contextBridge.exposeInMainWorld('desktopBridge', {
   isDesktop: true,
   apiBaseUrl,
+  getApiToken: () => ipcRenderer.invoke('desktop:get-api-token'),
+  beginAdminRecovery: () => ipcRenderer.invoke('desktop:begin-admin-recovery'),
   getState: () => ipcRenderer.invoke('desktop:get-state'),
   chooseStoragePath: () => ipcRenderer.invoke('desktop:choose-storage-path'),
   saveConfig: (partialConfig) => ipcRenderer.invoke('desktop:save-config', partialConfig),

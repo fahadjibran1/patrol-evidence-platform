@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { apiRequest, getApiBaseUrl } from '../lib/api';
+import { apiRequest } from '../lib/api';
+import { useAuthenticatedPatrolImageUrls } from '../lib/use-authenticated-media';
 import {
   findPatrolGroup,
   formatOperatorDateTime,
@@ -42,7 +43,6 @@ export function DashboardPage(): JSX.Element {
   const boardRef = useRef<HTMLDivElement>(null);
   const dateFilterRef = useRef(date);
 
-  const baseUrl = useMemo(() => getApiBaseUrl(), []);
 
   const loadDashboard = useCallback(async () => {
     if (user?.role === 'GUARD') {
@@ -125,8 +125,11 @@ export function DashboardPage(): JSX.Element {
   const showOnboarding =
     (overview?.siteTotals.active ?? 0) === 0 || (overview?.imageTotals.received ?? 0) === 0;
 
-  const imageUrl = (image: PatrolImageRecord): string =>
-    `${baseUrl}/patrol-images/${image.id}/content?access_token=${encodeURIComponent(token ?? '')}`;
+  const resolveImageUrl = useAuthenticatedPatrolImageUrls(
+    useMemo(() => latestImages.map((image) => image.id), [latestImages]),
+    token,
+  );
+  const imageUrl = (image: PatrolImageRecord): string => resolveImageUrl(image.id);
 
   async function toggleControlRoomView(): Promise<void> {
     if (!boardRef.current) {

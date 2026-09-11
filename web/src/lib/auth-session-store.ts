@@ -37,8 +37,21 @@ export async function loadPersistedAuthSession(): Promise<PersistedAuthSession |
     const secure = await window.desktopBridge.secureStoreGet(SECURE_KEY);
     const fromSecure = parseSession(secure);
     if (fromSecure) {
+      // Remove legacy renderer token copies after a secure-store restore.
+      localStorage.removeItem(STORAGE_KEY);
       return fromSecure;
     }
+
+    const legacy = parseSession(localStorage.getItem(STORAGE_KEY));
+    if (legacy) {
+      if (window.desktopBridge.secureStoreSet) {
+        await window.desktopBridge.secureStoreSet(SECURE_KEY, JSON.stringify(legacy));
+      }
+      localStorage.removeItem(STORAGE_KEY);
+      return legacy;
+    }
+    localStorage.removeItem(STORAGE_KEY);
+    return null;
   }
 
   return parseSession(localStorage.getItem(STORAGE_KEY));
@@ -49,15 +62,7 @@ export async function savePersistedAuthSession(session: PersistedAuthSession): P
 
   if (isDesktopApp() && window.desktopBridge?.secureStoreSet) {
     await window.desktopBridge.secureStoreSet(SECURE_KEY, payload);
-    // Keep a non-secret user snapshot for UI bootstrap only; tokens live in secure storage.
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        user: session.user,
-        accessToken: session.accessToken,
-        refreshToken: session.refreshToken,
-      }),
-    );
+    localStorage.removeItem(STORAGE_KEY);
     return;
   }
 

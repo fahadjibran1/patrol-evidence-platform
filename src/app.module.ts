@@ -23,6 +23,7 @@ import { IncidentsModule } from './incidents/incidents.module';
 import { DesktopModule } from './desktop/desktop.module';
 import { LicensingModule } from './licensing/licensing.module';
 import { BootstrapModule } from './bootstrap/bootstrap.module';
+import { DesktopSecurityModule } from './security/desktop-security.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { BootstrapModule } from './bootstrap/bootstrap.module';
       }),
     }),
     ScheduleModule.forRoot(),
+    DesktopSecurityModule,
     AuthModule,
     UsersModule,
     HealthModule,

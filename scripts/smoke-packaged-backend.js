@@ -1,4 +1,5 @@
 const { spawn } = require('child_process');
+const crypto = require('crypto');
 const fs = require('fs');
 const http = require('http');
 const os = require('os');
@@ -134,9 +135,9 @@ function redactSecrets(text) {
     .replace(/Bearer\s+[A-Za-z0-9._-]+/g, 'Bearer [redacted]');
 }
 
-function getLicenseStatus(url) {
+function getLicenseStatus(url, desktopApiToken) {
   return new Promise((resolve, reject) => {
-    const request = http.get(url, (response) => {
+    const request = http.get(url, { headers: { 'x-patrolsafe-desktop-token': desktopApiToken } }, (response) => {
       let payload = '';
       response.on('data', (chunk) => {
         payload += chunk.toString();
@@ -184,6 +185,7 @@ async function main() {
   const sqliteDbPath = path.join(dataDir, 'patrol-evidence.db');
   const whatsappSessionPath = path.join(dataDir, 'whatsapp-session');
   const licensePublicKeyPath = path.join(resourcesPath, 'license-public.pem');
+  const desktopApiToken = crypto.randomBytes(48).toString('base64url');
 
   fs.mkdirSync(dataDir, { recursive: true });
   fs.mkdirSync(storageRoot, { recursive: true });
@@ -262,6 +264,7 @@ async function main() {
       PATROL_RESOURCES_PATH: resourcesPath,
       PATROL_BACKEND_ENTRY_PATH: backendEntryPath,
       APP_DEBUG: 'true',
+      PATROLSAFE_DESKTOP_API_TOKEN: desktopApiToken,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
@@ -275,7 +278,7 @@ async function main() {
     console.log(`SMOKE HEALTH BODY: ${body}`);
 
     const licenseStatusUrl = `http://localhost:${HEALTH_PORT}/license/status`;
-    const licenseStatus = await getLicenseStatus(licenseStatusUrl);
+    const licenseStatus = await getLicenseStatus(licenseStatusUrl, desktopApiToken);
     pass('license/status endpoint booted successfully');
     console.log(`SMOKE LICENSE STATUS: ${JSON.stringify(licenseStatus).slice(0, 500)}`);
 
@@ -302,7 +305,7 @@ async function main() {
     pass('TRIAL_ACTIVE with exactly 30 days granted on clean app-data');
 
     // Second status call must not mint another trial when the marker already exists.
-    const licenseStatusAgain = await getLicenseStatus(licenseStatusUrl);
+    const licenseStatusAgain = await getLicenseStatus(licenseStatusUrl, desktopApiToken);
     if (licenseStatusAgain.installationId !== licenseStatus.installationId) {
       fail('Installation ID changed between status calls');
     }

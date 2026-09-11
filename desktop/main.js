@@ -15,6 +15,17 @@ const {
 const { createDesktopProcessLifecycle } = require('./process-lifecycle');
 const { pathToFileURL } = require('url');
 const { Client } = require('pg');
+const {
+  assertTrustedIpcSender,
+  isTrustedRendererNavigation,
+  productionDevToolsAllowed,
+  sanitizeDesktopConfigPatch,
+  sanitizePostgresConfig,
+  validateExternalUrl,
+  validateOpenPath,
+  validateSecureStoreKey,
+  validateSecureStoreValue,
+} = require('./security-policy');
 
 const packageMetadata = require('../package.json');
 const {
@@ -88,6 +99,8 @@ let backendRestartInProgress = false;
 let backendPortRecoveryInProgress = false;
 let backendListeningDetected = false;
 let backendHealthCheckGeneration = 0;
+let desktopApiToken = null;
+let desktopRecoveryAuthority = null;
 
 function notifyDesktopState() {
   return processLifecycle.notifyRenderer(mainWindow, 'desktop:backend-status', getDesktopState());
@@ -305,7 +318,11 @@ if (isProductionDesktopMode() || isBackendSmokeOnlyMode()) {
 }
 
 function shouldOpenDebugTools() {
-  return process.env.APP_DEBUG === 'true';
+  return productionDevToolsAllowed({
+    packaged: app.isPackaged,
+    appDebug: process.env.APP_DEBUG === 'true',
+    supportMode: process.env.PATROLSAFE_SUPPORT_MODE === 'true',
+  });
 }
 
 function getLogPath() {
@@ -496,6 +513,33 @@ function ensureDesktopJwtSecret() {
     appendDesktopLog('jwt-secret-write-failed', error instanceof Error ? error.message : String(error));
   }
   return secret;
+}
+
+function ensureDesktopBoundarySecret(fileName) {
+  const secretPath = path.join(app.getPath('userData'), fileName);
+  try {
+    if (fs.existsSync(secretPath)) {
+      const existing = fs.readFileSync(secretPath, 'utf8').trim();
+      if (existing.length >= 32) return existing;
+    }
+  } catch (error) {
+    appendDesktopLog('desktop-boundary-secret-read-failed', error instanceof Error ? error.message : String(error));
+  }
+
+  const secret = crypto.randomBytes(48).toString('base64url');
+  fs.mkdirSync(path.dirname(secretPath), { recursive: true });
+  fs.writeFileSync(secretPath, secret, { encoding: 'utf8', mode: 0o600 });
+  return secret;
+}
+
+function getDesktopApiToken() {
+  desktopApiToken ||= ensureDesktopBoundarySecret('desktop-api-token.txt');
+  return desktopApiToken;
+}
+
+function getDesktopRecoveryAuthority() {
+  desktopRecoveryAuthority ||= ensureDesktopBoundarySecret('desktop-recovery-authority.txt');
+  return desktopRecoveryAuthority;
 }
 
 function readSecureStoreValue(key) {
@@ -1214,7 +1258,7 @@ function openDebugToolsIfNeeded(reason = 'manual') {
     return;
   }
 
-  if (shouldOpenDebugTools() || reason === 'frontend-load-failed') {
+  if (shouldOpenDebugTools()) {
     appendDesktopLog('Opening DevTools', `reason=${reason}`);
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   }
@@ -1591,6 +1635,57 @@ async function handlePatrolRecoveryAction(action) {
       );
     }
   }
+}
+
+function authorizeAdminRecovery(token) {
+  const payload = JSON.stringify({ token });
+  const target = new URL('/desktop/bootstrap/recovery/authorize', getApiBaseUrl());
+  return new Promise((resolve, reject) => {
+    const request = http.request(
+      target,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload),
+          'x-patrolsafe-desktop-token': getDesktopApiToken(),
+          'x-patrolsafe-recovery-authority': getDesktopRecoveryAuthority(),
+        },
+      },
+      (response) => {
+        response.resume();
+        response.on('end', () => {
+          if (response.statusCode && response.statusCode >= 200 && response.statusCode < 300) {
+            resolve(true);
+          } else {
+            reject(new Error(`Recovery authorization failed with status ${response.statusCode ?? 'unknown'}.`));
+          }
+        });
+      },
+    );
+    request.setTimeout(10_000, () => request.destroy(new Error('Recovery authorization timed out.')));
+    request.on('error', reject);
+    request.end(payload);
+  });
+}
+
+async function beginAdminRecovery() {
+  const result = await dialog.showMessageBox(mainWindow, {
+    type: 'warning',
+    buttons: ['Cancel', 'Authorize password reset'],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+    title: 'PatrolSafe account recovery',
+    message: 'Authorize a one-time local administrator password reset?',
+    detail: 'This authorization expires in two minutes and works once on this workstation.',
+  });
+  if (result.response !== 1) return null;
+
+  const token = crypto.randomBytes(48).toString('base64url');
+  await authorizeAdminRecovery(token);
+  appendDesktopLog('desktop-admin-recovery-authorized', 'singleUse=true ttlSeconds=120');
+  return token;
 }
 
 function clearBackendRecoveryTimeout() {
@@ -2012,6 +2107,8 @@ async function startBackend() {
     WHATSAPP_AUTO_START: runtimeValues.autoStartCollector ? 'true' : 'false',
     APP_DEBUG: process.env.APP_DEBUG === 'true' ? 'true' : process.env.APP_DEBUG,
     JWT_SECRET: ensureDesktopJwtSecret(),
+    PATROLSAFE_DESKTOP_API_TOKEN: getDesktopApiToken(),
+    PATROLSAFE_DESKTOP_RECOVERY_AUTHORITY: getDesktopRecoveryAuthority(),
     JWT_REFRESH_EXPIRES_IN_DAYS: process.env.JWT_REFRESH_EXPIRES_IN_DAYS || '90',
   });
   appendDesktopLog(
@@ -2394,14 +2491,25 @@ async function createMainWindow() {
       additionalArguments: [getApiBaseUrlArgument(getBackendPort())],
       contextIsolation: true,
       nodeIntegration: false,
+      devTools: shouldOpenDebugTools(),
     },
   });
 
-  mainWindow.webContents.on('before-input-event', (_event, input) => {
+  mainWindow.webContents.on('before-input-event', (event, input) => {
     const key = String(input.key || '').toLowerCase();
     if (input.type === 'keyDown' && (input.control || input.meta) && input.shift && key === 'i') {
-      mainWindow.webContents.openDevTools({ mode: 'detach' });
+      event.preventDefault();
+      openDebugToolsIfNeeded('shortcut');
     }
+  });
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    try {
+      void shell.openExternal(validateExternalUrl(url));
+    } catch (error) {
+      appendDesktopLog('external-window-request-rejected', error instanceof Error ? error.message : String(error));
+    }
+    return { action: 'deny' };
   });
 
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
@@ -2416,15 +2524,32 @@ async function createMainWindow() {
     renderFrontendFailurePage(`did-fail-load for ${validatedURL}`, failureMessage);
   });
 
-  mainWindow.webContents.on('will-navigate', (event, targetUrl) => {
-    if (!targetUrl.startsWith('patrol-recovery://')) {
+  const handleRendererNavigation = (event, targetUrl) => {
+    if (targetUrl.startsWith('patrol-recovery://')) {
+      event.preventDefault();
+      const action = targetUrl.slice('patrol-recovery://'.length).split(/[/?#]/)[0];
+      void handlePatrolRecoveryAction(action);
+      return;
+    }
+
+    if (
+      isTrustedRendererNavigation(targetUrl, {
+        packagedEntryUrl: pathToFileURL(getFrontendEntryPoint()).toString(),
+        developmentUrl: process.env.DESKTOP_DEV === 'true' ? process.env.DESKTOP_WEB_URL || DEFAULT_WEB_URL : null,
+      })
+    ) {
       return;
     }
 
     event.preventDefault();
-    const action = targetUrl.slice('patrol-recovery://'.length).split(/[/?#]/)[0];
-    void handlePatrolRecoveryAction(action);
-  });
+    try {
+      void shell.openExternal(validateExternalUrl(targetUrl));
+    } catch {
+      appendDesktopLog('renderer-navigation-rejected', targetUrl.slice(0, 240));
+    }
+  };
+  mainWindow.webContents.on('will-navigate', handleRendererNavigation);
+  mainWindow.webContents.on('will-redirect', handleRendererNavigation);
 
   mainWindow.webContents.on('render-process-gone', (_event, details) => {
     if (isShowingFrontendFallback) {
@@ -2546,8 +2671,17 @@ if (handleSquirrelEvent()) {
     void stopBackend();
   });
 
-  ipcMain.handle('desktop:get-state', async () => getDesktopState());
-  ipcMain.handle('desktop:choose-storage-path', async () => {
+  const handleTrusted = (channel, handler) => {
+    ipcMain.handle(channel, async (event, ...args) => {
+      assertTrustedIpcSender(event, mainWindow);
+      return handler(...args);
+    });
+  };
+
+  handleTrusted('desktop:get-api-token', async () => getDesktopApiToken());
+  handleTrusted('desktop:begin-admin-recovery', async () => beginAdminRecovery());
+  handleTrusted('desktop:get-state', async () => getDesktopState());
+  handleTrusted('desktop:choose-storage-path', async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openDirectory', 'createDirectory'],
     });
@@ -2558,7 +2692,8 @@ if (handleSquirrelEvent()) {
 
     return result.filePaths[0];
   });
-  ipcMain.handle('desktop:save-config', async (_event, partialConfig) => {
+  handleTrusted('desktop:save-config', async (rawPartialConfig) => {
+    const partialConfig = sanitizeDesktopConfigPatch(rawPartialConfig);
     const currentConfig = readWorkspaceConfig();
     const nextConfig = {
       ...currentConfig,
@@ -2600,34 +2735,40 @@ if (handleSquirrelEvent()) {
 
     return getDesktopState();
   });
-  ipcMain.handle('desktop:postgres-check', async (_event, partialConfig) => checkPostgres(partialConfig));
-  ipcMain.handle('desktop:postgres-provision', async (_event, partialConfig) => provisionPostgres(partialConfig));
-  ipcMain.handle('desktop:restart-backend', async () => restartBackend());
-  ipcMain.handle('desktop:start-backend', async () => {
+  handleTrusted('desktop:postgres-check', async (partialConfig) => checkPostgres(sanitizePostgresConfig(partialConfig)));
+  handleTrusted('desktop:postgres-provision', async (partialConfig) => provisionPostgres(sanitizePostgresConfig(partialConfig)));
+  handleTrusted('desktop:restart-backend', async () => restartBackend());
+  handleTrusted('desktop:start-backend', async () => {
     await startBackend();
     if (backendState.status !== 'ready' || backendProcess) {
       await waitForBackendReady(RESTART_BACKEND_HEALTH_TIMEOUT_MS);
     }
     return getDesktopState();
   });
-  ipcMain.handle('desktop:stop-backend', async () => {
+  handleTrusted('desktop:stop-backend', async () => {
     await stopBackend();
     return getDesktopState();
   });
-  ipcMain.handle('desktop:open-external', async (_event, targetUrl) => {
-    await shell.openExternal(targetUrl);
+  handleTrusted('desktop:open-external', async (targetUrl) => {
+    await shell.openExternal(validateExternalUrl(targetUrl));
     return true;
   });
-  ipcMain.handle('desktop:open-path', async (_event, targetPath) => {
-    return shell.openPath(targetPath);
+  handleTrusted('desktop:open-path', async (targetPath) => {
+    const runtimeValues = getConfiguredRuntimeValues();
+    const safePath = validateOpenPath(targetPath, [
+      app.getPath('userData'),
+      runtimeValues.storageRootPath,
+      runtimeValues.whatsappSessionPath,
+    ]);
+    return shell.openPath(safePath);
   });
-  ipcMain.handle('desktop:secure-store-get', async (_event, key) => readSecureStoreValue(key));
-  ipcMain.handle('desktop:secure-store-set', async (_event, key, value) => {
-    writeSecureStoreValue(key, String(value ?? ''));
+  handleTrusted('desktop:secure-store-get', async (key) => readSecureStoreValue(validateSecureStoreKey(key)));
+  handleTrusted('desktop:secure-store-set', async (key, value) => {
+    writeSecureStoreValue(validateSecureStoreKey(key), validateSecureStoreValue(value));
     return true;
   });
-  ipcMain.handle('desktop:secure-store-clear', async (_event, key) => {
-    clearSecureStoreValue(key);
+  handleTrusted('desktop:secure-store-clear', async (key) => {
+    clearSecureStoreValue(validateSecureStoreKey(key));
     return true;
   });
 }

@@ -5,6 +5,8 @@ declare global {
     desktopBridge?: {
       isDesktop: boolean;
       apiBaseUrl: string;
+      getApiToken: () => Promise<string>;
+      beginAdminRecovery: () => Promise<string | null>;
       getState: () => Promise<DesktopState>;
       chooseStoragePath: () => Promise<string | null>;
       saveConfig: (partialConfig: Partial<DesktopWorkspaceConfig>) => Promise<DesktopState>;
@@ -29,6 +31,20 @@ export function isDesktopApp(): boolean {
 
 export function getDesktopApiBaseUrl(): string | null {
   return window.desktopBridge?.apiBaseUrl?.trim() ?? null;
+}
+
+let desktopApiTokenPromise: Promise<string | null> | null = null;
+
+export function getDesktopApiToken(): Promise<string | null> {
+  if (!window.desktopBridge?.getApiToken) {
+    return Promise.resolve(null);
+  }
+  desktopApiTokenPromise ??= window.desktopBridge.getApiToken().then((value) => value?.trim() || null);
+  return desktopApiTokenPromise;
+}
+
+export async function beginDesktopAdminRecovery(): Promise<string | null> {
+  return window.desktopBridge?.beginAdminRecovery?.() ?? null;
 }
 
 export async function getDesktopState(): Promise<DesktopState | null> {

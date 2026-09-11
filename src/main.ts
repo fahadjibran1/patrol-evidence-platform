@@ -7,6 +7,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { validateSqliteNativeModule } from './config/validate-sqlite-native';
 import { resolveBackendListenConfig } from './config/backend-listen.config';
+import { createPatrolSafeCorsOriginValidator, DESKTOP_API_TOKEN_HEADER } from './config/cors-origin.util';
 
 /** Binary patrol images up to 25MB need ~34MB+ as base64 inside JSON. */
 const PATROL_IMAGE_MAX_BYTES = 25 * 1024 * 1024;
@@ -79,7 +80,24 @@ async function bootstrap(): Promise<void> {
     `json=${uploadBodyLimit.limit} urlencoded=${uploadBodyLimit.limit} maxImageMb=${PATROL_IMAGE_MAX_BYTES / (1024 * 1024)}`,
   );
 
-  app.enableCors();
+  app.enableCors({
+    origin: createPatrolSafeCorsOriginValidator({
+      desktopMode: Boolean(process.env.DESKTOP_CONFIG_PATH?.trim()),
+      developmentMode: process.env.NODE_ENV === 'development' || process.env.DESKTOP_DEV === 'true',
+      configuredDevelopmentOrigins: process.env.PATROLSAFE_DESKTOP_DEV_ORIGINS,
+    }),
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: [
+      'Authorization',
+      'Content-Type',
+      DESKTOP_API_TOKEN_HEADER,
+      'x-patrol-collector-token',
+      'x-patrolsafe-recovery-authority',
+      'x-patrolsafe-recovery-token',
+    ],
+    exposedHeaders: ['Content-Disposition'],
+    maxAge: 600,
+  });
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

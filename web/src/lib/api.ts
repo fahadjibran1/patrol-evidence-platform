@@ -1,5 +1,5 @@
 import type { ApiErrorPayload } from '../types';
-import { getDesktopApiBaseUrl } from './desktop';
+import { getDesktopApiBaseUrl, getDesktopApiToken } from './desktop';
 import { createTimedSignal, LOCAL_API_TIMEOUT_MS } from './api-timeout';
 
 export class ApiError extends Error {
@@ -78,6 +78,10 @@ export async function apiRequest<T>(
   options?: { skipRefresh?: boolean },
 ): Promise<T> {
   const headers = new Headers(init.headers);
+  const desktopApiToken = await getDesktopApiToken();
+  if (desktopApiToken) {
+    headers.set('X-PatrolSafe-Desktop-Token', desktopApiToken);
+  }
 
   if (!(init.body instanceof FormData) && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
@@ -150,6 +154,10 @@ export async function apiRequest<T>(
 
 export async function downloadApiFile(path: string, token?: string): Promise<void> {
   const headers = new Headers();
+  const desktopApiToken = await getDesktopApiToken();
+  if (desktopApiToken) {
+    headers.set('X-PatrolSafe-Desktop-Token', desktopApiToken);
+  }
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
   }
@@ -171,4 +179,15 @@ export async function downloadApiFile(path: string, token?: string): Promise<voi
   anchor.click();
   anchor.remove();
   window.URL.revokeObjectURL(blobUrl);
+}
+
+export async function fetchApiBlobUrl(path: string, token?: string): Promise<string> {
+  const headers = new Headers();
+  const desktopApiToken = await getDesktopApiToken();
+  if (desktopApiToken) headers.set('X-PatrolSafe-Desktop-Token', desktopApiToken);
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+
+  const response = await fetch(`${getApiBaseUrl()}${path}`, { headers });
+  if (!response.ok) throw new ApiError(`Request failed with status ${response.status}`, response.status);
+  return window.URL.createObjectURL(await response.blob());
 }

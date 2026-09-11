@@ -9,7 +9,6 @@ export class JwtAuthGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<{
       headers: Record<string, string | undefined>;
-      query?: Record<string, string | undefined>;
       user?: AuthenticatedUser;
     }>();
 
@@ -28,7 +27,6 @@ export class JwtAuthGuard implements CanActivate {
 
   private extractToken(request: {
     headers: Record<string, string | undefined>;
-    query?: Record<string, string | undefined>;
   }): string | null {
     const authorization = request.headers.authorization;
     if (authorization?.startsWith('Bearer ')) {
@@ -38,7 +36,6 @@ export class JwtAuthGuard implements CanActivate {
       }
     }
 
-    const queryToken = request.query?.access_token?.trim();
-    return queryToken || null;
+    return null;
   }
 }
