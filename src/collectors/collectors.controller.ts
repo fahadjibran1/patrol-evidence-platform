@@ -44,6 +44,18 @@ export class CollectorsController {
     return this.whatsAppCollectorService.start();
   }
 
+  @Post('monitoring/enable')
+  @RequireLicenceFeature('whatsappMonitoring')
+  enableMonitoring(): Promise<WhatsAppCollectorStatus> {
+    return this.whatsAppCollectorService.enableMonitoring();
+  }
+
+  @Post('monitoring/pause')
+  @RequireLicenceFeature('whatsappMonitoring')
+  pauseMonitoring(): Promise<WhatsAppCollectorStatus> {
+    return this.whatsAppCollectorService.pauseMonitoring();
+  }
+
   @Post('retry-link')
   @RequireLicenceFeature('whatsappMonitoring')
   retryLink(): Promise<WhatsAppCollectorStatus> {

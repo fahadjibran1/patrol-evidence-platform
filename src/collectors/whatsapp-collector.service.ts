@@ -17,6 +17,7 @@ import * as path from 'path';
 import * as readline from 'readline';
 import { CollectorType } from '@/common/enums/collector-type.enum';
 import { LicensingService } from '@/licensing/licensing.service';
+import { writeDesktopWorkspaceConfigPatch } from '@/desktop/desktop-config.util';
 import { WhatsAppSourceMappingService } from '@/patrol-groups/whatsapp-source-mapping.service';
 import { IngestPatrolImageEvent, PatrolImageIngestionService } from '@/patrol-images/patrol-image-ingestion.service';
 import {
@@ -60,6 +61,8 @@ export interface WhatsAppCollectorStatus extends Omit<WhatsAppHelperStatusSnapsh
   certificationState: WhatsAppCertificationAuthorizationResult['state'];
   certificationQrMasked: boolean;
   certificationLiveIngestion: WhatsAppCertificationLiveIngestionStatus;
+  monitoringPreference: 'ENABLED' | 'PAUSED';
+  monitoringState: 'ACTIVE' | 'PAUSED' | 'NO_GROUPS_CONFIGURED' | 'STARTING' | 'ERROR';
 }
 
 export interface WhatsAppCertificationAuthorizationResult {
@@ -72,6 +75,7 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(WhatsAppCollectorService.name);
   private readonly enabled: boolean;
   private readonly autoStart: boolean;
+  private monitoringEnabled: boolean;
   private readonly headless: boolean;
   private readonly allowFromMe: boolean;
   private readonly sessionPath: string;
@@ -100,6 +104,7 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
   private stoppingHelper = false;
   private chatDiscoveryRefreshCooldownUntil = 0;
   private certificationTerminal = false;
+  private unsubscribeMappingChanges: (() => void) | null = null;
   private certificationAuthorizationRequested = false;
   private certificationAuthorizationState:
     | 'DISABLED'
@@ -134,6 +139,7 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
   ) {
     this.enabled = configService.get<boolean>('whatsappEnabled') ?? false;
     this.autoStart = configService.get<boolean>('whatsappAutoStart') ?? false;
+    this.monitoringEnabled = this.autoStart;
     this.headless = configService.get<boolean>('whatsappHeadless') ?? true;
     this.allowFromMe = configService.get<boolean>('whatsappAllowFromMe') ?? false;
     this.sessionPath = configService.getOrThrow<string>('whatsappSessionPath');
@@ -151,20 +157,38 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit(): Promise<void> {
+    this.unsubscribeMappingChanges = this.whatsAppSourceMappingService.subscribeToMappingChanges(() => {
+      void this.reconcileProductionMonitoring('mapping-change');
+    });
     if (!this.enabled) {
       this.logger.log('WHATSAPP_AUTOSTART_SKIPPED reason=collector-disabled');
       this.appendCollectorLog('auto-start-skipped', 'collector-disabled');
       return;
     }
 
-    if (!this.autoStart) {
-      this.logger.log('WHATSAPP_AUTOSTART_SKIPPED reason=auto-start-disabled');
-      this.appendCollectorLog('auto-start-skipped', 'startPatrolMonitoringAfterLaunch=false');
+    await this.refreshMappedGroupsCount();
+    if (!this.whatsAppSourceMappingService.getConfiguredLinkedAccountId()) {
+      this.logger.log('WHATSAPP_AUTOSTART_SKIPPED reason=no-linked-account');
+      this.appendCollectorLog('auto-start-skipped', 'no-linked-account');
+      return;
+    }
+    if (this.mappedGroupsCount === 0) {
+      this.logger.log('WHATSAPP_AUTOSTART_IDLE reason=no-active-mappings');
+      this.appendCollectorLog('auto-start-idle', 'no-active-mappings; reconnect-without-listeners');
+    }
+    if (this.isSessionProfileEmpty()) {
+      this.logger.log('WHATSAPP_AUTOSTART_SKIPPED reason=no-saved-session');
+      this.appendCollectorLog('auto-start-skipped', 'no-saved-session');
       return;
     }
 
-    this.logger.log('WHATSAPP_AUTOSTART_ENABLED');
-    this.appendCollectorLog('auto-start-enabled', 'startPatrolMonitoringAfterLaunch=true');
+    if (this.monitoringEnabled) {
+      this.logger.log('WHATSAPP_AUTOSTART_ENABLED');
+      this.appendCollectorLog('auto-start-enabled', 'startPatrolMonitoringAfterLaunch=true');
+    } else {
+      this.logger.log('WHATSAPP_SESSION_AUTORECONNECT monitoring=paused');
+      this.appendCollectorLog('session-auto-reconnect', 'monitoring=paused listeners=disabled');
+    }
 
     void this.start().catch((error) => {
       const message = error instanceof Error ? error.message : String(error);
@@ -174,6 +198,8 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleDestroy(): Promise<void> {
+    this.unsubscribeMappingChanges?.();
+    this.unsubscribeMappingChanges = null;
     await this.stopHelperProcess();
   }
 
@@ -214,7 +240,44 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       certificationState: this.certificationAuthorizationState,
       certificationQrMasked,
       certificationLiveIngestion: { ...this.certificationLiveIngestion },
+      monitoringPreference: this.monitoringEnabled ? 'ENABLED' : 'PAUSED',
+      monitoringState: this.resolveMonitoringState(),
     };
+  }
+
+  async enableMonitoring(): Promise<WhatsAppCollectorStatus> {
+    if (isQrOnlyCertificationMode()) {
+      throw new BadRequestException('Production monitoring is unavailable in certification mode.');
+    }
+    this.licensingService.assertCollectorStartAllowed();
+    await this.refreshMappedGroupsCount();
+    if (!this.whatsAppSourceMappingService.getConfiguredLinkedAccountId()) {
+      throw new BadRequestException('Connect WhatsApp before starting monitoring.');
+    }
+    if (this.mappedGroupsCount === 0) {
+      throw new BadRequestException('Add at least one active WhatsApp group mapping before starting monitoring.');
+    }
+    this.monitoringEnabled = true;
+    writeDesktopWorkspaceConfigPatch({ autoStartCollector: true });
+    this.appendCollectorLog('production-monitoring-enabled', `mappings=${this.mappedGroupsCount}`);
+    if (!this.isHelperRunning()) {
+      return this.start();
+    }
+    await this.reconcileProductionMonitoring('customer-enable');
+    return this.getStatus();
+  }
+
+  async pauseMonitoring(): Promise<WhatsAppCollectorStatus> {
+    if (isQrOnlyCertificationMode()) {
+      throw new BadRequestException('Production monitoring is unavailable in certification mode.');
+    }
+    this.monitoringEnabled = false;
+    writeDesktopWorkspaceConfigPatch({ autoStartCollector: false });
+    this.appendCollectorLog('production-monitoring-paused');
+    if (this.isHelperRunning()) {
+      this.sendHelperCommand({ type: 'set-production-monitoring', enabled: false });
+    }
+    return this.getStatus();
   }
 
   async armCertificationLiveIngestion(
@@ -269,7 +332,6 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
   }
 
   async listGroups(): Promise<WhatsAppCollectorGroup[]> {
-    this.maybeRequestChatDiscoveryRefresh();
     return [...this.helperStatus.groups].sort((left, right) => left.name.localeCompare(right.name));
   }
 
@@ -289,7 +351,6 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
   }
 
   async listContacts(): Promise<WhatsAppCollectorContact[]> {
-    this.maybeRequestChatDiscoveryRefresh();
     return [...this.helperStatus.contacts].sort((left, right) => left.name.localeCompare(right.name));
   }
 
@@ -713,12 +774,13 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
 
   async getRuntimeConfig(token: string): Promise<WhatsAppHelperRuntimeConfig> {
     this.assertHelperToken(token);
-    const linkedAccountId = this.whatsAppSourceMappingService.resolveActiveLinkedAccountId(
-      this.helperStatus.connectedAccount,
-    );
+    const linkedAccountId =
+      this.helperStatus.connectedAccount?.trim() ||
+      this.whatsAppSourceMappingService.getConfiguredLinkedAccountId();
     const activeMappings = await this.whatsAppSourceMappingService.toRuntimeMappings(linkedAccountId);
 
     return {
+      monitoringEnabled: this.monitoringEnabled && activeMappings.length > 0,
       allowFromMe: this.allowFromMe,
       pilotGroupName: this.pilotGroupName ?? null,
       pilotSiteCode: this.pilotSiteCode ?? null,
@@ -1480,8 +1542,64 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async refreshMappedGroupsCount(): Promise<void> {
+    const linkedAccountId =
+      this.helperStatus.connectedAccount?.trim() ||
+      this.whatsAppSourceMappingService.getConfiguredLinkedAccountId();
     this.mappedGroupsCount = await this.whatsAppSourceMappingService.countActiveMappingsForIngest(
-      this.whatsAppSourceMappingService.resolveActiveLinkedAccountId(this.helperStatus.connectedAccount),
+      linkedAccountId,
+    );
+  }
+
+  private resolveMonitoringState(): WhatsAppCollectorStatus['monitoringState'] {
+    if (!this.monitoringEnabled) {
+      return 'PAUSED';
+    }
+    if (this.mappedGroupsCount === 0) {
+      return 'NO_GROUPS_CONFIGURED';
+    }
+    if (this.helperStatus.state === 'ready' && this.helperStatus.productionListenerCount === 3) {
+      return 'ACTIVE';
+    }
+    if (
+      this.helperStatus.state === 'failed' ||
+      this.helperStatus.state === 'RELINK_REQUIRED' ||
+      this.helperStatus.state === 'LINK_RETRY_REQUIRED' ||
+      this.helperStatus.state === 'disconnected'
+    ) {
+      return 'ERROR';
+    }
+    return 'STARTING';
+  }
+
+  private async reconcileProductionMonitoring(reason: string): Promise<void> {
+    await this.refreshMappedGroupsCount();
+    if (isQrOnlyCertificationMode()) {
+      return;
+    }
+    if (!this.isHelperRunning()) {
+      if (
+        this.monitoringEnabled &&
+        this.whatsAppSourceMappingService.getConfiguredLinkedAccountId() &&
+        !this.isSessionProfileEmpty()
+      ) {
+        this.appendCollectorLog('production-monitoring-starting', `reason=${reason}`);
+        void this.start().catch((error) => {
+          this.appendCollectorLog(
+            'production-monitoring-start-failed',
+            error instanceof Error ? error.message : String(error),
+          );
+        });
+      }
+      return;
+    }
+    if (this.helperStatus.state !== 'ready') {
+      return;
+    }
+    const enabled = this.monitoringEnabled && this.mappedGroupsCount > 0;
+    this.sendHelperCommand({ type: 'set-production-monitoring', enabled });
+    this.appendCollectorLog(
+      'production-monitoring-reconciled',
+      `reason=${reason} enabled=${enabled} mappings=${this.mappedGroupsCount}`,
     );
   }
 
@@ -1526,6 +1644,10 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       backfillMessagesScanned: 0,
       backfillImagesImported: 0,
       backfillDuplicatesSkipped: 0,
+      liveMessagesProcessed: 0,
+      liveImagesImported: 0,
+      liveDuplicatesSkipped: 0,
+      productionListenerCount: 0,
       allowFromMe: this.allowFromMe,
       startupStage: this.enabled ? 'Stopped' : 'Disabled',
       startupStartedAt: null,

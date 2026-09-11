@@ -146,6 +146,10 @@ export interface WhatsAppCollectorStatus {
   backfillMessagesScanned: number;
   backfillImagesImported: number;
   backfillDuplicatesSkipped: number;
+  liveMessagesProcessed?: number;
+  liveImagesImported?: number;
+  liveDuplicatesSkipped?: number;
+  productionListenerCount?: number;
   allowFromMe: boolean;
   mappedGroupsCount: number;
   pilotGroupName: string | null;
@@ -166,6 +170,8 @@ export interface WhatsAppCollectorStatus {
   sessionPathWritable: boolean;
   certificationState?: 'DISABLED' | 'EXPECTING_QR_ONLY' | 'AUTHENTICATION_AUTHORIZED' | 'UNEXPECTED_AUTHENTICATION';
   certificationQrMasked?: boolean;
+  monitoringPreference?: 'ENABLED' | 'PAUSED';
+  monitoringState?: 'ACTIVE' | 'PAUSED' | 'NO_GROUPS_CONFIGURED' | 'STARTING' | 'ERROR';
 }
 
 export interface WhatsAppCollectorGroup {

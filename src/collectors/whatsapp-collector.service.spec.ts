@@ -26,6 +26,7 @@ describe('WhatsAppCollectorService', () => {
     getConfiguredLinkedAccountId: jest.fn(),
     findActiveMappingsForIngest: jest.fn(),
     findActiveCertificationMappings: jest.fn(),
+    subscribeToMappingChanges: jest.fn(() => jest.fn()),
   };
 
   const patrolImageIngestionService = {
@@ -95,6 +96,10 @@ describe('WhatsAppCollectorService', () => {
       backfillMessagesScanned: 0,
       backfillImagesImported: 0,
       backfillDuplicatesSkipped: 0,
+      liveMessagesProcessed: 0,
+      liveImagesImported: 0,
+      liveDuplicatesSkipped: 0,
+      productionListenerCount: 0,
       allowFromMe: false,
       startupStage: 'Ready',
       startupStartedAt: null,
@@ -295,6 +300,89 @@ describe('WhatsAppCollectorService', () => {
       filePath: 'evidence/img-1.jpg',
     });
     licensingService.assertCollectorStartAllowed = jest.fn();
+    whatsAppSourceMappingService.subscribeToMappingChanges.mockReturnValue(jest.fn());
+  });
+
+  describe('persistent production monitoring', () => {
+    it('keeps linking separate from monitoring and exposes PAUSED by default', async () => {
+      const service = createService({ whatsappAutoStart: false });
+      const runtime = await service.getRuntimeConfig(HELPER_TOKEN);
+      const status = await service.getStatus();
+
+      expect(runtime.monitoringEnabled).toBe(false);
+      expect(status.monitoringPreference).toBe('PAUSED');
+      expect(status.monitoringState).toBe('PAUSED');
+    });
+
+    it('enables mapped monitoring and commands exactly the existing helper generation', async () => {
+      const service = createService();
+      const { write } = attachRunningHelper(service);
+
+      const status = await service.enableMonitoring();
+
+      expect(status.monitoringPreference).toBe('ENABLED');
+      expect(write).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(write.mock.calls[0][0])).toEqual({
+        type: 'set-production-monitoring',
+        enabled: true,
+      });
+    });
+
+    it('pauses listeners without logging out or stopping the linked helper', async () => {
+      const service = createService({ whatsappAutoStart: true });
+      const { write } = attachRunningHelper(service);
+
+      const status = await service.pauseMonitoring();
+
+      expect(status.monitoringPreference).toBe('PAUSED');
+      expect(status.state).toBe('ready');
+      expect(write).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(write.mock.calls[0][0])).toEqual({
+        type: 'set-production-monitoring',
+        enabled: false,
+      });
+    });
+
+    it('fails closed when no active mapping exists', async () => {
+      const service = createService();
+      whatsAppSourceMappingService.countActiveMappingsForIngest.mockResolvedValue(0);
+
+      await expect(service.enableMonitoring()).rejects.toThrow(
+        'Add at least one active WhatsApp group mapping before starting monitoring.',
+      );
+    });
+
+    it('auto-starts only an enabled saved session with an active account mapping', async () => {
+      const service = createService({ whatsappAutoStart: true });
+      jest.spyOn(
+        service as unknown as { isSessionProfileEmpty(): boolean },
+        'isSessionProfileEmpty',
+      ).mockReturnValue(false);
+      const start = jest.spyOn(service, 'start').mockResolvedValue(await service.getStatus());
+
+      await service.onModuleInit();
+      await Promise.resolve();
+
+      expect(whatsAppSourceMappingService.subscribeToMappingChanges).toHaveBeenCalledTimes(1);
+      expect(start).toHaveBeenCalledTimes(1);
+    });
+
+    it('reconnects a saved linked session while monitoring stays paused', async () => {
+      const service = createService({ whatsappAutoStart: false });
+      jest.spyOn(
+        service as unknown as { isSessionProfileEmpty(): boolean },
+        'isSessionProfileEmpty',
+      ).mockReturnValue(false);
+      const start = jest.spyOn(service, 'start').mockResolvedValue(await service.getStatus());
+
+      await service.onModuleInit();
+      await Promise.resolve();
+
+      expect(start).toHaveBeenCalledTimes(1);
+      const runtime = await service.getRuntimeConfig(HELPER_TOKEN);
+      expect(runtime.monitoringEnabled).toBe(false);
+      expect((await service.getStatus()).monitoringPreference).toBe('PAUSED');
+    });
   });
 
   it('skips fromMe messages when WHATSAPP_ALLOW_FROM_ME is false', async () => {
@@ -406,8 +494,7 @@ describe('WhatsAppCollectorService', () => {
     expect(status.backfillImagesImported).toBe(1);
     expect(status.backfillDuplicatesSkipped).toBe(1);
     expect(status.mappedGroupsCount).toBe(1);
-    expect(whatsAppSourceMappingService.resolveActiveLinkedAccountId).toHaveBeenCalled();
-    expect(whatsAppSourceMappingService.countActiveMappingsForIngest).toHaveBeenCalledWith('linked-account-1');
+    expect(whatsAppSourceMappingService.countActiveMappingsForIngest).toHaveBeenCalledWith('447700000000@c.us');
   });
 
   it('replaces a refreshed QR and clears it when authentication leaves the linking state', async () => {
@@ -460,10 +547,7 @@ describe('WhatsAppCollectorService', () => {
     expect(write).toHaveBeenCalledWith(`${JSON.stringify({ type: 'manual-backfill', hours: 1 })}\n`);
     expect(status.ready).toBe(true);
     expect(status.info).toBe('Refreshing patrol history for the last 1 hour.');
-    expect(whatsAppSourceMappingService.resolveActiveLinkedAccountId).toHaveBeenCalledWith(
-      '447700000000@c.us',
-    );
-    expect(whatsAppSourceMappingService.countActiveMappingsForIngest).toHaveBeenCalledWith('linked-account-1');
+    expect(whatsAppSourceMappingService.countActiveMappingsForIngest).toHaveBeenCalledWith('447700000000@c.us');
   });
 
   it('retries manual backfill once when WhatsApp returns a detached frame error', async () => {

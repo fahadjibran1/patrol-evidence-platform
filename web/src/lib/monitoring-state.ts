@@ -28,6 +28,7 @@ export interface MonitoringView {
   tone: 'ready' | 'warning' | 'error' | 'idle';
   opsTone: MonitoringOpsTone;
   isLive: boolean;
+  isSessionReady: boolean;
   isLinking: boolean;
   isError: boolean;
   isOffline: boolean;
@@ -183,6 +184,7 @@ export function deriveMonitoringView(status: WhatsAppCollectorStatus | null): Mo
       tone: 'idle',
       opsTone: 'amber' as MonitoringOpsTone,
       isLive: false,
+      isSessionReady: false,
       isLinking: false,
       isError: false,
       isOffline: true,
@@ -194,16 +196,28 @@ export function deriveMonitoringView(status: WhatsAppCollectorStatus | null): Mo
   }
 
   const phase = derivePhase(status);
-  const label = phaseLabel(phase, status.backfillRunning);
-  const tone = phaseTone(phase);
-  const isLive = phase === 'ready';
+  const isSessionReady = phase === 'ready';
+  const monitoringState = status.monitoringState ?? (isSessionReady ? 'ACTIVE' : 'PAUSED');
+  const label = isSessionReady
+    ? monitoringState === 'ACTIVE'
+      ? 'Active'
+      : monitoringState === 'NO_GROUPS_CONFIGURED'
+        ? 'No groups configured'
+        : monitoringState === 'ERROR'
+          ? 'Monitoring error'
+          : monitoringState === 'STARTING'
+            ? 'Starting monitoring'
+            : 'Paused'
+    : phaseLabel(phase, status.backfillRunning);
+  const isLive = isSessionReady && monitoringState === 'ACTIVE';
+  const tone = isLive ? 'ready' : isSessionReady ? 'idle' : phaseTone(phase);
   const isLinking = isLinkingStatus(status);
   const isError = phase === 'error' || phase === 'relink-required' || phase === 'link-retry-required';
   const isOffline = phase === 'offline' || phase === 'disabled';
   const stageLabel = status.startupStage?.trim() || label;
 
-  const headerLabel = isLive
-    ? 'Live'
+  const headerLabel = isSessionReady
+    ? label
     : phase === 'relink-required'
       ? 'Session expired'
     : phase === 'link-retry-required'
@@ -214,8 +228,8 @@ export function deriveMonitoringView(status: WhatsAppCollectorStatus | null): Mo
         ? label
         : 'Not linked';
 
-  const sidebarLabel = isLive
-    ? 'Monitoring live'
+  const sidebarLabel = isSessionReady
+    ? `Monitoring ${label.toLowerCase()}`
     : phase === 'relink-required'
       ? 'WhatsApp session expired'
     : phase === 'link-retry-required'
@@ -226,7 +240,7 @@ export function deriveMonitoringView(status: WhatsAppCollectorStatus | null): Mo
         ? `Monitoring · ${label}`
         : 'WhatsApp not linked';
 
-  const accountTitle = isLive
+  const accountTitle = isSessionReady
     ? status.connectedAccount || 'Patrol WhatsApp linked'
     : phase === 'relink-required'
       ? 'Session expired'
@@ -236,8 +250,8 @@ export function deriveMonitoringView(status: WhatsAppCollectorStatus | null): Mo
       ? stageLabel
       : 'Not linked yet';
 
-  const statusBadge = isLive
-    ? 'CONNECTED'
+  const statusBadge = isSessionReady
+    ? monitoringState
     : phase === 'relink-required'
       ? 'RELINK REQUIRED'
     : phase === 'link-retry-required'
@@ -257,13 +271,14 @@ export function deriveMonitoringView(status: WhatsAppCollectorStatus | null): Mo
     tone,
     opsTone: opsToneFromView(tone),
     isLive,
+    isSessionReady,
     isLinking,
     isError,
     isOffline,
-    showQr: isLinking && !isLive,
+    showQr: isLinking && !isSessionReady,
     accountTitle,
     statusBadge,
-    isSessionActive: isLive || isLinking,
+    isSessionActive: isSessionReady || isLinking,
   };
 }
 

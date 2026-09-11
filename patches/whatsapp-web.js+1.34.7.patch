@@ -1,9 +1,9 @@
 diff --git a/node_modules/whatsapp-web.js/src/Client.js b/node_modules/whatsapp-web.js/src/Client.js
-index 800109e..6e59b45 100644
+index 800109e..1728db7 100644
 --- a/node_modules/whatsapp-web.js/src/Client.js
 +++ b/node_modules/whatsapp-web.js/src/Client.js
 @@ -104,6 +104,12 @@ class Client extends EventEmitter {
- 
+
          this.currentIndexHtml = null;
          this.lastLoggedOut = false;
 +        this._injectInFlight = false;
@@ -12,7 +12,7 @@ index 800109e..6e59b45 100644
 +        this._activeInjectGeneration = 0;
 +        this._injectStopping = false;
 +        this._injectAuthenticated = false;
- 
+
          Util.setFfmpegPath(this.options.ffmpegPath);
      }
 @@ -113,6 +119,42 @@ class Client extends EventEmitter {
@@ -60,11 +60,11 @@ index 800109e..6e59b45 100644
              this.options.authTimeoutMs == 0
 @@ -144,7 +186,7 @@ class Client extends EventEmitter {
          await this.pupPage.evaluate(ExposeAuthStore);
- 
+
          const needAuthentication = await this.pupPage.evaluate(async () => {
 -            let state = window.require('WAWebSocketModel').Socket.state;
 +            let state = ((window.AuthStore && window.AuthStore.AppState) || window.require('WAWebSocketModel').Socket).state;
- 
+
              if (
                  state === 'OPENING' ||
 @@ -153,9 +195,7 @@ class Client extends EventEmitter {
@@ -97,17 +97,35 @@ index 800109e..6e59b45 100644
 +            state = ((window.AuthStore && window.AuthStore.AppState) || window.require('WAWebSocketModel').Socket).state;
              return state == 'UNPAIRED' || state == 'UNPAIRED_IDLE';
          });
- 
-@@ -302,6 +340,8 @@ class Client extends EventEmitter {
-                  * Emitted when authentication is successful
-                  * @event Client#authenticated
+
+@@ -304,11 +342,11 @@ class Client extends EventEmitter {
                   */
-+                this._injectAuthenticated = true;
-+                this._pendingInjectGeneration = 0;
                  this.emit(Events.AUTHENTICATED, authEventPayload);
- 
-                 const injected = await this.pupPage.evaluate(async () => {
-@@ -372,6 +412,8 @@ class Client extends EventEmitter {
+
+-                const injected = await this.pupPage.evaluate(async () => {
+-                    return typeof window.WWebJS !== 'undefined';
++                const eventBridgeAttached = await this.pupPage.evaluate(async () => {
++                    return window.__wwebjsLiveEventBridgeAttached === true;
+                 });
+
+-                if (!injected) {
++                if (!eventBridgeAttached) {
+                     if (
+                         this.options.webVersionCache.type === 'local' &&
+                         this.currentIndexHtml
+@@ -323,7 +361,10 @@ class Client extends EventEmitter {
+                         await webCache.persist(this.currentIndexHtml, version);
+                     }
+
+-                    // Load util functions (serializers, helper functions)
++                    // A replacement authenticated document can retain an
++                    // exposed binding or partial WWebJS namespace without the
++                    // Store.Msg event bridge. Rebuild the complete document
++                    // bridge unless its explicit completion marker exists.
+                     await this.pupPage.evaluate(LoadUtils);
+
+                     let start = Date.now();
+@@ -372,6 +413,8 @@ class Client extends EventEmitter {
                   * Emitted when the client has initialized and is ready to receive messages.
                   * @event Client#ready
                   */
@@ -116,7 +134,7 @@ index 800109e..6e59b45 100644
                  this.emit(Events.READY);
                  this.authStrategy.afterAuthReady();
              },
-@@ -398,14 +440,10 @@ class Client extends EventEmitter {
+@@ -398,16 +441,25 @@ class Client extends EventEmitter {
              },
          );
          await this.pupPage.evaluate(() => {
@@ -129,11 +147,28 @@ index 800109e..6e59b45 100644
 -            window
 -                .require('WAWebSocketModel')
 -                .Socket.on('change:hasSynced', () => {
-+            window.AuthStore.AppState.on('change:hasSynced', () => {
-                     window.onAppStateHasSyncedEvent();
-                 });
+-                    window.onAppStateHasSyncedEvent();
+-                });
++            const dispatchAppStateHasSynced = () => {
++                if (window.__wwebjsAuthSyncDispatched) return;
++                window.__wwebjsAuthSyncDispatched = true;
++                window.onAppStateHasSyncedEvent();
++            };
++            window.AuthStore.AppState.on(
++                'change:hasSynced',
++                dispatchAppStateHasSynced,
++            );
++            // A post-authentication main-frame replacement can finish syncing
++            // before serialized reinjection attaches this listener. Complete
++            // authenticated setup once for that document when it is already
++            // connected instead of waiting for a transition that has passed.
++            if (window.AuthStore.AppState.state === 'CONNECTED') {
++                dispatchAppStateHasSynced();
++            }
              const Cmd = window.require('WAWebCmd').Cmd;
-@@ -427,6 +465,9 @@ class Client extends EventEmitter {
+             Cmd.on('offline_progress_update_from_bridge', () => {
+                 window.onOfflineProgressUpdateEvent(
+@@ -427,6 +479,9 @@ class Client extends EventEmitter {
       * Sets up events and requirements, kicks off authentication request
       */
      async initialize() {
@@ -143,7 +178,37 @@ index 800109e..6e59b45 100644
          let /**
               * @type {puppeteer.Browser}
               */
-@@ -546,7 +587,7 @@ class Client extends EventEmitter {
+@@ -490,8 +545,6 @@ class Client extends EventEmitter {
+             referer: 'https://whatsapp.com/',
+         });
+
+-        await this.inject();
+-
+         this.pupPage.on('framenavigated', async (frame) => {
+             if (frame.url().includes('post_logout=1') || this.lastLoggedOut) {
+                 this.emit(Events.DISCONNECTED, 'LOGOUT');
+@@ -500,8 +553,20 @@ class Client extends EventEmitter {
+                 await this.authStrategy.afterBrowserInitialized();
+                 this.lastLoggedOut = false;
+             }
++            if (frame === this.pupPage.mainFrame()) {
++                // Authentication belongs to the document that emitted it. A
++                // replacement main document must rebuild its page-to-Node
++                // event bridge before it can be treated as injection-ready.
++                this._injectAuthenticated = false;
++            }
+             await this.inject();
+         });
++
++        // Register navigation ownership before the initial injection. A
++        // successful QR/session restore can replace the main document while
++        // the authentication callback is still completing; that replacement
++        // must queue a fresh, serialized injection for the new document.
++        await this.inject();
+     }
+
+     /**
+@@ -546,7 +611,7 @@ class Client extends EventEmitter {
                  }
                  window.codeInterval = setInterval(async () => {
                      const state =
@@ -152,7 +217,7 @@ index 800109e..6e59b45 100644
                      if (state != 'UNPAIRED' && state != 'UNPAIRED_IDLE') {
                          clearInterval(window.codeInterval);
                          return;
-@@ -834,9 +875,7 @@ class Client extends EventEmitter {
+@@ -834,9 +899,7 @@ class Client extends EventEmitter {
                      if (state === WAState.CONFLICT) {
                          setTimeout(() => {
                              this.pupPage.evaluate(() =>
@@ -163,16 +228,24 @@ index 800109e..6e59b45 100644
                              );
                          }, this.options.takeoverTimeoutMs);
                      }
-@@ -1022,7 +1061,7 @@ class Client extends EventEmitter {
- 
+@@ -1022,7 +1085,7 @@ class Client extends EventEmitter {
+
          await this.pupPage.evaluate(() => {
              const { Msg, Chat } = window.require('WAWebCollections');
 -            const AppState = window.require('WAWebSocketModel').Socket;
 +            const AppState = ((window.AuthStore && window.AuthStore.AppState) || window.require('WAWebSocketModel').Socket);
- 
+
              // Enable placeholder message resend (recovery for ciphertext messages)
              const gatingUtils = window.require('WAWebSyncGatingUtils');
-@@ -1275,6 +1314,8 @@ class Client extends EventEmitter {
+@@ -1234,6 +1297,7 @@ class Client extends EventEmitter {
+                     return origFunction.apply(module, args);
+                 },
+             );
++            window.__wwebjsLiveEventBridgeAttached = true;
+         });
+     }
+
+@@ -1275,6 +1339,8 @@ class Client extends EventEmitter {
       * Closes the client
       */
      async destroy() {
@@ -181,7 +254,7 @@ index 800109e..6e59b45 100644
          const browser = this.pupBrowser;
          const isConnected = browser?.isConnected?.();
          if (isConnected) {
-@@ -1288,7 +1329,7 @@ class Client extends EventEmitter {
+@@ -1288,7 +1354,7 @@ class Client extends EventEmitter {
       */
      async logout() {
          await this.pupPage.evaluate(() => {
@@ -189,8 +262,8 @@ index 800109e..6e59b45 100644
 +            return ((window.AuthStore && window.AuthStore.AppState) || window.require('WAWebSocketModel').Socket).logout();
          });
          await this.pupBrowser.close();
- 
-@@ -1974,7 +2015,7 @@ class Client extends EventEmitter {
+
+@@ -1974,7 +2040,7 @@ class Client extends EventEmitter {
       */
      async getState() {
          return await this.pupPage.evaluate(() => {
@@ -198,8 +271,8 @@ index 800109e..6e59b45 100644
 +            return ((window.AuthStore && window.AuthStore.AppState) || window.require('WAWebSocketModel').Socket).state ?? null;
          });
      }
- 
-@@ -2202,7 +2243,7 @@ class Client extends EventEmitter {
+
+@@ -2202,7 +2268,7 @@ class Client extends EventEmitter {
       */
      async resetState() {
          await this.pupPage.evaluate(() => {
@@ -207,14 +280,14 @@ index 800109e..6e59b45 100644
 +            ((window.AuthStore && window.AuthStore.AppState) || window.require('WAWebSocketModel').Socket).reconnect();
          });
      }
- 
+
 diff --git a/node_modules/whatsapp-web.js/src/util/Injected/AuthStore/AuthStore.js b/node_modules/whatsapp-web.js/src/util/Injected/AuthStore/AuthStore.js
 index 9c4644d..2013259 100644
 --- a/node_modules/whatsapp-web.js/src/util/Injected/AuthStore/AuthStore.js
 +++ b/node_modules/whatsapp-web.js/src/util/Injected/AuthStore/AuthStore.js
 @@ -1,8 +1,73 @@
  'use strict';
- 
+
  exports.ExposeAuthStore = () => {
 +    // Keep this helper inside the serialized function: Puppeteer evaluates
 +    // ExposeAuthStore in the page without its Node module closure.
@@ -309,5 +382,5 @@ index 54df700..67b9bdc 100644
 +        await page.exposeFunction(name, fn);
 +    }
  }
- 
+
  module.exports = { exposeFunctionIfAbsent };

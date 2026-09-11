@@ -86,6 +86,7 @@ export function SetupPage(): JSX.Element {
   const [mappingAdvancedOpen, setMappingAdvancedOpen] = useState(false);
   const [scheduleAdvancedOpen, setScheduleAdvancedOpen] = useState(false);
   const [licenseAdvancedOpen, setLicenseAdvancedOpen] = useState(false);
+  const [mappingSiteSelections, setMappingSiteSelections] = useState<Record<string, string>>({});
 
   const loadData = useCallback(async (): Promise<void> => {
     const [
@@ -113,6 +114,7 @@ export function SetupPage(): JSX.Element {
     setWhatsAppContacts(nextWhatsAppContacts);
     setBootstrapStatus(nextBootstrapStatus);
     setCollectorStatus(nextCollectorStatus);
+    setMappingSiteSelections(Object.fromEntries(nextGroups.map((group) => [group.id, group.siteId])));
     setLicenseKey(nextBootstrapStatus?.license.licenseKey ?? '');
 
     setGroupForm((current) =>
@@ -131,9 +133,13 @@ export function SetupPage(): JSX.Element {
 
   const hasSites = sites.length > 0;
   const whatsAppLinked = Boolean(collectorStatus?.connected || collectorStatus?.ready);
-  const hasMappings = groups.length > 0;
+  const currentLinkedAccountId = collectorStatus?.connectedAccount || bootstrapStatus?.linkedWhatsAppAccountId || null;
+  const currentAccountMappings = groups.filter(
+    (group) => !group.externalGroupId || (currentLinkedAccountId && group.linkedAccountId === currentLinkedAccountId),
+  );
+  const hasMappings = currentAccountMappings.some((group) => group.active && Boolean(group.externalGroupId));
   const hasSchedules = schedules.length > 0;
-  const monitoringLive = Boolean(collectorStatus?.ready);
+  const monitoringLive = collectorStatus?.monitoringState === 'ACTIVE';
 
   const stepComplete = useMemo(
     () => ({
@@ -188,6 +194,7 @@ export function SetupPage(): JSX.Element {
     clearMessages();
 
     try {
+      await apiRequest('/collectors/whatsapp/refresh-sources', { method: 'POST' }, token ?? undefined);
       const [nextWhatsAppGroups, nextWhatsAppContacts] = await Promise.all([
         apiRequest<WhatsAppCollectorGroup[]>('/collectors/whatsapp/groups', {}, token ?? undefined).catch(() => []),
         apiRequest<WhatsAppCollectorContact[]>('/collectors/whatsapp/contacts', {}, token ?? undefined).catch(() => []),
@@ -285,6 +292,45 @@ export function SetupPage(): JSX.Element {
       setError(
         submissionError instanceof Error ? submissionError.message : 'Could not save schedule. Check the times and try again.',
       );
+    }
+  }
+
+  async function updateMapping(group: PatrolGroup, action: 'reassign' | 'deactivate' | 'reactivate'): Promise<void> {
+    clearMessages();
+    const targetSiteId = mappingSiteSelections[group.id] ?? group.siteId;
+    const confirmed =
+      action === 'reassign'
+        ? window.confirm(
+            'Move this WhatsApp group to the selected site? Future evidence will use the new site. Historical evidence will not change.',
+          )
+        : action === 'deactivate'
+          ? window.confirm(
+              'Deactivate this mapping? Future images from this source will not be captured. Historical evidence will remain available.',
+            )
+          : true;
+    if (!confirmed) return;
+
+    try {
+      await apiRequest(
+        `/patrol-groups/${group.id}`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify(
+            action === 'reassign' ? { siteId: targetSiteId } : { active: action === 'reactivate' },
+          ),
+        },
+        token ?? undefined,
+      );
+      setSuccess(
+        action === 'reassign'
+          ? 'Mapping updated. Future evidence will use the new site; historical evidence is unchanged.'
+          : action === 'deactivate'
+            ? 'Mapping deactivated. Historical evidence remains available.'
+            : 'Mapping reactivated for future monitoring.',
+      );
+      await loadData();
+    } catch (mappingError) {
+      setError(mappingError instanceof Error ? mappingError.message : 'Could not update this mapping.');
     }
   }
 
@@ -667,18 +713,63 @@ export function SetupPage(): JSX.Element {
               </div>
             </form>
 
-            {groups.length > 0 ? (
+            {currentAccountMappings.length > 0 ? (
               <div className="setup-existing-block stack-list">
                 <p className="setup-field-label">Current mappings</p>
-                {groups.map((group) => (
+                {currentAccountMappings.map((group) => (
                   <div className="list-row" key={group.id}>
                     <div>
                       <strong>{group.groupName}</strong>
                       <p className="muted-text">
                         {group.site?.siteCode ?? 'Site'} · {group.sourceType === 'contact' ? 'Contact' : 'Group'}
                       </p>
+                      <label>
+                        Site for future evidence
+                        <select
+                          value={mappingSiteSelections[group.id] ?? group.siteId}
+                          disabled={!group.active}
+                          onChange={(event) =>
+                            setMappingSiteSelections((current) => ({ ...current, [group.id]: event.target.value }))
+                          }
+                        >
+                          {sites.map((site) => (
+                            <option key={site.id} value={site.id}>
+                              {site.siteCode} — {site.siteName}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <div className="button-row">
+                        {group.active ? (
+                          <>
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              disabled={(mappingSiteSelections[group.id] ?? group.siteId) === group.siteId}
+                              onClick={() => void updateMapping(group, 'reassign')}
+                            >
+                              Move to selected site
+                            </button>
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              onClick={() => void updateMapping(group, 'deactivate')}
+                            >
+                              Deactivate mapping
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            className="primary-button"
+                            onClick={() => void updateMapping(group, 'reactivate')}
+                          >
+                            Reactivate mapping
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <StatusBadge value="READY" />
+                    <StatusBadge value={group.active ? 'ACTIVE' : 'INACTIVE'} />
                   </div>
                 ))}
               </div>

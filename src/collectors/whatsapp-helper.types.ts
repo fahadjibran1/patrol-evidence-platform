@@ -42,6 +42,7 @@ export interface WhatsAppHelperGroupMapping {
 }
 
 export interface WhatsAppHelperRuntimeConfig {
+  monitoringEnabled: boolean;
   allowFromMe: boolean;
   pilotGroupName: string | null;
   pilotSiteCode: string | null;
@@ -93,6 +94,10 @@ export interface WhatsAppHelperStatusSnapshot {
   backfillMessagesScanned: number;
   backfillImagesImported: number;
   backfillDuplicatesSkipped: number;
+  liveMessagesProcessed: number;
+  liveImagesImported: number;
+  liveDuplicatesSkipped: number;
+  productionListenerCount: number;
   allowFromMe: boolean;
   startupStage: string | null;
   startupStartedAt: string | null;
@@ -169,6 +174,10 @@ export type WhatsAppHelperCommand =
     }
   | {
       type: 'disarm-certification-live-ingestion';
+    }
+  | {
+      type: 'set-production-monitoring';
+      enabled: boolean;
     };
 
 export const WHATSAPP_HELPER_EVENT_PREFIX = 'PATROL_COLLECTOR_EVENT ';

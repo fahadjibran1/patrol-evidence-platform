@@ -65,6 +65,15 @@ describe('WhatsAppSourceMappingService', () => {
     expect(service.isMappingEligibleForIngest(archivedSite, '447700000001@c.us')).toBe(false);
   });
 
+  it('notifies and cleanly unsubscribes mapping lifecycle observers', () => {
+    const listener = jest.fn();
+    const unsubscribe = service.subscribeToMappingChanges(listener);
+    service.notifyMappingChanged();
+    unsubscribe();
+    service.notifyMappingChanged();
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
   describe('certification tuple scope', () => {
     const accountId = '447700000001@c.us';
     const sourceId = '120363000000000000@g.us';

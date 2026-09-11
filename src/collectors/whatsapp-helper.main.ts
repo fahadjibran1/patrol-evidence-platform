@@ -174,6 +174,11 @@ let activeBrowserLaunch: { executablePath: string; headless: boolean } | null = 
 let readinessFinalized = false;
 let activeClientInfoWatch: { cancelled: boolean; attemptId: number } | null = null;
 let liveMediaListenersAttached = false;
+let productionMonitoringEnabled = false;
+let listenerBoundClient: Client | null = null;
+let listenerBoundAttemptId: number | null = null;
+const clientObjectIds = new WeakMap<object, number>();
+let nextClientObjectId = 1;
 type CertificationLiveGate = WhatsAppCertificationLiveIngestionStatus & {
   linkedAccountId: string;
   sourceExternalId: string;
@@ -227,6 +232,10 @@ const status: WhatsAppHelperStatusSnapshot = {
   backfillMessagesScanned: 0,
   backfillImagesImported: 0,
   backfillDuplicatesSkipped: 0,
+  liveMessagesProcessed: 0,
+  liveImagesImported: 0,
+  liveDuplicatesSkipped: 0,
+  productionListenerCount: 0,
   allowFromMe: false,
   startupStage: 'Starting patrol monitoring...',
   startupStartedAt: new Date().toISOString(),
@@ -778,6 +787,10 @@ function canAcceptLiveMessages(): boolean {
 
   if (isQrOnlyCertificationMode()) {
     return certificationLiveGate.armed && certificationLiveGate.budgetRemaining > 0 && isConnectedAndFinalized();
+  }
+
+  if (!productionMonitoringEnabled) {
+    return false;
   }
 
   if (status.state === 'ready') {
@@ -1657,6 +1670,68 @@ function logMediaListenerCounts(target: Client, trigger: string): void {
   );
 }
 
+function getClientObjectId(target: Client | null): number | null {
+  if (!target) {
+    return null;
+  }
+  const existing = clientObjectIds.get(target);
+  if (existing) {
+    return existing;
+  }
+  const assigned = nextClientObjectId;
+  nextClientObjectId += 1;
+  clientObjectIds.set(target, assigned);
+  return assigned;
+}
+
+async function logLiveEventBridgeProbe(target: Client, trigger: string): Promise<boolean> {
+  try {
+    const bridge = await target.pupPage?.evaluate(() => {
+      const pageWindow = window as unknown as {
+        onAddMessageEvent?: unknown;
+        WWebJS?: unknown;
+        __wwebjsLiveEventBridgeAttached?: unknown;
+        Store?: {
+          Msg?: {
+            _events?: Record<string, unknown>;
+          };
+        };
+      };
+      const addEvent = pageWindow.Store?.Msg?._events?.add;
+      const addListenerCount = Array.isArray(addEvent) ? addEvent.length : addEvent ? 1 : 0;
+      return {
+        onAddMessageEvent: typeof pageWindow.onAddMessageEvent === 'function',
+        wwebjs: typeof pageWindow.WWebJS !== 'undefined',
+        bridgeAttached: pageWindow.__wwebjsLiveEventBridgeAttached === true,
+        storeMsg: Boolean(pageWindow.Store?.Msg),
+        storeMsgAddListenerCount: addListenerCount,
+      };
+    });
+    appendCollectorLog(
+      'live-event-bridge-probe',
+      [
+        `trigger=${trigger}`,
+        `clientObject=${getClientObjectId(target)}`,
+        `activeClientObject=${getClientObjectId(client)}`,
+        `attemptId=${activeStartupAttemptId}`,
+        `clientMatch=${target === client}`,
+        `onAddMessageEvent=${bridge?.onAddMessageEvent ?? false}`,
+        `wwebjs=${bridge?.wwebjs ?? false}`,
+        `bridgeAttached=${bridge?.bridgeAttached ?? false}`,
+        `storeMsg=${bridge?.storeMsg ?? false}`,
+        `storeMsgAddListeners=${bridge?.storeMsgAddListenerCount ?? 0}`,
+      ].join(' '),
+    );
+    return bridge?.bridgeAttached === true;
+  } catch (error) {
+    appendCollectorLog(
+      'live-event-bridge-probe-error',
+      `trigger=${trigger} clientObject=${getClientObjectId(target)} error=${formatRuntimeError(error)}`,
+    );
+    return false;
+  }
+}
+
 function describeFrameNavigation(frame: { url(): string; navigationType?: () => string }): string {
   try {
     return frame.navigationType?.() ?? 'navigated';
@@ -1697,6 +1772,17 @@ async function finalizeClientReady(
 
   if (readinessFinalized && status.state === 'ready') {
     return;
+  }
+
+  if (context.readySource === 'client-info-detected') {
+    const bridgeAttached = await logLiveEventBridgeProbe(currentClient, 'client-info-ready-gate');
+    if (!bridgeAttached) {
+      appendCollectorLog(
+        'client-info-ready-deferred',
+        `reason=live-event-bridge-not-attached clientObject=${getClientObjectId(currentClient)} attemptId=${activeStartupAttemptId}`,
+      );
+      return;
+    }
   }
 
   cancelClientInfoWatch();
@@ -1803,13 +1889,23 @@ async function finalizeClientReady(
         'discovery=0 mapping=0 backfill=0 ingestionListeners=0 sending=0',
       );
     } else {
-      attachLiveMediaListenersOnce(currentClient);
-      if (client) {
-        logMediaListenerCounts(client, 'ready-event');
+      const runtimeConfig = await fetchRuntimeConfig();
+      productionMonitoringEnabled =
+        runtimeConfig.monitoringEnabled && runtimeConfig.mappedGroups.length > 0;
+      if (productionMonitoringEnabled) {
+        await logLiveEventBridgeProbe(currentClient, `finalize-ready:${context.readySource}`);
+        attachLiveMediaListenersOnce(currentClient);
+        if (client) {
+          logMediaListenerCounts(client, 'ready-event');
+        }
+        setTimeout(() => verifyAndReattachLiveMediaListeners('post-ready'), 2_000);
+      } else {
+        resetLiveMessageListenerState();
+        appendCollectorLog(
+          'PRODUCTION_MONITORING_IDLE',
+          `preference=${runtimeConfig.monitoringEnabled ? 'enabled' : 'paused'} mappings=${runtimeConfig.mappedGroups.length}`,
+        );
       }
-      await refreshDiscoveredChats();
-      scheduleChatDiscoveryAfterReady(context.readySource);
-      setTimeout(() => verifyAndReattachLiveMediaListeners('post-ready'), 2_000);
     }
     startReadyHeartbeat();
     resolveStartupOnce('ready');
@@ -1895,7 +1991,9 @@ async function watchClientInfoAfterAuthentication(
         browserPath: edgeExecutablePath,
         readySource: 'client-info-detected',
       });
-      return;
+      if (readinessFinalized) {
+        return;
+      }
     }
 
     await sleep(CLIENT_INFO_POLL_MS);
@@ -2274,6 +2372,7 @@ async function fetchJson(relativePath: string, init?: RequestInit) {
 
 async function fetchRuntimeConfig(): Promise<WhatsAppHelperRuntimeConfig> {
   const fallback: WhatsAppHelperRuntimeConfig = {
+    monitoringEnabled: false,
     allowFromMe: process.env.PATROL_HELPER_ALLOW_FROM_ME === 'true',
     pilotGroupName: process.env.PATROL_HELPER_PILOT_GROUP_NAME?.trim() || null,
     pilotSiteCode: process.env.PATROL_HELPER_PILOT_SITE_CODE?.trim() || null,
@@ -2288,7 +2387,7 @@ async function fetchRuntimeConfig(): Promise<WhatsAppHelperRuntimeConfig> {
     emitStatus();
     appendCollectorLog(
       'runtime-config-loaded',
-      `mappedGroups=${runtimeConfig.mappedGroups.length} allowFromMe=${runtimeConfig.allowFromMe}`,
+      `monitoringEnabled=${runtimeConfig.monitoringEnabled} mappedGroups=${runtimeConfig.mappedGroups.length} allowFromMe=${runtimeConfig.allowFromMe}`,
     );
     return runtimeConfig;
   } catch (error) {
@@ -2624,11 +2723,18 @@ function formatLiveMediaListenerCounts(counts: {
 }
 
 function detachLiveMediaListeners(target: Client): void {
-  const wasAttached = liveMediaListenersAttached;
+  const ownedBinding = listenerBoundClient === target;
+  const wasAttached = ownedBinding && liveMediaListenersAttached;
   target.removeListener('message', onClientMessageReceived);
   target.removeListener('message_create', onClientMessageCreated);
   target.removeListener('media_uploaded', onClientMediaUploaded);
-  liveMediaListenersAttached = false;
+  if (ownedBinding) {
+    listenerBoundClient = null;
+    listenerBoundAttemptId = null;
+    liveMediaListenersAttached = false;
+    status.productionListenerCount = 0;
+    emitStatus();
+  }
 
   if (wasAttached) {
     appendCollectorLog(
@@ -2639,12 +2745,24 @@ function detachLiveMediaListeners(target: Client): void {
 }
 
 function attachLiveMediaListeners(target: Client, reason: string): void {
+  if (listenerBoundClient && listenerBoundClient !== target) {
+    detachLiveMediaListeners(listenerBoundClient);
+  }
   detachLiveMediaListeners(target);
 
   target.on('message', onClientMessageReceived);
   target.on('message_create', onClientMessageCreated);
   target.on('media_uploaded', onClientMediaUploaded);
+  listenerBoundClient = target;
+  listenerBoundAttemptId = activeStartupAttemptId;
   liveMediaListenersAttached = true;
+  status.productionListenerCount = isQrOnlyCertificationMode() ? 0 : 3;
+  emitStatus();
+
+  appendCollectorLog(
+    'listener-client-binding',
+    `reason=${reason} targetObject=${getClientObjectId(target)} activeClientObject=${getClientObjectId(client)} boundObject=${getClientObjectId(listenerBoundClient)} boundAttemptId=${listenerBoundAttemptId ?? 'none'} activeAttemptId=${activeStartupAttemptId} clientMatch=${target === client}`,
+  );
 
   if (reason === 'ready-event') {
     appendCollectorLog('listener-attached', formatLiveMediaListenerCounts(getLiveMediaListenerCounts(target)));
@@ -2660,7 +2778,7 @@ function verifyAndReattachLiveMediaListeners(
   trigger: 'navigation' | 'health-check' | 'post-ready',
 ): void {
   const target = client;
-  if (!target || shutdownRequested || status.state !== 'ready' || !readinessFinalized) {
+  if (!target || shutdownRequested || status.state !== 'ready' || !readinessFinalized || !productionMonitoringEnabled) {
     return;
   }
 
@@ -2672,7 +2790,11 @@ function verifyAndReattachLiveMediaListeners(
 
   const missingListeners =
     counts.message === 0 || counts.message_create === 0 || counts.media_uploaded === 0;
-  if (liveMediaListenersAttached && !missingListeners) {
+  const bindingIsCurrent =
+    liveMediaListenersAttached &&
+    listenerBoundClient === target &&
+    listenerBoundAttemptId === activeStartupAttemptId;
+  if (bindingIsCurrent && !missingListeners) {
     return;
   }
 
@@ -2681,7 +2803,7 @@ function verifyAndReattachLiveMediaListeners(
 }
 
 function scheduleLiveMediaListenerReattachAfterNavigation(url: string, reason: string): void {
-  if (!readinessFinalized || status.state !== 'ready' || !client || shutdownRequested) {
+  if (!readinessFinalized || status.state !== 'ready' || !client || shutdownRequested || !productionMonitoringEnabled) {
     return;
   }
 
@@ -2711,10 +2833,11 @@ function resetLiveMessageListenerState(): void {
     disarmCertificationLiveIngestion('listener-reset');
   }
   clearNavigationReattachTimer();
-  if (client && liveMediaListenersAttached) {
-    detachLiveMediaListeners(client);
+  if (listenerBoundClient && liveMediaListenersAttached) {
+    detachLiveMediaListeners(listenerBoundClient);
   } else {
     liveMediaListenersAttached = false;
+    status.productionListenerCount = 0;
   }
   for (const timer of pendingLiveMediaChecks.values()) {
     clearTimeout(timer);
@@ -2782,7 +2905,11 @@ function attachLiveMediaListenersOnce(target: Client): void {
   if (blockAfterCertificationTerminal('attach-live-media-listeners')) {
     return;
   }
-  if (liveMediaListenersAttached) {
+  if (
+    liveMediaListenersAttached &&
+    listenerBoundClient === target &&
+    listenerBoundAttemptId === activeStartupAttemptId
+  ) {
     appendCollectorLog('listener-attached', 'skipped=already-attached');
     return;
   }
@@ -2842,13 +2969,13 @@ async function dispatchLiveMessage(
       'process-return-not-media',
       `stage=dispatch event=${eventName} id=${messageId} hasMedia=false`,
     );
-    if (!isQrOnlyCertificationMode()) {
+    if (!isQrOnlyCertificationMode() && productionMonitoringEnabled) {
       scheduleLiveMediaRecheck(messageId);
     }
     return;
   }
 
-  if (status.state !== 'ready' && !canAcceptLiveMessages()) {
+  if (!canAcceptLiveMessages()) {
     appendCollectorLog(
       'PROCESS_BLOCK_REASON',
       `stage=dispatch event=${eventName} id=${messageId} previousState=${status.state} state=${status.state} readinessFinalized=${readinessFinalized} account=${status.connectedAccount ?? 'none'} reason=collector-not-ready`,
@@ -2898,8 +3025,9 @@ function startReadyHeartbeat(): void {
       `ready=true listenersAttached=${liveMediaListenersAttached} listenerCounts=${counts}`,
     );
 
-    if (!isQrOnlyCertificationMode()) {
+    if (!isQrOnlyCertificationMode() && productionMonitoringEnabled) {
       verifyAndReattachLiveMediaListeners('health-check');
+      void logLiveEventBridgeProbe(client, 'health-check');
     }
   }, READY_HEARTBEAT_INTERVAL_MS);
 }
@@ -2964,7 +3092,8 @@ async function processMessage(message: Message, source: MessageSource): Promise<
   clearPendingLiveMediaCheck(messageExternalId);
 
   if (messageExternalId && processedMessageIds.has(messageExternalId)) {
-    status.backfillDuplicatesSkipped += 1;
+    if (source === 'live') status.liveDuplicatesSkipped += 1;
+    else status.backfillDuplicatesSkipped += 1;
     emitStatus();
     appendCollectorLog('process-return-duplicate', `source=${source} message=${messageExternalId}`);
     return 'duplicate';
@@ -2998,7 +3127,8 @@ async function processMessage(message: Message, source: MessageSource): Promise<
   }
 
   status.lastMessageAt = new Date().toISOString();
-  status.backfillMessagesScanned += 1;
+  if (source === 'live') status.liveMessagesProcessed += 1;
+  else status.backfillMessagesScanned += 1;
   emitStatus();
 
   try {
@@ -3020,7 +3150,8 @@ async function processMessage(message: Message, source: MessageSource): Promise<
     if (messageExternalId) {
       processedMessageIds.add(messageExternalId);
     }
-    status.backfillImagesImported += 1;
+    if (source === 'live') status.liveImagesImported += 1;
+    else status.backfillImagesImported += 1;
     if (source === 'live' && isQrOnlyCertificationMode() && certificationLiveGate.armed) {
       certificationLiveGate.acceptedItemCount += 1;
       disarmCertificationLiveIngestion('accepted-item');
@@ -3109,10 +3240,7 @@ async function runBackfill(hours: number): Promise<void> {
             continue;
           }
 
-          const result = await processMessage(message, 'backfill');
-          if (result === 'duplicate') {
-            status.backfillDuplicatesSkipped += 1;
-          }
+          await processMessage(message, 'backfill');
           emitStatus();
         }
       } catch (error) {
@@ -3846,6 +3974,29 @@ function wireCommands(): void {
 
     if (command.type === 'stop') {
       await shutdown(0);
+      return;
+    }
+
+    if (command.type === 'set-production-monitoring') {
+      if (isQrOnlyCertificationMode()) {
+        appendCollectorLog('certification-operational-command-suppressed', 'action=set-production-monitoring');
+        return;
+      }
+      const runtimeConfig = await fetchRuntimeConfig();
+      productionMonitoringEnabled =
+        command.enabled && runtimeConfig.monitoringEnabled && runtimeConfig.mappedGroups.length > 0;
+      if (client && readinessFinalized && status.state === 'ready') {
+        if (productionMonitoringEnabled) {
+          attachLiveMediaListeners(client, 'monitoring-reconcile');
+        } else {
+          resetLiveMessageListenerState();
+        }
+      }
+      appendCollectorLog(
+        'production-monitoring-command',
+        `requested=${command.enabled} effective=${productionMonitoringEnabled} mappings=${runtimeConfig.mappedGroups.length}`,
+      );
+      emitStatus();
       return;
     }
 

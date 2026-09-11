@@ -45,9 +45,7 @@ describe('WhatsApp QR-only certification runtime contract', () => {
     expect(finalizeBody.indexOf("stopForUnexpectedAuthentication('client-identity')")).toBeLessThan(
       finalizeBody.indexOf('waitForPostAuthCompatibility'),
     );
-    expect(finalizeBody.indexOf("stopForUnexpectedAuthentication('client-identity')")).toBeLessThan(
-      finalizeBody.indexOf('refreshDiscoveredChats'),
-    );
+    expect(finalizeBody).not.toContain('refreshDiscoveredChats');
   });
 
   it('preserves LocalAuth by shutting down without logout or session deletion', () => {
@@ -108,8 +106,8 @@ describe('WhatsApp QR-only certification runtime contract', () => {
     expect(readyBody).toContain('resetLiveMessageListenerState()');
     expect(readyBody).toContain('if (isQrOnlyCertificationMode())');
     expect(readyBody).toContain('attachLiveMediaListenersOnce(currentClient)');
-    expect(readyBody).toContain('await refreshDiscoveredChats()');
-    expect(readyBody).toContain('scheduleChatDiscoveryAfterReady(context.readySource)');
+    expect(readyBody).not.toContain('refreshDiscoveredChats()');
+    expect(readyBody).not.toContain('scheduleChatDiscoveryAfterReady');
   });
 
   it('suppresses delayed discovery and listener reattachment throughout certification idle', () => {
@@ -122,7 +120,7 @@ describe('WhatsApp QR-only certification runtime contract', () => {
     expect(scheduleBody).toContain('if (isQrOnlyCertificationMode())');
     expect(scheduleBody).toContain('clearGroupDiscoveryTimers()');
     expect(scheduleBody.indexOf('if (isQrOnlyCertificationMode())')).toBeLessThan(scheduleBody.indexOf('setTimeout'));
-    expect(heartbeatBody).toContain('if (!isQrOnlyCertificationMode())');
+    expect(heartbeatBody).toContain('if (!isQrOnlyCertificationMode() && productionMonitoringEnabled)');
     expect(heartbeatBody).toContain("verifyAndReattachLiveMediaListeners('health-check')");
   });
 

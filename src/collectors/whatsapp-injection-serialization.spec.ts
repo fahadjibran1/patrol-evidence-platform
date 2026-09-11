@@ -101,6 +101,80 @@ describe('whatsapp-web.js injection compatibility guard', () => {
     expect(client._pendingInjectGeneration).toBe(0);
   });
 
+  it('permits a replacement document to rebuild the event bridge after authentication', async () => {
+    const client = makeClient();
+    client._injectImpl = jest.fn(async () => undefined);
+    client._injectAuthenticated = true;
+
+    await client.inject();
+    expect(client._injectImpl).not.toHaveBeenCalled();
+
+    // Mirrors the patched main-frame navigation handoff: authentication is
+    // document-scoped, so the replacement document must inject once.
+    client._injectAuthenticated = false;
+    await client.inject();
+    expect(client._injectImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps authenticated injection open until the live event bridge reaches ready', () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const clientSource = fs.readFileSync(
+      path.join(process.cwd(), 'node_modules', 'whatsapp-web.js', 'src', 'Client.js'),
+      'utf8',
+    );
+    const authenticatedCallback = clientSource.slice(
+      clientSource.indexOf("'onAppStateHasSyncedEvent'"),
+      clientSource.indexOf("'onOfflineProgressUpdateEvent'"),
+    );
+
+    expect(authenticatedCallback).not.toMatch(
+      /_injectAuthenticated\s*=\s*true;[\s\S]*emit\(Events\.AUTHENTICATED/,
+    );
+    expect(authenticatedCallback).toMatch(
+      /attachEventListeners\(\)[\s\S]*_injectAuthenticated\s*=\s*true;[\s\S]*emit\(Events\.READY/,
+    );
+    expect(authenticatedCallback).toContain(
+      'window.__wwebjsLiveEventBridgeAttached === true',
+    );
+    expect(authenticatedCallback).not.toContain(
+      "return typeof window.WWebJS !== 'undefined'",
+    );
+  });
+
+  it('registers main-frame reinjection before initial injection can authenticate', () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const clientSource = fs.readFileSync(
+      path.join(process.cwd(), 'node_modules', 'whatsapp-web.js', 'src', 'Client.js'),
+      'utf8',
+    );
+    const initializeSource = clientSource.slice(
+      clientSource.indexOf('async initialize()'),
+      clientSource.indexOf('async requestPairingCode'),
+    );
+
+    expect(initializeSource.indexOf("this.pupPage.on('framenavigated'")).toBeGreaterThan(-1);
+    expect(initializeSource.indexOf("this.pupPage.on('framenavigated'")).toBeLessThan(
+      initializeSource.indexOf('await this.inject()'),
+    );
+  });
+
+  it('completes authenticated setup when reinjection observes an already connected document', () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const clientSource = fs.readFileSync(
+      path.join(process.cwd(), 'node_modules', 'whatsapp-web.js', 'src', 'Client.js'),
+      'utf8',
+    );
+
+    expect(clientSource).toContain('window.__wwebjsAuthSyncDispatched');
+    expect(clientSource).toContain("window.AuthStore.AppState.state === 'CONNECTED'");
+    expect(clientSource).toMatch(
+      /if \(window\.__wwebjsAuthSyncDispatched\) return;[\s\S]*window\.__wwebjsAuthSyncDispatched = true;[\s\S]*window\.onAppStateHasSyncedEvent\(\)/,
+    );
+  });
+
   it('applies the guard through the checked-in patch-package artifact', () => {
     const fs = require('node:fs');
     const path = require('node:path');
@@ -112,5 +186,10 @@ describe('whatsapp-web.js injection compatibility guard', () => {
     expect(patch).toContain('_pendingInjectGeneration');
     expect(patch).toContain('_injectStopping');
     expect(patch).toContain('_injectAuthenticated');
+    expect(patch).toContain('frame === this.pupPage.mainFrame()');
+    expect(patch).toContain('this._injectAuthenticated = false');
+    expect(patch).toContain('window.__wwebjsLiveEventBridgeAttached = true');
+    expect(patch).toContain('Register navigation ownership before the initial injection');
+    expect(patch).toContain('window.__wwebjsAuthSyncDispatched');
   });
 });

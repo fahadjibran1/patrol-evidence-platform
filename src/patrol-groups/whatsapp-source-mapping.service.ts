@@ -20,11 +20,23 @@ export interface WhatsAppRuntimeGroupMapping {
 export class WhatsAppSourceMappingService {
   private readonly logger = new Logger(WhatsAppSourceMappingService.name);
   private linkedAccountLoadLogged = false;
+  private readonly mappingChangeListeners = new Set<() => void>();
 
   constructor(
     @InjectRepository(PatrolGroup)
     private readonly patrolGroupRepo: Repository<PatrolGroup>,
   ) {}
+
+  subscribeToMappingChanges(listener: () => void): () => void {
+    this.mappingChangeListeners.add(listener);
+    return () => this.mappingChangeListeners.delete(listener);
+  }
+
+  notifyMappingChanged(): void {
+    for (const listener of this.mappingChangeListeners) {
+      listener();
+    }
+  }
 
   getConfiguredLinkedAccountId(): string | null {
     const account = readDesktopWorkspaceConfig().linkedWhatsAppAccountId?.trim() || null;

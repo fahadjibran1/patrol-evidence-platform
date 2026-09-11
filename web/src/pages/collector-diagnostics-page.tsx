@@ -410,9 +410,12 @@ export function CollectorDiagnosticsPage(): JSX.Element {
                     <div className="ops-stat"><span>Last disconnect</span><strong>{formatDateTime(collectorStatus.lastDisconnectAt)}</strong></div>
                     <div className="ops-stat"><span>Last history refresh</span><strong>{formatDateTime(collectorStatus.lastBackfillAt)}</strong></div>
                     <div className="ops-stat"><span>Connected account</span><strong>{collectorStatus.connectedAccount ?? (view.isLive ? 'Live session' : view.isLinking ? 'Linking' : 'Not connected')}</strong></div>
-                    <div className="ops-stat"><span>Messages checked</span><strong>{collectorStatus.backfillMessagesScanned}</strong></div>
-                    <div className="ops-stat"><span>Images received</span><strong>{collectorStatus.backfillImagesImported}</strong></div>
-                    <div className="ops-stat"><span>Duplicates skipped</span><strong>{collectorStatus.backfillDuplicatesSkipped}</strong></div>
+                    <div className="ops-stat"><span>Live messages processed</span><strong>{collectorStatus.liveMessagesProcessed ?? 0}</strong></div>
+                    <div className="ops-stat"><span>Live images received</span><strong>{collectorStatus.liveImagesImported ?? 0}</strong></div>
+                    <div className="ops-stat"><span>Live duplicates skipped</span><strong>{collectorStatus.liveDuplicatesSkipped ?? 0}</strong></div>
+                    <div className="ops-stat"><span>History messages scanned</span><strong>{collectorStatus.backfillMessagesScanned}</strong></div>
+                    <div className="ops-stat"><span>History images imported</span><strong>{collectorStatus.backfillImagesImported}</strong></div>
+                    <div className="ops-stat"><span>History duplicates skipped</span><strong>{collectorStatus.backfillDuplicatesSkipped}</strong></div>
                     <div className="ops-stat"><span>Images received today</span><strong>{overview?.imageTotals.received ?? 0}</strong></div>
                     <div className="ops-stat"><span>Last image received</span><strong>{formatDateTime(overview?.recentImages[0]?.sentAt ?? null)}</strong></div>
                     <div className="ops-stat"><span>Pilot group</span><strong>{collectorStatus.pilotGroupName ?? 'Not set'}</strong></div>

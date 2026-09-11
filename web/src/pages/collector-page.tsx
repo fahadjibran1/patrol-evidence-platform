@@ -24,6 +24,8 @@ export function CollectorPage(): JSX.Element {
     createFreshProfile,
     retryLink,
     relink,
+    enableMonitoring,
+    pauseMonitoring,
   } = useMonitoring();
 
   if (user?.role === 'GUARD') {
@@ -75,6 +77,10 @@ export function CollectorPage(): JSX.Element {
                       ? 'WhatsApp could not initialise. Check your internet connection and try again.'
                     : view.isLive
                     ? 'Patrol images from mapped sources will appear on the dashboard and in Evidence.'
+                    : view.isSessionReady && status.monitoringState === 'NO_GROUPS_CONFIGURED'
+                      ? 'WhatsApp is connected, but no groups are configured for monitoring.'
+                    : view.isSessionReady
+                      ? 'WhatsApp is connected. Start monitoring when your approved group mappings are ready.'
                     : view.isLinking
                       ? status.info
                     : 'WhatsApp is not linked. Link it when you are ready; the rest of PatrolSafe remains available.'}
@@ -90,7 +96,7 @@ export function CollectorPage(): JSX.Element {
               </div>
               <div>
                 <span>Images today</span>
-                <strong>{status.backfillImagesImported}</strong>
+                <strong>{status.liveImagesImported ?? 0}</strong>
               </div>
             </div>
 
@@ -117,16 +123,28 @@ export function CollectorPage(): JSX.Element {
                 <button type="button" className="secondary-button" disabled={isBusy} onClick={() => void stop()}>
                   Cancel linking
                 </button>
-              ) : !view.isLive ? (
+              ) : !view.isSessionReady ? (
                 <button type="button" className="primary-button" disabled={isBusy} onClick={() => void start()}>
                   {view.isError ? 'Retry linking' : 'Link WhatsApp'}
                 </button>
-              ) : (
-                <button type="button" className="secondary-button" disabled={isBusy} onClick={() => void stop()}>
+              ) : view.isLive ? (
+                <button type="button" className="secondary-button" disabled={isBusy} onClick={() => void pauseMonitoring()}>
                   Pause monitoring
                 </button>
+              ) : (
+                <button
+                  type="button"
+                  className="primary-button"
+                  disabled={isBusy || status.mappedGroupsCount === 0}
+                  onClick={() => void enableMonitoring()}
+                >
+                  Start monitoring
+                </button>
               )}
-              {view.isLive ? (
+              {view.isSessionReady && status.mappedGroupsCount === 0 ? (
+                <Link className="secondary-button" to="/setup">Configure groups</Link>
+              ) : null}
+              {view.isSessionReady ? (
                 <button type="button" className="secondary-button" disabled={isBusy} onClick={() => void resetSession()}>
                   Re-link WhatsApp
                 </button>

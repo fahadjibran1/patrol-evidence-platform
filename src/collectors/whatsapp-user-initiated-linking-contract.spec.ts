@@ -10,14 +10,14 @@ describe('user-initiated WhatsApp linking contract', () => {
   const collectorPage = read('web', 'src', 'pages', 'collector-page.tsx');
   const monitoringState = read('web', 'src', 'state', 'monitoring.tsx');
 
-  it('does not auto-start a helper or QR session in desktop runtime', () => {
+  it('does not auto-link on first run but resumes an explicitly enabled monitoring preference', () => {
     const runtimeValuesStart = desktopMain.indexOf('function getConfiguredRuntimeValues()');
     const runtimeValuesEnd = desktopMain.indexOf('function isProductionDesktopMode()', runtimeValuesStart);
     const runtimeValues = desktopMain.slice(runtimeValuesStart, runtimeValuesEnd);
-    expect(runtimeValues).not.toContain('workspaceConfig.autoStartCollector === true');
-    expect(runtimeValues.match(/autoStartCollector: false/g)).toHaveLength(2);
+    expect(runtimeValues).toContain('workspaceConfig.setupCompleted === true && workspaceConfig.autoStartCollector === true');
     expect(desktopStorage).toContain("if (process.env.DESKTOP_CONFIG_PATH?.trim())");
-    expect(desktopStorage).toMatch(/if \(process\.env\.DESKTOP_CONFIG_PATH\?\.trim\(\)\) \{\r?\n\s+return false;/);
+    expect(desktopStorage).toContain('return config.setupCompleted === true;');
+    expect(desktopMain).toContain('autoStartCollector: false');
   });
 
   it('exposes deliberate Link WhatsApp and Cancel linking actions', () => {

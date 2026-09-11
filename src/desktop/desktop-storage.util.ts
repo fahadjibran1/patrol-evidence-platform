@@ -33,13 +33,13 @@ export function resolveConfiguredStorageRootPath(workspace?: DesktopWorkspaceCon
 }
 
 export function resolveDesktopWhatsAppAutoStart(workspace?: DesktopWorkspaceConfig): boolean {
-  if (process.env.DESKTOP_CONFIG_PATH?.trim()) {
-    return false;
-  }
-
   const config = workspace ?? readDesktopWorkspaceConfig();
   if (!isAutoStartCollectorEnabled(config)) {
     return false;
+  }
+
+  if (process.env.DESKTOP_CONFIG_PATH?.trim()) {
+    return config.setupCompleted === true;
   }
 
   return process.env.WHATSAPP_AUTO_START === 'true';

@@ -18,7 +18,9 @@ type MonitoringActionPath =
   | '/collectors/whatsapp/reset-session'
   | '/collectors/whatsapp/fresh-profile'
   | '/collectors/whatsapp/retry-link'
-  | '/collectors/whatsapp/relink';
+  | '/collectors/whatsapp/relink'
+  | '/collectors/whatsapp/monitoring/enable'
+  | '/collectors/whatsapp/monitoring/pause';
 
 interface MonitoringContextValue {
   status: WhatsAppCollectorStatus | null;
@@ -37,6 +39,8 @@ interface MonitoringContextValue {
   createFreshProfile: () => Promise<void>;
   retryLink: () => Promise<void>;
   relink: () => Promise<void>;
+  enableMonitoring: () => Promise<void>;
+  pauseMonitoring: () => Promise<void>;
 }
 
 const MonitoringContext = createContext<MonitoringContextValue | null>(null);
@@ -137,6 +141,14 @@ export function MonitoringProvider({ children }: PropsWithChildren): JSX.Element
     await runAction('/collectors/whatsapp/relink');
   }, [runAction]);
 
+  const enableMonitoring = useCallback(async () => {
+    await runAction('/collectors/whatsapp/monitoring/enable');
+  }, [runAction]);
+
+  const pauseMonitoring = useCallback(async () => {
+    await runAction('/collectors/whatsapp/monitoring/pause');
+  }, [runAction]);
+
   const value = useMemo<MonitoringContextValue>(
     () => ({
       status,
@@ -155,6 +167,8 @@ export function MonitoringProvider({ children }: PropsWithChildren): JSX.Element
       createFreshProfile,
       retryLink,
       relink,
+      enableMonitoring,
+      pauseMonitoring,
     }),
     [
       createFreshProfile,
@@ -167,6 +181,8 @@ export function MonitoringProvider({ children }: PropsWithChildren): JSX.Element
       resetSession,
       retryLink,
       relink,
+      enableMonitoring,
+      pauseMonitoring,
       runAction,
       start,
       status,

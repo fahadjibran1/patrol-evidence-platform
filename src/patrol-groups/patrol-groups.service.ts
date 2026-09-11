@@ -22,16 +22,22 @@ export class PatrolGroupsService {
   async create(dto: CreatePatrolGroupDto, user: AuthenticatedUser): Promise<PatrolGroup> {
     await this.sitesService.findOne(dto.siteId, user);
     const normalized = this.normalizeSourceMapping(dto);
-    const linkedAccountId = this.resolveLinkedAccountIdForWrite(dto.linkedAccountId, normalized.externalGroupId);
+    const linkedAccountId = this.resolveLinkedAccountIdForWrite(
+      dto.linkedAccountId,
+      normalized.externalGroupId,
+      user,
+    );
     await this.assertNoDuplicateActiveMapping(linkedAccountId, normalized.externalGroupId);
 
-    return this.groupsRepo.save(
+    const saved = await this.groupsRepo.save(
       this.groupsRepo.create({
         ...dto,
         ...normalized,
         linkedAccountId,
       }),
     );
+    this.whatsAppSourceMappingService.notifyMappingChanged();
+    return saved;
   }
 
   async findAll(user: AuthenticatedUser): Promise<PatrolGroup[]> {
@@ -45,7 +51,14 @@ export class PatrolGroupsService {
       query.where('site.companyId = :companyId', { companyId: user.companyId });
     }
 
-    return query.getMany();
+    const groups = await query.getMany();
+    if (user.role === UserRole.ADMIN) {
+      return groups;
+    }
+    const configuredAccount = this.whatsAppSourceMappingService.getConfiguredLinkedAccountId();
+    return groups.filter(
+      (group) => !group.externalGroupId?.trim() || group.linkedAccountId?.trim() === configuredAccount,
+    );
   }
 
   async findOne(id: string, user: AuthenticatedUser): Promise<PatrolGroup> {
@@ -63,13 +76,12 @@ export class PatrolGroupsService {
     if (!group) {
       throw new NotFoundException(`Patrol group ${id} not found`);
     }
+    this.assertCustomerAccountScope(group, user);
     return group;
   }
 
   async update(id: string, dto: UpdatePatrolGroupDto, user: AuthenticatedUser): Promise<PatrolGroup> {
-    if (dto.siteId) {
-      await this.sitesService.findOne(dto.siteId, user);
-    }
+    const targetSite = dto.siteId ? await this.sitesService.findOne(dto.siteId, user) : undefined;
     const group = await this.findOne(id, user);
     const normalized = this.normalizeSourceMapping({
       externalGroupId: dto.externalGroupId ?? group.externalGroupId ?? undefined,
@@ -78,27 +90,32 @@ export class PatrolGroupsService {
     const linkedAccountId = this.resolveLinkedAccountIdForWrite(
       dto.linkedAccountId ?? group.linkedAccountId,
       normalized.externalGroupId,
+      user,
     );
     const nextActive = dto.active ?? group.active;
     if (nextActive && normalized.externalGroupId) {
       await this.assertNoDuplicateActiveMapping(linkedAccountId, normalized.externalGroupId, group.id);
     }
 
-    return this.groupsRepo.save({
+    const saved = await this.groupsRepo.save({
       ...group,
       ...dto,
       ...normalized,
       linkedAccountId,
       active: nextActive,
+      site: targetSite ?? group.site,
     });
+    this.whatsAppSourceMappingService.notifyMappingChanged();
+    return saved;
   }
 
   private resolveLinkedAccountIdForWrite(
     requestedLinkedAccountId: string | undefined,
     externalGroupId: string | undefined,
+    user: AuthenticatedUser,
   ): string | undefined {
     const normalizedRequested = requestedLinkedAccountId?.trim();
-    if (normalizedRequested) {
+    if (user.role === UserRole.ADMIN && normalizedRequested) {
       return normalizedRequested;
     }
 
@@ -106,7 +123,26 @@ export class PatrolGroupsService {
       return undefined;
     }
 
-    return this.whatsAppSourceMappingService.getConfiguredLinkedAccountId() ?? undefined;
+    const configured = this.whatsAppSourceMappingService.getConfiguredLinkedAccountId() ?? undefined;
+    if (user.role === UserRole.COMPANY_ADMIN) {
+      if (!configured) {
+        throw new BadRequestException('Connect WhatsApp before managing group mappings.');
+      }
+      if (normalizedRequested && normalizedRequested !== configured) {
+        throw new BadRequestException('The selected group does not belong to the current WhatsApp connection.');
+      }
+    }
+    return configured;
+  }
+
+  private assertCustomerAccountScope(group: PatrolGroup, user: AuthenticatedUser): void {
+    if (user.role === UserRole.ADMIN || !group.externalGroupId?.trim()) {
+      return;
+    }
+    const configured = this.whatsAppSourceMappingService.getConfiguredLinkedAccountId();
+    if (!configured || group.linkedAccountId?.trim() !== configured) {
+      throw new BadRequestException('This mapping does not belong to the current WhatsApp connection.');
+    }
   }
 
   private async assertNoDuplicateActiveMapping(
@@ -133,7 +169,7 @@ export class PatrolGroupsService {
     const duplicate = await duplicateQuery.getOne();
     if (duplicate) {
       throw new BadRequestException(
-        `An active mapping already exists for WhatsApp source ${normalizedExternalGroupId} on account ${normalizedLinkedAccountId}.`,
+        'This WhatsApp group already has an active site mapping.',
       );
     }
   }
@@ -160,5 +196,6 @@ export class PatrolGroupsService {
   async remove(id: string, user: AuthenticatedUser): Promise<void> {
     const group = await this.findOne(id, user);
     await this.groupsRepo.remove(group);
+    this.whatsAppSourceMappingService.notifyMappingChanged();
   }
 }
