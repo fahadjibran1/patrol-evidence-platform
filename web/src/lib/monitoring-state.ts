@@ -2,6 +2,14 @@ import type { WhatsAppCollectorStatus } from '../types';
 
 export type MonitoringOpsTone = 'green' | 'amber' | 'red';
 
+export type WhatsAppConnectionState =
+  | 'NOT_LINKED'
+  | 'LINKING'
+  | 'CONNECTED'
+  | 'RECONNECTING'
+  | 'RELINK_REQUIRED'
+  | 'ERROR';
+
 export type MonitoringPhase =
   | 'offline'
   | 'launching-browser'
@@ -28,7 +36,11 @@ export interface MonitoringView {
   tone: 'ready' | 'warning' | 'error' | 'idle';
   opsTone: MonitoringOpsTone;
   isLive: boolean;
+  connectionState: WhatsAppConnectionState;
+  connectionLabel: string;
+  isConnected: boolean;
   isSessionReady: boolean;
+  monitoringState: 'ACTIVE' | 'PAUSED' | 'NO_GROUPS_CONFIGURED' | 'STARTING' | 'ERROR';
   isLinking: boolean;
   isError: boolean;
   isOffline: boolean;
@@ -184,7 +196,11 @@ export function deriveMonitoringView(status: WhatsAppCollectorStatus | null): Mo
       tone: 'idle',
       opsTone: 'amber' as MonitoringOpsTone,
       isLive: false,
+      connectionState: 'NOT_LINKED',
+      connectionLabel: 'Not linked',
+      isConnected: false,
       isSessionReady: false,
+      monitoringState: 'PAUSED',
       isLinking: false,
       isError: false,
       isOffline: true,
@@ -198,6 +214,29 @@ export function deriveMonitoringView(status: WhatsAppCollectorStatus | null): Mo
   const phase = derivePhase(status);
   const isSessionReady = phase === 'ready';
   const monitoringState = status.monitoringState ?? (isSessionReady ? 'ACTIVE' : 'PAUSED');
+  const connectionState: WhatsAppConnectionState = isSessionReady
+    ? 'CONNECTED'
+    : phase === 'relink-required'
+      ? 'RELINK_REQUIRED'
+      : status.state === 'disconnected'
+        ? 'RECONNECTING'
+        : phase === 'error'
+          ? 'ERROR'
+          : isLinkingStatus(status)
+            ? 'LINKING'
+            : 'NOT_LINKED';
+  const connectionLabel =
+    connectionState === 'CONNECTED'
+      ? 'Connected'
+      : connectionState === 'RECONNECTING'
+        ? 'Reconnecting'
+        : connectionState === 'RELINK_REQUIRED'
+          ? 'Relink required'
+          : connectionState === 'ERROR'
+            ? 'Connection error'
+            : connectionState === 'LINKING'
+              ? 'Linking'
+              : 'Not linked';
   const label = isSessionReady
     ? monitoringState === 'ACTIVE'
       ? 'Active'
@@ -271,7 +310,11 @@ export function deriveMonitoringView(status: WhatsAppCollectorStatus | null): Mo
     tone,
     opsTone: opsToneFromView(tone),
     isLive,
+    connectionState,
+    connectionLabel,
+    isConnected: connectionState === 'CONNECTED',
     isSessionReady,
+    monitoringState,
     isLinking,
     isError,
     isOffline,
@@ -280,6 +323,25 @@ export function deriveMonitoringView(status: WhatsAppCollectorStatus | null): Mo
     statusBadge,
     isSessionActive: isSessionReady || isLinking,
   };
+}
+
+export function shouldShowWhatsAppQrTimeout(
+  status: WhatsAppCollectorStatus | null,
+  now: number,
+  timeoutMs = 20_000,
+): boolean {
+  if (
+    !status?.startupStartedAt ||
+    status.ready ||
+    status.connected ||
+    status.state !== 'waiting-for-qr' ||
+    status.qrCode
+  ) {
+    return false;
+  }
+
+  const startedAt = new Date(status.startupStartedAt).getTime();
+  return Number.isFinite(startedAt) && now - startedAt >= timeoutMs;
 }
 
 /** Human label for helper `state` field (diagnostics detail). */

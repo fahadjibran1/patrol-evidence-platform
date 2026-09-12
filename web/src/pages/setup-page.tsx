@@ -194,18 +194,26 @@ export function SetupPage(): JSX.Element {
     clearMessages();
 
     try {
-      await apiRequest('/collectors/whatsapp/refresh-sources', { method: 'POST' }, token ?? undefined);
+      const refreshedStatus = await apiRequest<WhatsAppCollectorStatus>(
+        '/collectors/whatsapp/refresh-sources',
+        { method: 'POST' },
+        token ?? undefined,
+      );
+      if (refreshedStatus.sourceDiscoveryState === 'ERROR') {
+        throw new Error(refreshedStatus.sourceDiscoveryError || 'Unable to load WhatsApp sources. Try again.');
+      }
       const [nextWhatsAppGroups, nextWhatsAppContacts] = await Promise.all([
-        apiRequest<WhatsAppCollectorGroup[]>('/collectors/whatsapp/groups', {}, token ?? undefined).catch(() => []),
-        apiRequest<WhatsAppCollectorContact[]>('/collectors/whatsapp/contacts', {}, token ?? undefined).catch(() => []),
+        apiRequest<WhatsAppCollectorGroup[]>('/collectors/whatsapp/groups', {}, token ?? undefined),
+        apiRequest<WhatsAppCollectorContact[]>('/collectors/whatsapp/contacts', {}, token ?? undefined),
       ]);
+      setCollectorStatus(refreshedStatus);
       setWhatsAppGroups(nextWhatsAppGroups);
       setWhatsAppContacts(nextWhatsAppContacts);
       const total = nextWhatsAppGroups.length + nextWhatsAppContacts.length;
       setSuccess(
         total > 0
           ? `Found ${total} WhatsApp source${total === 1 ? '' : 's'}. Choose one below.`
-          : 'No sources found yet. Finish linking on Monitoring, send a test message, then refresh again.',
+          : 'No eligible WhatsApp sources found. Open the group on the linked phone, then try again.',
       );
     } catch (refreshError) {
       setError(refreshError instanceof Error ? refreshError.message : 'Could not refresh WhatsApp sources.');
@@ -554,6 +562,19 @@ export function SetupPage(): JSX.Element {
               </div>
               <StatusBadge value={whatsAppLinked ? 'CONNECTED' : 'QR'} />
             </div>
+            {whatsAppLinked ? (
+              <div className="setup-status-panel">
+                <div>
+                  <strong>Monitoring</strong>
+                  <p className="muted-text">
+                    {monitoringLive
+                      ? 'Active — new patrol images from mapped sources are being captured.'
+                      : 'Paused — WhatsApp remains connected while patrol-image capture is stopped.'}
+                  </p>
+                </div>
+                <StatusBadge value={monitoringLive ? 'ACTIVE' : 'PAUSED'} />
+              </div>
+            ) : null}
             <div className="setup-action-row">
               <Link className="primary-button setup-link-button" to="/collector">
                 Open Monitoring to link WhatsApp
@@ -620,10 +641,14 @@ export function SetupPage(): JSX.Element {
               </div>
             </div>
 
-            {discoveredSources.length === 0 ? (
+            {collectorStatus?.sourceDiscoveryState === 'LOADING' ? (
+              <EmptyState title="Searching for WhatsApp sources…" description="PatrolSafe is loading group names from the linked account." />
+            ) : collectorStatus?.sourceDiscoveryState === 'ERROR' ? (
+              <EmptyState title="Unable to load WhatsApp sources" description="Try Refresh sources again. WhatsApp will remain connected." />
+            ) : discoveredSources.length === 0 ? (
               <EmptyState
-                title="No WhatsApp sources detected yet"
-                description="After linking WhatsApp, open the patrol group or contact on the phone so it appears here. Then press Refresh sources."
+                title={collectorStatus?.sourceDiscoveryState === 'EMPTY' ? 'No eligible WhatsApp sources found' : 'WhatsApp sources not loaded yet'}
+                description="Open the patrol group or contact on the linked phone, then press Refresh sources."
               />
             ) : null}
 

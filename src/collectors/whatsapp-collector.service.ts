@@ -42,6 +42,7 @@ import {
   WhatsAppHelperIngestPayload,
   WhatsAppHelperRuntimeConfig,
   WhatsAppHelperStatusSnapshot,
+  WhatsAppSourceDiscoveryState,
   WhatsAppCertificationLiveIngestionStatus,
   WHATSAPP_HELPER_EVENT_PREFIX,
 } from './whatsapp-helper.types';
@@ -63,6 +64,9 @@ export interface WhatsAppCollectorStatus extends Omit<WhatsAppHelperStatusSnapsh
   certificationLiveIngestion: WhatsAppCertificationLiveIngestionStatus;
   monitoringPreference: 'ENABLED' | 'PAUSED';
   monitoringState: 'ACTIVE' | 'PAUSED' | 'NO_GROUPS_CONFIGURED' | 'STARTING' | 'ERROR';
+  sourceDiscoveryState: WhatsAppSourceDiscoveryState;
+  sourceDiscoveryError: string | null;
+  lastSourceDiscoveryAt: string | null;
 }
 
 export interface WhatsAppCertificationAuthorizationResult {
@@ -120,6 +124,17 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
   private pendingCertificationGroupLookup:
     | { requestId: string; resolve: (matches: Array<{ name: string; id: string }>) => void; timer: NodeJS.Timeout }
     | null = null;
+  private pendingSourceDiscovery:
+    | {
+        requestId: string;
+        promise: Promise<void>;
+        resolve: () => void;
+        timer: NodeJS.Timeout;
+      }
+    | null = null;
+  private sourceDiscoveryState: WhatsAppSourceDiscoveryState = 'NOT_ATTEMPTED';
+  private sourceDiscoveryError: string | null = null;
+  private lastSourceDiscoveryAt: string | null = null;
   private helperStatus: WhatsAppHelperStatusSnapshot;
   private certificationLiveIngestion: WhatsAppCertificationLiveIngestionStatus = {
     armed: false,
@@ -242,6 +257,9 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       certificationLiveIngestion: { ...this.certificationLiveIngestion },
       monitoringPreference: this.monitoringEnabled ? 'ENABLED' : 'PAUSED',
       monitoringState: this.resolveMonitoringState(),
+      sourceDiscoveryState: this.sourceDiscoveryState,
+      sourceDiscoveryError: this.sourceDiscoveryError,
+      lastSourceDiscoveryAt: this.lastSourceDiscoveryAt,
     };
   }
 
@@ -356,11 +374,7 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
 
   async refreshDiscoveredChats(): Promise<WhatsAppCollectorStatus> {
     if (!this.isHelperRunning()) {
-      this.helperStatus = {
-        ...this.helperStatus,
-        info: 'Patrol monitoring helper is not running.',
-      };
-      return this.getStatus();
+      throw new BadRequestException('Connect WhatsApp before refreshing sources.');
     }
 
     if (isQrOnlyCertificationMode()) {
@@ -368,7 +382,35 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       return this.getStatus();
     }
 
-    this.sendHelperCommand({ type: 'refresh-discovered-chats' });
+    if (this.helperStatus.state !== 'ready' || !this.helperStatus.connectedAccount?.trim()) {
+      throw new BadRequestException('WhatsApp must be connected and ready before sources can be refreshed.');
+    }
+
+    if (this.pendingSourceDiscovery) {
+      await this.pendingSourceDiscovery.promise;
+      return this.getStatus();
+    }
+
+    this.sourceDiscoveryState = 'LOADING';
+    this.sourceDiscoveryError = null;
+    const requestId = randomUUID();
+    let resolvePending!: () => void;
+    const promise = new Promise<void>((resolve) => {
+      resolvePending = resolve;
+    });
+    const timer = setTimeout(() => {
+      if (this.pendingSourceDiscovery?.requestId !== requestId) {
+        return;
+      }
+      this.pendingSourceDiscovery = null;
+      this.sourceDiscoveryState = 'ERROR';
+      this.sourceDiscoveryError = 'WhatsApp sources did not respond in time. Try again.';
+      this.lastSourceDiscoveryAt = new Date().toISOString();
+      resolvePending();
+    }, 20_000);
+    this.pendingSourceDiscovery = { requestId, promise, resolve: resolvePending, timer };
+    this.sendHelperCommand({ type: 'refresh-discovered-chats', requestId });
+    await promise;
     return this.getStatus();
   }
 
@@ -417,6 +459,7 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       this.pendingCertificationGroupLookup.resolve([]);
       this.pendingCertificationGroupLookup = null;
     }
+    this.resetSourceDiscoveryState();
     this.certificationTerminal = false;
     this.clearPendingCertificationAuthorization();
     this.certificationAuthorizationRequested = false;
@@ -944,6 +987,7 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async startInternal(): Promise<WhatsAppCollectorStatus> {
+    this.resetSourceDiscoveryState();
     const profileWasEmptyBeforeLaunch = this.isSessionProfileEmpty();
     this.currentGenerationProfileSafety = classifyLinkProfileSafety({
       configuredLinkedAccountId: this.whatsAppSourceMappingService.getConfiguredLinkedAccountId(),
@@ -1054,6 +1098,7 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       if (this.helperProcess === child) {
         this.helperProcess = null;
       }
+      this.failPendingSourceDiscovery('WhatsApp disconnected before sources could be loaded. Try again.');
       if (this.stoppingHelper) {
         this.stoppingHelper = false;
         return;
@@ -1172,6 +1217,27 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
         if (pending) { clearTimeout(pending.timer); pending.resolve(event.payload.matches); }
         return;
       }
+      if (event.type === 'source-discovery-result') {
+        const pending = this.pendingSourceDiscovery;
+        if (pending && event.payload.requestId && event.payload.requestId !== pending.requestId) {
+          this.appendCollectorLog('source-discovery-stale-result-ignored');
+          return;
+        }
+        this.helperStatus = {
+          ...this.helperStatus,
+          groups: [...event.payload.groups],
+          contacts: [...event.payload.contacts],
+        };
+        this.sourceDiscoveryState = event.payload.state;
+        this.sourceDiscoveryError = event.payload.error;
+        this.lastSourceDiscoveryAt = event.payload.completedAt;
+        if (pending && event.payload.requestId === pending.requestId) {
+          clearTimeout(pending.timer);
+          this.pendingSourceDiscovery = null;
+          pending.resolve();
+        }
+        return;
+      }
       if (event.type === 'certification-live-ingestion-status') {
         this.certificationLiveIngestion = { ...event.payload };
         return;
@@ -1185,6 +1251,7 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
           return;
         }
         const previousQr = this.helperStatus.qrCode;
+        const previousState = this.helperStatus.state;
         const previousConnectedAccount = this.helperStatus.connectedAccount?.trim() || null;
         this.helperStatus = {
           ...event.payload,
@@ -1261,6 +1328,9 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
             'qr-pushed-to-backend-state',
             `length=${this.helperStatus.qrPayloadLength ?? this.helperStatus.qrCode.length} path=${this.helperStatus.latestQrPath}`,
           );
+        }
+        if (previousState !== 'ready' && this.helperStatus.state === 'ready') {
+          this.maybeRequestChatDiscoveryRefresh();
         }
         this.maybeBeginLinkRetryCleanup(this.helperStatus, generation);
       }
@@ -1740,7 +1810,35 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
     }
 
     this.chatDiscoveryRefreshCooldownUntil = now + 10_000;
+    this.sourceDiscoveryState = 'LOADING';
+    this.sourceDiscoveryError = null;
     this.sendHelperCommand({ type: 'refresh-discovered-chats' });
+  }
+
+  private resetSourceDiscoveryState(): void {
+    const pending = this.pendingSourceDiscovery;
+    this.pendingSourceDiscovery = null;
+    if (pending) {
+      clearTimeout(pending.timer);
+      pending.resolve();
+    }
+    this.sourceDiscoveryState = 'NOT_ATTEMPTED';
+    this.sourceDiscoveryError = null;
+    this.lastSourceDiscoveryAt = null;
+    this.chatDiscoveryRefreshCooldownUntil = 0;
+  }
+
+  private failPendingSourceDiscovery(message: string): void {
+    const pending = this.pendingSourceDiscovery;
+    if (!pending) {
+      return;
+    }
+    this.pendingSourceDiscovery = null;
+    clearTimeout(pending.timer);
+    this.sourceDiscoveryState = 'ERROR';
+    this.sourceDiscoveryError = message;
+    this.lastSourceDiscoveryAt = new Date().toISOString();
+    pending.resolve();
   }
 
   private appendCollectorLog(event: string, details?: string): void {

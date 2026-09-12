@@ -38,13 +38,13 @@ describe('production monitoring runtime contract', () => {
     expect(helper).toContain('bindingIsCurrent');
   });
 
-  it('does not run discovery or backfill merely because a saved session becomes ready', () => {
+  it('does not block helper readiness on discovery or trigger backfill when a saved session becomes ready', () => {
     const readyStart = helper.indexOf('async function finalizeClientReady');
     const readyEnd = helper.indexOf('async function watchClientInfoAfterAuthentication', readyStart);
     const readyBody = helper.slice(readyStart, readyEnd);
     expect(readyBody).not.toContain('await refreshDiscoveredChats()');
-    expect(readyBody).not.toContain('scheduleChatDiscoveryAfterReady');
     expect(readyBody).not.toContain('runBackfill(');
+    expect(service).toContain('this.maybeRequestChatDiscoveryRefresh();');
   });
 
   it('separates live telemetry from actual backfill telemetry', () => {

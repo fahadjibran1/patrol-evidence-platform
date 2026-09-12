@@ -825,9 +825,21 @@ export function DesktopSetupPage(): JSX.Element {
     setError(null);
 
     try {
-      await apiRequest('/collectors/whatsapp/refresh-sources', { method: 'POST' }, token);
+      const refreshedStatus = await apiRequest<WhatsAppCollectorStatus>(
+        '/collectors/whatsapp/refresh-sources',
+        { method: 'POST' },
+        token,
+      );
+      setCollectorStatus(refreshedStatus);
+      if (refreshedStatus.sourceDiscoveryState === 'ERROR') {
+        throw new Error(refreshedStatus.sourceDiscoveryError || 'Unable to load WhatsApp sources. Try again.');
+      }
       await loadProtectedData(token);
-      setSuccess('Refreshing WhatsApp chat list…');
+      setSuccess(
+        refreshedStatus.sourceDiscoveryState === 'EMPTY'
+          ? 'No eligible WhatsApp sources found.'
+          : 'WhatsApp sources refreshed.',
+      );
     } catch (refreshError) {
       setError(refreshError instanceof Error ? refreshError.message : 'Failed to refresh WhatsApp chats');
     } finally {
@@ -1171,6 +1183,10 @@ export function DesktopSetupPage(): JSX.Element {
                   <strong>{collectorStatus.ready ? 'Yes' : 'No'}</strong>
                 </div>
                 <div className="ops-stat">
+                  <span>Monitoring</span>
+                  <strong>{collectorStatus.monitoringState === 'ACTIVE' ? 'Active' : 'Paused'}</strong>
+                </div>
+                <div className="ops-stat">
                   <span>Mapped sources</span>
                   <strong>{mappedSourcesCount}</strong>
                 </div>
@@ -1405,12 +1421,18 @@ export function DesktopSetupPage(): JSX.Element {
                   disabled={isBusy || !collectorStatus?.ready}
                   onClick={() => void refreshDiscoveredSources()}
                 >
-                  Refresh chats
+                  {collectorStatus?.sourceDiscoveryState === 'LOADING' ? 'Searching…' : 'Refresh sources'}
                 </button>
               </div>
-              {detectableSources.length === 0 ? (
+              {collectorStatus?.sourceDiscoveryState === 'ERROR' ? (
+                <p className="error-text">Unable to load WhatsApp sources. Try Refresh sources again.</p>
+              ) : collectorStatus?.sourceDiscoveryState === 'LOADING' ? (
+                <p className="muted-text">Searching for WhatsApp groups and contacts…</p>
+              ) : detectableSources.length === 0 ? (
                 <p className="muted-text">
-                  No chats visible yet. Connect WhatsApp in step 3, wait a few seconds, then click Refresh chats.
+                  {collectorStatus?.sourceDiscoveryState === 'EMPTY'
+                    ? 'No eligible WhatsApp sources found. Open the group on the linked phone, then try again.'
+                    : 'WhatsApp sources have not been loaded yet. Connect WhatsApp, then choose Refresh sources.'}
                 </p>
               ) : (
                 <>

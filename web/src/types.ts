@@ -172,6 +172,9 @@ export interface WhatsAppCollectorStatus {
   certificationQrMasked?: boolean;
   monitoringPreference?: 'ENABLED' | 'PAUSED';
   monitoringState?: 'ACTIVE' | 'PAUSED' | 'NO_GROUPS_CONFIGURED' | 'STARTING' | 'ERROR';
+  sourceDiscoveryState?: 'NOT_ATTEMPTED' | 'LOADING' | 'AVAILABLE' | 'EMPTY' | 'ERROR';
+  sourceDiscoveryError?: string | null;
+  lastSourceDiscoveryAt?: string | null;
 }
 
 export interface WhatsAppCollectorGroup {

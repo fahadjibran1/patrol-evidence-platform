@@ -33,6 +33,13 @@ export interface WhatsAppCollectorContact {
   unreadCount: number;
 }
 
+export type WhatsAppSourceDiscoveryState =
+  | 'NOT_ATTEMPTED'
+  | 'LOADING'
+  | 'AVAILABLE'
+  | 'EMPTY'
+  | 'ERROR';
+
 export interface WhatsAppHelperGroupMapping {
   externalGroupId: string;
   sourceType: 'group' | 'contact';
@@ -124,6 +131,16 @@ export type WhatsAppHelperEvent = {
   type: 'status';
   payload: WhatsAppHelperStatusSnapshot;
 } | {
+  type: 'source-discovery-result';
+  payload: {
+    requestId?: string;
+    state: 'AVAILABLE' | 'EMPTY' | 'ERROR';
+    groups: WhatsAppCollectorGroup[];
+    contacts: WhatsAppCollectorContact[];
+    error: string | null;
+    completedAt: string;
+  };
+} | {
   type: 'certification-group-lookup-result';
   payload: { requestId?: string; displayName: string; matches: Array<{ name: string; id: string }> };
 } | {
@@ -154,6 +171,7 @@ export type WhatsAppHelperCommand =
     }
   | {
       type: 'refresh-discovered-chats';
+      requestId?: string;
     }
   | {
       type: 'authorize-certification-authentication';

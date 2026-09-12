@@ -21,7 +21,6 @@ const navItems: Array<{ to: string; label: string; roles: UserRole[] }> = [
   { to: '/license', label: 'Licence', roles: ['ADMIN', 'COMPANY_ADMIN'] },
   { to: '/setup', label: 'Setup', roles: ['ADMIN', 'COMPANY_ADMIN'] },
   { to: '/sites', label: 'Sites', roles: ['ADMIN', 'COMPANY_ADMIN'] },
-  { to: '/settings/diagnostics', label: 'Diagnostics', roles: ['ADMIN', 'COMPANY_ADMIN'] },
 ];
 
 function sidebarDotClass(tone: 'ready' | 'warning' | 'error' | 'idle'): string {

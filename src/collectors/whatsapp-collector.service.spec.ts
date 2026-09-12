@@ -227,6 +227,37 @@ describe('WhatsAppCollectorService', () => {
     (service as unknown as { handleHelperStdoutLine(line: string): void }).handleHelperStdoutLine(line);
   }
 
+  function emitSourceDiscoveryResult(
+    service: WhatsAppCollectorService,
+    requestId: string | undefined,
+    options?: { state?: 'AVAILABLE' | 'EMPTY' | 'ERROR'; error?: string | null },
+  ): void {
+    const line = `${WHATSAPP_HELPER_EVENT_PREFIX}${JSON.stringify({
+      type: 'source-discovery-result',
+      payload: {
+        requestId,
+        state: options?.state ?? 'AVAILABLE',
+        groups:
+          options?.state === 'ERROR'
+            ? []
+            : [
+                {
+                  id: '120363000001@g.us',
+                  name: 'UAT Patrol Group',
+                  isGroup: true,
+                  sourceType: 'group',
+                  isReadOnly: false,
+                  unreadCount: 0,
+                },
+              ],
+        contacts: [],
+        error: options?.error ?? null,
+        completedAt: '2026-09-12T20:00:00.000Z',
+      },
+    })}`;
+    (service as unknown as { handleHelperStdoutLine(line: string): void }).handleHelperStdoutLine(line);
+  }
+
   function ingestPayload(overrides?: Partial<WhatsAppHelperIngestPayload>): WhatsAppHelperIngestPayload {
     return {
       siteCode: 'SWI01',
@@ -312,6 +343,41 @@ describe('WhatsAppCollectorService', () => {
       expect(runtime.monitoringEnabled).toBe(false);
       expect(status.monitoringPreference).toBe('PAUSED');
       expect(status.monitoringState).toBe('PAUSED');
+    });
+
+    it('discovers sources while the connected session is ready and monitoring is paused', async () => {
+      const service = createService({ whatsappAutoStart: false });
+      const { write } = attachRunningHelper(service);
+
+      const refresh = service.refreshDiscoveredChats();
+      const command = JSON.parse(write.mock.calls[0][0]) as { type: string; requestId: string };
+      expect(command.type).toBe('refresh-discovered-chats');
+      expect(command.requestId).toEqual(expect.any(String));
+      emitSourceDiscoveryResult(service, command.requestId);
+
+      await expect(refresh).resolves.toMatchObject({
+        ready: true,
+        monitoringPreference: 'PAUSED',
+        sourceDiscoveryState: 'AVAILABLE',
+        sourceDiscoveryError: null,
+      });
+      await expect(service.listGroups()).resolves.toEqual([
+        expect.objectContaining({ id: '120363000001@g.us', name: 'UAT Patrol Group' }),
+      ]);
+    });
+
+    it('fails source discovery closed when WhatsApp is not ready', async () => {
+      const service = createService();
+      attachRunningHelper(service);
+      (service as unknown as { helperStatus: WhatsAppHelperStatusSnapshot }).helperStatus = readyStatus({
+        state: 'waiting-for-client-info',
+        connected: false,
+        ready: false,
+      });
+
+      await expect(service.refreshDiscoveredChats()).rejects.toThrow(
+        'WhatsApp must be connected and ready before sources can be refreshed.',
+      );
     });
 
     it('enables mapped monitoring and commands exactly the existing helper generation', async () => {
@@ -607,7 +673,9 @@ describe('WhatsAppCollectorService', () => {
     expect(status.connectedAccount).toBeNull();
     await expect(service.listGroups()).resolves.toEqual([]);
     await expect(service.listContacts()).resolves.toEqual([]);
-    await service.refreshDiscoveredChats();
+    await expect(service.refreshDiscoveredChats()).rejects.toThrow(
+      'WhatsApp must be connected and ready before sources can be refreshed.',
+    );
     await service.manualBackfill(1);
     await service.sendTestImage();
     await service.probeAuthReadyLifecycle();
@@ -639,7 +707,9 @@ describe('WhatsAppCollectorService', () => {
       qrPayloadLength: null,
       failureCode: 'WHATSAPP_RELINK_REQUIRED',
     });
-    await service.refreshDiscoveredChats();
+    await expect(service.refreshDiscoveredChats()).rejects.toThrow(
+      'WhatsApp must be connected and ready before sources can be refreshed.',
+    );
     await service.manualBackfill(1);
     await service.sendTestImage();
     expect(write).not.toHaveBeenCalled();
@@ -898,8 +968,11 @@ describe('WhatsAppCollectorService', () => {
       process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED = 'true';
       const environmentOnly = createService();
       const { write: environmentWrite } = attachRunningHelper(environmentOnly);
-      await environmentOnly.refreshDiscoveredChats();
-      expect(environmentWrite).toHaveBeenCalledWith(`${JSON.stringify({ type: 'refresh-discovered-chats' })}\n`);
+      const refresh = environmentOnly.refreshDiscoveredChats();
+      const command = JSON.parse(environmentWrite.mock.calls[0][0]) as { type: string; requestId: string };
+      emitSourceDiscoveryResult(environmentOnly, command.requestId);
+      await refresh;
+      expect(command).toEqual({ type: 'refresh-discovered-chats', requestId: expect.any(String) });
 
       delete process.env.PATROL_CERTIFICATION_EXPECT_UNAUTHENTICATED;
       process.argv = [...process.argv, '--patrol-certification-qr-only'];

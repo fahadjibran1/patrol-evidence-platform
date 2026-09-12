@@ -35,6 +35,10 @@ import {
   redactQrOnlyCertificationLog,
 } from './whatsapp-certification-guard';
 import { projectCertificationGroupMatches, type CertificationChatMetadata } from './whatsapp-certification-group-lookup.util';
+import {
+  projectWhatsAppSources,
+  type WhatsAppSourceChatMetadata,
+} from './whatsapp-source-discovery.util';
 import { PatrolSourceType } from '@/common/enums/patrol-source-type.enum';
 import {
   getMessageSourceId,
@@ -691,6 +695,27 @@ function emitCertificationAuthorizationResult(authorized: boolean): void {
 
 function emitCertificationGroupLookupResult(displayName: string, matches: Array<{ name: string; id: string }>, requestId?: string): void {
   const payload: WhatsAppHelperEvent = { type: 'certification-group-lookup-result', payload: { requestId, displayName, matches } };
+  process.stdout.write(`${WHATSAPP_HELPER_EVENT_PREFIX}${JSON.stringify(payload)}\n`);
+}
+
+function emitSourceDiscoveryResult(
+  state: 'AVAILABLE' | 'EMPTY' | 'ERROR',
+  groups: WhatsAppCollectorGroup[],
+  contacts: WhatsAppCollectorContact[],
+  error: string | null,
+  requestId?: string,
+): void {
+  const payload: WhatsAppHelperEvent = {
+    type: 'source-discovery-result',
+    payload: {
+      requestId,
+      state,
+      groups: [...groups],
+      contacts: [...contacts],
+      error,
+      completedAt: new Date().toISOString(),
+    },
+  };
   process.stdout.write(`${WHATSAPP_HELPER_EVENT_PREFIX}${JSON.stringify(payload)}\n`);
 }
 
@@ -3280,44 +3305,45 @@ function describeClientForDiscovery(activeClient: Client | null): string {
   ].join(' ');
 }
 
-async function probeWWebJsGetChatsReady(activeClient: Client): Promise<boolean> {
-  if (!activeClient.pupPage || typeof activeClient.getChats !== 'function') {
+async function probeChatSourceCollectionReady(activeClient: Client): Promise<boolean> {
+  if (!activeClient.pupPage) {
     return false;
   }
 
   try {
     const injected = await activeClient.pupPage.evaluate(() => {
       const scopedWindow = window as typeof window & {
-        WWebJS?: { getChats?: unknown; getChat?: unknown };
+        require?: (id: string) => unknown;
       };
+      const collection = (
+        scopedWindow.require?.('WAWebCollections') as
+          | { Chat?: { getModelsArray?: () => unknown[] } }
+          | undefined
+      )?.Chat;
+      const models = collection?.getModelsArray?.();
       return {
-        hasWWebJS: typeof scopedWindow.WWebJS !== 'undefined',
-        hasGetChats: typeof scopedWindow.WWebJS?.getChats === 'function',
-        hasGetChat: typeof scopedWindow.WWebJS?.getChat === 'function',
+        hasCollection: Boolean(collection),
+        hasGetModelsArray: typeof collection?.getModelsArray === 'function',
+        modelCount: Array.isArray(models) ? models.length : null,
       };
     });
 
-    if (!injected?.hasWWebJS || !injected.hasGetChats || !injected.hasGetChat) {
+    if (!injected?.hasCollection || !injected.hasGetModelsArray || injected.modelCount === null) {
       appendCollectorLog(
-        'CHAT_DISCOVERY_WWEBJS_PROBE',
-        `injected=false hasWWebJS=${Boolean(injected?.hasWWebJS)} hasGetChats=${Boolean(injected?.hasGetChats)} hasGetChat=${Boolean(injected?.hasGetChat)}`,
+        'CHAT_DISCOVERY_COLLECTION_PROBE',
+        `ready=false hasCollection=${Boolean(injected?.hasCollection)} hasGetModelsArray=${Boolean(injected?.hasGetModelsArray)}`,
       );
       return false;
     }
 
-    // Require an actual Store-backed getChats() call — typeof checks alone marked ready while chat APIs were broken.
-    const chats = await activeClient.getChats();
-    if (!Array.isArray(chats)) {
-      appendCollectorLog('CHAT_DISCOVERY_WWEBJS_PROBE', `getChatsReturned=${typeof chats}`);
-      return false;
-    }
-
-    appendCollectorLog('CHAT_DISCOVERY_WWEBJS_PROBE', `getChatsOk=true count=${chats.length}`);
+    // Require the live chat collection to be readable. Source discovery later
+    // projects only minimal identifiers and display names from this collection.
+    appendCollectorLog('CHAT_DISCOVERY_COLLECTION_PROBE', `ready=true count=${injected.modelCount}`);
     return true;
   } catch (error) {
     appendCollectorLog(
-      'CHAT_DISCOVERY_WWEBJS_PROBE',
-      `getChatsError=${error instanceof Error ? error.message : String(error)}`,
+      'CHAT_DISCOVERY_COLLECTION_PROBE',
+      `error=${error instanceof Error ? error.message : String(error)}`,
     );
     return false;
   }
@@ -3325,7 +3351,7 @@ async function probeWWebJsGetChatsReady(activeClient: Client): Promise<boolean> 
 
 async function waitForChatDiscoveryReady(
   activeClient: Client,
-  timeoutMs = 45_000,
+  timeoutMs = 10_000,
   options: { requireReadinessFinalized?: boolean } = {},
 ): Promise<boolean> {
   const requireReadinessFinalized = options.requireReadinessFinalized !== false;
@@ -3363,7 +3389,7 @@ async function waitForChatDiscoveryReady(
       continue;
     }
 
-    if (await probeWWebJsGetChatsReady(activeClient)) {
+    if (await probeChatSourceCollectionReady(activeClient)) {
       appendCollectorLog(
         'CHAT_DISCOVERY_WWEBJS_READY',
         `elapsedMs=${Date.now() - startedAt} ${describeClientForDiscovery(activeClient)}`,
@@ -3530,7 +3556,67 @@ function mapChatsToDiscoveredSources(chats: Array<{
   };
 }
 
-async function reportChatDiscoveryFailure(message: string, logEvent = 'CHAT_DISCOVERY_ERROR'): Promise<void> {
+async function readWhatsAppSourceMetadata(activeClient: Client): Promise<WhatsAppSourceChatMetadata[]> {
+  if (!activeClient.pupPage) {
+    throw new Error('WhatsApp source collection is unavailable.');
+  }
+
+  return activeClient.pupPage.evaluate(() => {
+    const scopedWindow = window as typeof window & {
+      require?: (id: string) => unknown;
+    };
+    const collection = (
+      scopedWindow.require?.('WAWebCollections') as
+        | { Chat?: { getModelsArray?: () => unknown[] } }
+        | undefined
+    )?.Chat;
+    const models = collection?.getModelsArray?.();
+    if (!Array.isArray(models)) {
+      throw new Error('WhatsApp source collection is not ready.');
+    }
+
+    return models.map((rawModel) => {
+      const chat = rawModel as {
+        id?: { _serialized?: unknown; $1?: unknown; user?: unknown; server?: unknown } | string;
+        isGroup?: unknown;
+        formattedTitle?: unknown;
+        name?: unknown;
+        subject?: unknown;
+        title?: unknown;
+        isReadOnly?: unknown;
+        unreadCount?: unknown;
+      };
+      const id = chat.id;
+      const serialized =
+        typeof id === 'string'
+          ? id
+          : typeof id?._serialized === 'string'
+            ? id._serialized
+            : typeof id?.$1 === 'string'
+              ? id.$1
+              : typeof id?.user === 'string' && typeof id?.server === 'string'
+                ? `${id.user}@${id.server}`
+                : '';
+
+      return {
+        id: serialized,
+        isGroup: chat.isGroup === true || /@g\.us$/iu.test(serialized),
+        formattedTitle: typeof chat.formattedTitle === 'string' ? chat.formattedTitle : '',
+        name: typeof chat.name === 'string' ? chat.name : '',
+        subject: typeof chat.subject === 'string' ? chat.subject : '',
+        title: typeof chat.title === 'string' ? chat.title : '',
+        isReadOnly: chat.isReadOnly === true,
+        unreadCount: typeof chat.unreadCount === 'number' ? chat.unreadCount : 0,
+      };
+    });
+  });
+}
+
+async function reportChatDiscoveryFailure(
+  message: string,
+  logEvent = 'CHAT_DISCOVERY_ERROR',
+  requestId?: string,
+): Promise<void> {
   appendCollectorLog(logEvent, `error=${message}`);
   updateStatus(
     {
@@ -3542,9 +3628,10 @@ async function reportChatDiscoveryFailure(message: string, logEvent = 'CHAT_DISC
     'group-refresh-final-error',
     message,
   );
+  emitSourceDiscoveryResult('ERROR', [], [], 'Unable to load WhatsApp sources. Try again.', requestId);
 }
 
-async function refreshDiscoveredChats(): Promise<void> {
+async function refreshDiscoveredChats(requestId?: string): Promise<void> {
   if (blockAfterCertificationTerminal('refresh-discovered-chats')) {
     return;
   }
@@ -3556,7 +3643,7 @@ async function refreshDiscoveredChats(): Promise<void> {
 
   const activeClient = client;
   if (!activeClient) {
-    await reportChatDiscoveryFailure('client missing before getChats');
+    await reportChatDiscoveryFailure('WhatsApp client is not available.', 'CHAT_DISCOVERY_ERROR', requestId);
     return;
   }
 
@@ -3565,24 +3652,29 @@ async function refreshDiscoveredChats(): Promise<void> {
   if (!canAttemptChatDiscovery(activeClient)) {
     await reportChatDiscoveryFailure(
       `discovery prerequisites missing ${describeClientForDiscovery(activeClient)}`,
+      'CHAT_DISCOVERY_ERROR',
+      requestId,
     );
     return;
   }
 
   if (!(await waitForChatDiscoveryReady(activeClient))) {
     await reportChatDiscoveryFailure(
-      'WhatsApp chat store did not become ready for getChats() — groups and contacts cannot be listed.',
+      'WhatsApp source collection did not become ready — groups and contacts cannot be listed.',
       'CHAT_DISCOVERY_WWEBJS_TIMEOUT',
+      requestId,
     );
     return;
   }
 
   let lastError: unknown = null;
 
-  for (let attempt = 1; attempt <= 8; attempt += 1) {
+  for (let attempt = 1; attempt <= 4; attempt += 1) {
     if (!canAttemptChatDiscovery(activeClient)) {
       await reportChatDiscoveryFailure(
         `discovery aborted session changed attempt=${attempt} ${describeClientForDiscovery(activeClient)}`,
+        'CHAT_DISCOVERY_ERROR',
+        requestId,
       );
       return;
     }
@@ -3593,14 +3685,10 @@ async function refreshDiscoveredChats(): Promise<void> {
     );
 
     try {
-      if (typeof activeClient.getChats !== 'function') {
-        throw new Error(`client.getChats is ${typeof activeClient.getChats}`);
-      }
-
-      const chats = await activeClient.getChats();
+      const chats = await readWhatsAppSourceMetadata(activeClient);
       appendCollectorLog('CHAT_DISCOVERY_SUCCESS', `count=${chats.length} attempt=${attempt}`);
 
-      const { groups, contacts } = mapChatsToDiscoveredSources(chats);
+      const { groups, contacts } = projectWhatsAppSources(chats);
       appendCollectorLog('CHAT_DISCOVERY_GROUPS', `count=${groups.length} attempt=${attempt}`);
       appendCollectorLog('CHAT_DISCOVERY_CONTACTS', `count=${contacts.length} attempt=${attempt}`);
 
@@ -3611,7 +3699,7 @@ async function refreshDiscoveredChats(): Promise<void> {
       }
       appendCollectorLog(
         'group-refresh-success',
-        `source=client.getChats groups=${groups.length} contacts=${contacts.length} attempt=${attempt}`,
+        `source=WAWebCollections.Chat groups=${groups.length} contacts=${contacts.length} attempt=${attempt}`,
       );
       updateStatus(
         {
@@ -3623,6 +3711,13 @@ async function refreshDiscoveredChats(): Promise<void> {
         },
         'group-refresh-success',
         `groups=${groups.length} contacts=${contacts.length}`,
+      );
+      emitSourceDiscoveryResult(
+        groups.length + contacts.length > 0 ? 'AVAILABLE' : 'EMPTY',
+        groups,
+        contacts,
+        null,
+        requestId,
       );
       return;
     } catch (error) {
@@ -3644,9 +3739,14 @@ async function refreshDiscoveredChats(): Promise<void> {
     await reportChatDiscoveryFailure(
       lastError instanceof Error ? lastError.message : String(lastError),
       'group-refresh-final-error',
+      requestId,
     );
   } else {
-    await reportChatDiscoveryFailure('Chat discovery failed after multiple getChats() attempts.');
+    await reportChatDiscoveryFailure(
+      'WhatsApp source discovery failed after bounded retries.',
+      'group-refresh-final-error',
+      requestId,
+    );
   }
 }
 
@@ -4127,7 +4227,7 @@ function wireCommands(): void {
         appendCollectorLog('certification-operational-command-suppressed', 'action=refresh-discovered-chats');
         return;
       }
-      void refreshDiscoveredChats().catch((error) => {
+      void refreshDiscoveredChats(command.requestId).catch((error) => {
         appendCollectorLog('CHAT_DISCOVERY_ERROR', `error=${error instanceof Error ? error.message : String(error)}`);
       });
     }

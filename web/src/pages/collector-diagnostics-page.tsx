@@ -8,7 +8,11 @@ import {
   restoreDesktopDataBackup,
   saveDesktopConfig,
 } from '../lib/desktop';
-import { formatMonitoringStateUpdateTime, monitoringHelperStateLabel } from '../lib/monitoring-state';
+import {
+  formatMonitoringStateUpdateTime,
+  monitoringHelperStateLabel,
+  shouldShowWhatsAppQrTimeout,
+} from '../lib/monitoring-state';
 import { MonitoringStatusBar } from '../components/monitoring-status-bar';
 import { useAuth } from '../state/auth';
 import { useMonitoring } from '../state/monitoring';
@@ -244,12 +248,7 @@ export function CollectorDiagnosticsPage(): JSX.Element {
     return <EmptyState title="Patrol monitoring is for admins" description="Guards only need the field workflow." />;
   }
 
-  const collectorStartupTimestamp = status?.startupStartedAt ? new Date(status.startupStartedAt).getTime() : null;
-  const showQrTimeoutPanel =
-    collectorStartupTimestamp !== null &&
-    !view.isLive &&
-    !status?.qrCode &&
-    now - collectorStartupTimestamp >= 20_000;
+  const showQrTimeoutPanel = shouldShowWhatsAppQrTimeout(status, now);
 
   return (
     <div className="page-stack">
@@ -445,9 +444,11 @@ export function CollectorDiagnosticsPage(): JSX.Element {
 
                   <div className="ops-stats-grid">
                     <div className="ops-stat"><span>Collector state</span><strong>{monitoringHelperStateLabel(collectorStatus.state)}</strong></div>
-                    <div className="ops-stat"><span>Operator status</span><strong>{view.label}</strong></div>
-                    <div className="ops-stat"><span>Connected</span><strong>{view.isLive ? 'Yes' : 'No'}</strong></div>
-                    <div className="ops-stat"><span>Ready / Live</span><strong>{view.isLive ? 'Yes' : 'No'}</strong></div>
+                    <div className="ops-stat"><span>WhatsApp</span><strong>{view.connectionLabel}</strong></div>
+                    <div className="ops-stat"><span>WhatsApp connected</span><strong>{view.isConnected ? 'Yes' : 'No'}</strong></div>
+                    <div className="ops-stat"><span>WhatsApp ready</span><strong>{view.isSessionReady ? 'Yes' : 'No'}</strong></div>
+                    <div className="ops-stat"><span>Monitoring</span><strong>{view.label}</strong></div>
+                    <div className="ops-stat"><span>Production listeners</span><strong>{collectorStatus.productionListenerCount ?? 0}</strong></div>
                     <div className="ops-stat"><span>Browser launch</span><strong>{collectorStatus.browserExecutablePath ? 'Ready' : 'Not found'}</strong></div>
                     <div className="ops-stat"><span>Session folder writable</span><strong>{collectorStatus.sessionPathWritable ? 'Yes' : 'No'}</strong></div>
                     <div className="ops-stat"><span>Mapped groups</span><strong>{collectorStatus.mappedGroupsCount}</strong></div>
