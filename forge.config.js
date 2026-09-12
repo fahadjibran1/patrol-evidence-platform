@@ -43,6 +43,19 @@ const hasWindowsIcon = fs.existsSync(`${iconBasePath}.ico`);
 const hasMacIcon = fs.existsSync(`${iconBasePath}.icns`);
 const windowsIconUrl = String(packageMetadata.windowsIconUrl || '').trim();
 const windowsSigningHookModule = String(process.env.PATROLSAFE_WINDOWS_SIGN_HOOK || '').trim();
+const windowsReleaseKind = String(process.env.PATROLSAFE_WINDOWS_RELEASE || '')
+  .trim()
+  .toLowerCase();
+const requiresWindowsSigning = ['commercial', 'production', 'release', 'rc'].includes(
+  windowsReleaseKind,
+);
+
+if (requiresWindowsSigning && !windowsSigningHookModule) {
+  throw new Error(
+    `WINDOWS_RELEASE_SIGNING_REQUIRED PATROLSAFE_WINDOWS_RELEASE=${windowsReleaseKind} requires PATROLSAFE_WINDOWS_SIGN_HOOK.`,
+  );
+}
+
 const windowsSign = windowsSigningHookModule
   ? {
       hookModulePath: path.resolve(windowsSigningHookModule),
@@ -69,6 +82,8 @@ const packagerIgnore = [
   /^\/logs($|\/)/i,
   /^\/tmp($|\/)/i,
   /^\/tmp-[^/]+($|\/)/i,
+  // Preserved forensic runtimes are local diagnostics and must never enter a release artifact.
+  /^\/\.tmp-phase10e-runtime[^/]*($|\/)/i,
   /^\/patrol-evidence-platform($|\/)/,
   /^\/apps($|\/)/,
   /^\/apps\/license-api($|\/)/,

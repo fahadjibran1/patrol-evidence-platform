@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import * as path from 'node:path';
+import { spawnSync } from 'node:child_process';
 
 const projectRoot = path.resolve(__dirname, '../..');
 const assetRoot = path.join(projectRoot, 'desktop', 'assets');
@@ -94,8 +95,114 @@ describe('PatrolSafe Windows branding assets', () => {
 
   it('provides a secret-free Azure signing hook for both package and installer signing', () => {
     const forge = read('forge.config.js');
+    const hook = read('scripts/artifact-signing-hook.js');
+    const signedRelease = read('scripts/build-signed-windows-rc.js');
+    const verification = read('scripts/verify-windows-signatures.ps1');
     expect(forge).toContain('process.env.PATROLSAFE_WINDOWS_SIGN_HOOK');
     expect(forge.match(/windowsSign,/g)).toHaveLength(2);
+    expect(forge).toContain('WINDOWS_RELEASE_SIGNING_REQUIRED');
+    expect(hook).toContain("const ACCOUNT_NAME = 'vesoft-signing-prod'");
+    expect(hook).toContain("const CERTIFICATE_PROFILE_NAME = 'vesoft-public-trust'");
+    expect(hook).toContain("const ENDPOINT = 'https://neu.codesigning.azure.net/'");
+    expect(hook).toContain("const TIMESTAMP_URL = 'http://timestamp.acs.microsoft.com/'");
+    expect(hook).not.toMatch(/AccessToken|clientSecret|password/i);
+    expect(signedRelease).toContain("PATROLSAFE_WINDOWS_RELEASE: 'rc'");
+    expect(signedRelease).toContain("['-IBm', 'azure.cli', 'account', 'show'");
+    expect(signedRelease).toContain('verify-windows-signatures.ps1');
+    expect(verification).toContain("$ExpectedPublisher = 'Vesoft Services Limited'");
+    expect(verification).toContain('SIGNATURE_TIMESTAMP_MISSING');
     expect(read('docs/release/azure-signing.md')).toContain('Vesoft Services Limited');
+  });
+
+  it('excludes preserved forensic runtime directories from packaged releases', () => {
+    const forge = read('forge.config.js');
+    const verification = read('scripts/verify-windows-signatures.ps1');
+    expect(forge).toContain('/^\\/\\.tmp-phase10e-runtime[^/]*($|\\/)/i');
+    expect(verification).toContain('RELEASE_ARTIFACT_CONTAINS_FORENSIC_RUNTIME');
+    expect(verification).toContain('RELEASE_NUPKG_CONTAINS_FORENSIC_RUNTIME');
+  });
+
+  it('fails closed when an RC build has no signing hook', () => {
+    const result = spawnSync(process.execPath, ['-e', "require('./forge.config.js')"], {
+      cwd: projectRoot,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        PATROLSAFE_WINDOWS_RELEASE: 'rc',
+        PATROLSAFE_WINDOWS_SIGN_HOOK: '',
+      },
+    });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('WINDOWS_RELEASE_SIGNING_REQUIRED');
+  });
+
+  it('builds the Microsoft-supported SHA-256 Artifact Signing invocation', () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const hook = require(path.join(projectRoot, 'scripts', 'artifact-signing-hook.js')) as {
+      buildSignToolArgs: (file: string, dlib: string, metadata: string) => string[];
+    };
+    expect(hook.buildSignToolArgs('app.exe', 'artifact-signing.dll', 'metadata.json')).toEqual([
+      'sign',
+      '/v',
+      '/debug',
+      '/fd',
+      'SHA256',
+      '/tr',
+      'http://timestamp.acs.microsoft.com/',
+      '/td',
+      'SHA256',
+      '/dlib',
+      'artifact-signing.dll',
+      '/dmdf',
+      'metadata.json',
+      'app.exe',
+    ]);
+  });
+
+  it('keeps Windows signature path validation compatible with Windows PowerShell 5.1', () => {
+    const verification = read('scripts/verify-windows-signatures.ps1');
+    expect(verification).not.toContain('[System.IO.Path]::GetRelativePath');
+    expect(verification).toContain('Get-PatrolSafeRelativePath');
+    expect(verification).toContain('RELATIVE_PATH_OUTSIDE_RELEASE_ROOT');
+
+    if (process.platform !== 'win32') {
+      return;
+    }
+
+    const result = spawnSync(
+      'powershell.exe',
+      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'scripts/verify-windows-signatures.ps1', '-SelfTest'],
+      { cwd: projectRoot, encoding: 'utf8' },
+    );
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('WINDOWS_SIGNATURE_VERIFIER_SELF_TEST_OK cases=4');
+  });
+
+  it('fails closed when a requested signature-verification artifact is missing', () => {
+    const verification = read('scripts/verify-windows-signatures.ps1');
+    expect(verification).toContain('SIGNATURE_VERIFY_ARTIFACT_MISSING');
+    expect(verification).toContain('SIGNATURE_INVALID');
+    expect(verification).toContain('SIGNATURE_WRONG_PUBLISHER');
+
+    if (process.platform !== 'win32') {
+      return;
+    }
+
+    const missingPath = path.join(projectRoot, 'out', 'does-not-exist.exe');
+    const result = spawnSync(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        'scripts/verify-windows-signatures.ps1',
+        '-VerifyFile',
+        missingPath,
+      ],
+      { cwd: projectRoot, encoding: 'utf8' },
+    );
+    expect(result.status).not.toBe(0);
+    expect(`${result.stdout}\n${result.stderr}`).toContain('SIGNATURE_VERIFY_ARTIFACT_MISSING');
   });
 });

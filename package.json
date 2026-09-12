@@ -6,7 +6,7 @@
   "endorsement": "by S4",
   "tagline": "Patrol evidence. Automatically organised.",
   "version": "1.0.0",
-  "buildId": "2026.09.11.21.43.36",
+  "buildId": "2026.09.11.23.09.25",
   "private": true,
   "workspaces": [
     "packages/*",
@@ -50,6 +50,7 @@
     "desktop:verify-electron-runtime": "node scripts/verify-electron-runtime-files.js",
     "desktop:verify-first-run-config": "node scripts/verify-desktop-first-run-config.js",
     "release:windows": "node scripts/run-release-windows.js",
+    "release:windows:signed-rc": "node scripts/build-signed-windows-rc.js",
     "desktop:ensure-electron-runtime": "node scripts/ensure-electron-runtime-files.js",
     "desktop:smoke-backend": "node scripts/smoke-packaged-backend.js",
     "desktop:smoke-whatsapp": "node scripts/smoke-packaged-whatsapp.js",
@@ -149,5 +150,5 @@
       "path-to-regexp": "0.1.13"
     }
   },
-  "windowsBuild": "2026.9.11.1303"
+  "windowsBuild": "2026.9.11.1389"
 }
