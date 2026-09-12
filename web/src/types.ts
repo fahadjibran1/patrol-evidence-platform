@@ -290,6 +290,7 @@ export interface PatrolImageRecord {
 }
 
 export interface DesktopWorkspaceConfig {
+  setupStage?: 'company' | 'storage' | 'whatsapp' | 'site-setup' | 'complete';
   setupCompleted?: boolean;
   workspaceName?: string;
   companyName?: string;
@@ -438,6 +439,7 @@ export interface DesktopBootstrapStatus {
   desktopMode: boolean;
   configPath: string | null;
   setupCompleted: boolean;
+  setupStage: 'company' | 'storage' | 'whatsapp' | 'site-setup' | 'complete';
   workspaceName: string | null;
   storageRootPath: string | null;
   activeStorageRootPath: string | null;

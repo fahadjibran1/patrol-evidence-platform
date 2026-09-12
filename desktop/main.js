@@ -585,11 +585,21 @@ function clearSecureStoreValue(key) {
 
 const DEFAULT_WORKSPACE_CONFIG = {
   setupCompleted: false,
+  setupStage: 'company',
   autoLaunchApp: false,
   autoStartCollector: false,
   whatsappAllowFromMe: false,
   whatsappBrowser: 'auto',
 };
+
+const VALID_SETUP_STAGES = new Set(['company', 'storage', 'whatsapp', 'site-setup', 'complete']);
+
+function normalizeSetupStage(value, setupCompleted = false) {
+  if (setupCompleted) {
+    return 'complete';
+  }
+  return typeof value === 'string' && VALID_SETUP_STAGES.has(value) ? value : 'company';
+}
 
 function normalizeSetupCompleted(value) {
   if (value === true) {
@@ -615,6 +625,7 @@ function readWorkspaceConfig() {
       ...DEFAULT_WORKSPACE_CONFIG,
       ...parsed,
       setupCompleted: normalizeSetupCompleted(parsed.setupCompleted),
+      setupStage: normalizeSetupStage(parsed.setupStage, normalizeSetupCompleted(parsed.setupCompleted)),
     };
   } catch {
     return { ...DEFAULT_WORKSPACE_CONFIG };
@@ -692,10 +703,23 @@ function writeWorkspaceConfig(nextConfig) {
     merged.setupCompleted = normalizeSetupCompleted(current.setupCompleted);
   }
 
-  fs.mkdirSync(path.dirname(configPath), { recursive: true });
-  fs.writeFileSync(configPath, JSON.stringify(merged, null, 2), 'utf8');
+  merged.setupStage = normalizeSetupStage(nextConfig.setupStage ?? current.setupStage, merged.setupCompleted);
+
+  writeWorkspaceConfigAtomic(configPath, merged);
   if (merged.setupCompleted === true) {
     appendDesktopLog('SETUP_COMPLETED_SAVED', 'true');
+  }
+}
+
+function writeWorkspaceConfigAtomic(configPath, config) {
+  const temporaryPath = `${configPath}.tmp-${process.pid}-${Date.now()}`;
+  fs.mkdirSync(path.dirname(configPath), { recursive: true });
+  try {
+    fs.writeFileSync(temporaryPath, JSON.stringify(config, null, 2), { encoding: 'utf8', mode: 0o600 });
+    fs.renameSync(temporaryPath, configPath);
+  } catch (error) {
+    fs.rmSync(temporaryPath, { force: true });
+    throw error;
   }
 }
 
@@ -2320,8 +2344,7 @@ async function startBackend() {
       sqliteDbPath: runtimeValues.sqliteDbPath,
       storageRootPath: runtimeValues.storageRootPath,
     };
-    fs.mkdirSync(path.dirname(desktopConfigPath), { recursive: true });
-    fs.writeFileSync(desktopConfigPath, JSON.stringify(syncedConfig, null, 2), 'utf8');
+    writeWorkspaceConfigAtomic(desktopConfigPath, syncedConfig);
   }
 
   const env = applyLicensePublicKeyRuntimeEnv({

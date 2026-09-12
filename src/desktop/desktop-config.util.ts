@@ -1,9 +1,10 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync, readFileSync } from 'fs';
 import * as path from 'path';
 import { dirname } from 'path';
 
 export interface DesktopWorkspaceConfig {
   setupCompleted?: boolean;
+  setupStage?: DesktopSetupStage;
   workspaceName?: string;
   companyName?: string;
   licenseKey?: string;
@@ -36,6 +37,22 @@ export interface DesktopWorkspaceConfig {
   localAdminFirstName?: string;
   localAdminLastName?: string;
   lastSetupAt?: string;
+}
+
+export type DesktopSetupStage = 'company' | 'storage' | 'whatsapp' | 'site-setup' | 'complete';
+
+const DESKTOP_SETUP_STAGES = new Set<DesktopSetupStage>([
+  'company',
+  'storage',
+  'whatsapp',
+  'site-setup',
+  'complete',
+]);
+
+export function normalizeDesktopSetupStage(value: unknown): DesktopSetupStage {
+  return typeof value === 'string' && DESKTOP_SETUP_STAGES.has(value as DesktopSetupStage)
+    ? (value as DesktopSetupStage)
+    : 'company';
 }
 
 export function normalizeSetupCompleted(value: unknown): boolean {
@@ -96,9 +113,11 @@ export function loadDesktopWorkspaceConfig(configPath?: string): DesktopWorkspac
     }
 
     const parsed = JSON.parse(raw) as DesktopWorkspaceConfig;
+    const setupCompleted = normalizeSetupCompleted(parsed.setupCompleted);
     return {
       ...parsed,
-      setupCompleted: normalizeSetupCompleted(parsed.setupCompleted),
+      setupCompleted,
+      setupStage: setupCompleted ? 'complete' : normalizeDesktopSetupStage(parsed.setupStage),
     };
   } catch {
     return {};
@@ -144,6 +163,7 @@ export function getDesktopBooleanConfigValue<T extends keyof DesktopWorkspaceCon
 export function getDefaultDesktopWorkspaceConfig(): DesktopWorkspaceConfig {
   return {
     setupCompleted: false,
+    setupStage: 'company',
     autoLaunchApp: false,
     autoStartCollector: false,
     whatsappAllowFromMe: false,
@@ -176,6 +196,18 @@ export function writeDesktopWorkspaceConfigPatch(patch: DesktopWorkspaceConfig):
 
   const current = loadDesktopWorkspaceConfig(configPath);
   const next = mergeDesktopWorkspaceConfig(current, patch);
-  mkdirSync(dirname(configPath), { recursive: true });
-  writeFileSync(configPath, JSON.stringify(next, null, 2), 'utf8');
+  writeDesktopWorkspaceConfigFile(configPath, next);
+}
+
+export function writeDesktopWorkspaceConfigFile(configPath: string, config: DesktopWorkspaceConfig): void {
+  const directory = dirname(configPath);
+  const temporaryPath = `${configPath}.tmp-${process.pid}-${Date.now()}`;
+  mkdirSync(directory, { recursive: true });
+  try {
+    writeFileSync(temporaryPath, JSON.stringify(config, null, 2), { encoding: 'utf8', mode: 0o600 });
+    renameSync(temporaryPath, configPath);
+  } catch (error) {
+    rmSync(temporaryPath, { force: true });
+    throw error;
+  }
 }

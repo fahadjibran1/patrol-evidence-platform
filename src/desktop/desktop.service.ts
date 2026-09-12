@@ -1,8 +1,7 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { existsSync, mkdirSync, writeFileSync } from 'fs';
-import { dirname } from 'path';
+import { existsSync } from 'fs';
 import { DataSource, Repository } from 'typeorm';
 import { hashPassword, verifyPassword } from '@/auth/security/password.util';
 import { WhatsAppCollectorService } from '@/collectors/whatsapp-collector.service';
@@ -17,8 +16,10 @@ import {
   DesktopWorkspaceConfig,
   loadDesktopWorkspaceConfig,
   mergeDesktopWorkspaceConfig,
+  normalizeDesktopSetupStage,
   normalizeSetupCompleted,
   readDesktopWorkspaceConfig,
+  writeDesktopWorkspaceConfigFile,
 } from './desktop-config.util';
 import {
   applyStorageRootPath,
@@ -46,6 +47,7 @@ export interface DesktopBootstrapStatus {
   desktopMode: boolean;
   configPath: string | null;
   setupCompleted: boolean;
+  setupStage: ReturnType<typeof normalizeDesktopSetupStage>;
   workspaceName: string | null;
   storageRootPath: string | null;
   activeStorageRootPath: string | null;
@@ -130,6 +132,7 @@ export class DesktopService {
       desktopMode: Boolean(process.env.DESKTOP_CONFIG_PATH),
       configPath: process.env.DESKTOP_CONFIG_PATH ?? null,
       setupCompleted,
+      setupStage: setupCompleted ? 'complete' : normalizeDesktopSetupStage(workspace.setupStage),
       workspaceName: workspace.workspaceName?.trim() || null,
       storageRootPath: configuredStorageRootPath,
       activeStorageRootPath,
@@ -198,6 +201,7 @@ export class DesktopService {
 
     const nextConfig = mergeDesktopWorkspaceConfig(workspace, {
       setupCompleted: dto.markSetupComplete === true ? true : normalizeSetupCompleted(workspace.setupCompleted),
+      setupStage: dto.markSetupComplete === true ? 'complete' : 'storage',
       workspaceName: dto.workspaceName?.trim() || companyName,
       companyName,
       licenseKey: activation?.configPatch.licenseKey ?? dto.licenseKey?.trim() ?? workspace.licenseKey,
@@ -256,6 +260,7 @@ export class DesktopService {
 
     this.writeWorkspaceConfigFile({
       setupCompleted: true,
+      setupStage: 'complete',
       lastSetupAt: new Date().toISOString(),
     });
     this.logger.log('desktop-setup-completed');
@@ -533,8 +538,7 @@ export class DesktopService {
 
     const current = loadDesktopWorkspaceConfig(configPath);
     const nextConfig = mergeDesktopWorkspaceConfig(current, patch);
-    mkdirSync(dirname(configPath), { recursive: true });
-    writeFileSync(configPath, JSON.stringify(nextConfig, null, 2), 'utf8');
+    writeDesktopWorkspaceConfigFile(configPath, nextConfig);
 
     if (normalizeSetupCompleted(nextConfig.setupCompleted)) {
       this.logger.log('SETUP_COMPLETED_SAVED true');
@@ -554,10 +558,7 @@ export class DesktopService {
       ...activation.configPatch,
     };
 
-    const { mkdirSync, writeFileSync } = await import('fs');
-    const { dirname } = await import('path');
-    mkdirSync(dirname(process.env.DESKTOP_CONFIG_PATH), { recursive: true });
-    writeFileSync(process.env.DESKTOP_CONFIG_PATH, JSON.stringify(nextConfig, null, 2), 'utf8');
+    writeDesktopWorkspaceConfigFile(process.env.DESKTOP_CONFIG_PATH, nextConfig);
 
     return this.getBootstrapStatus();
   }

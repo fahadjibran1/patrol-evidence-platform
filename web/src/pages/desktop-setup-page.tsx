@@ -295,7 +295,8 @@ export function DesktopSetupPage(): JSX.Element {
 
   async function loadBootstrap(): Promise<DesktopBootstrapStatus> {
     const savedStep = sessionStorage.getItem(DESKTOP_SETUP_STEP_KEY) as WizardStep | null;
-    if (savedStep && wizardSteps.some((entry) => entry.value === savedStep)) {
+    const hasSavedStep = Boolean(savedStep && wizardSteps.some((entry) => entry.value === savedStep));
+    if (hasSavedStep && savedStep) {
       setStep(savedStep);
       sessionStorage.removeItem(DESKTOP_SETUP_STEP_KEY);
     }
@@ -339,8 +340,13 @@ export function DesktopSetupPage(): JSX.Element {
       }));
     }
 
-    if (nextBootstrapStatus.setupCompleted && nextBootstrapStatus.hasCompanyAdmin) {
-      setStep((current) => (current === 'company' ? 'storage' : current));
+    if (!nextBootstrapStatus.setupCompleted && nextBootstrapStatus.hasCompanyAdmin && !hasSavedStep) {
+      const persistedStage = nextBootstrapStatus.setupStage;
+      setStep(
+        persistedStage === 'storage' || persistedStage === 'whatsapp' || persistedStage === 'site-setup'
+          ? persistedStage
+          : 'storage',
+      );
     }
 
     return nextBootstrapStatus;
@@ -567,7 +573,7 @@ export function DesktopSetupPage(): JSX.Element {
         sessionStorage.setItem(DESKTOP_SETUP_STEP_KEY, 'whatsapp');
         sessionStorage.setItem(DESKTOP_SETUP_STORAGE_APPLIED_KEY, 'true');
         const nextBootstrapStatus = await persistWorkspaceSettings(
-          { storageRootPath: selectedPath },
+          { storageRootPath: selectedPath, setupStage: 'whatsapp' },
           {
             skipBackendRestart: true,
             verifyStoragePath: selectedPath,
@@ -625,21 +631,9 @@ export function DesktopSetupPage(): JSX.Element {
     setSuccess(null);
 
     try {
-      await persistWorkspaceSettings(
-        {
-          workspaceName: setupForm.workspaceName,
-          companyName: setupForm.companyName,
-          localAdminEmail: setupForm.adminEmail,
-          localAdminFirstName: setupForm.adminFirstName,
-          localAdminLastName: setupForm.adminLastName,
-          autoLaunchApp: setupForm.autoLaunchApp,
-          autoStartCollector: false,
-          whatsappAllowFromMe: setupForm.whatsappAllowFromMe,
-        },
-        { restartBackend: true },
-      );
-
-      await apiRequest<DesktopBootstrapStatus>('/desktop/bootstrap/initialize', {
+      // Persist the authoritative company/admin state before any Electron IPC that
+      // may restart the packaged backend and replace this renderer context.
+      const initializedStatus = await apiRequest<DesktopBootstrapStatus>('/desktop/bootstrap/initialize', {
         method: 'POST',
         body: JSON.stringify({
           workspaceName: setupForm.workspaceName,
@@ -654,12 +648,11 @@ export function DesktopSetupPage(): JSX.Element {
           markSetupComplete: false,
         }),
       });
+      setBootstrapStatus(initializedStatus);
 
-      const restartedState = await restartDesktopBackend();
-      if (restartedState) {
-        setDesktopState(restartedState);
-      }
-      await ensureBackendHealthy();
+      // This updates the Windows login-item setting without restarting the backend.
+      const syncedState = await saveDesktopConfig({ autoLaunchApp: setupForm.autoLaunchApp });
+      if (syncedState) setDesktopState(syncedState);
 
       const loginResponse = await login(setupForm.adminEmail, setupForm.adminPassword);
       await loadProtectedData(loginResponse.accessToken);
@@ -667,6 +660,20 @@ export function DesktopSetupPage(): JSX.Element {
       setStep('storage');
     } catch (submissionError) {
       setError(submissionError instanceof Error ? submissionError.message : 'Failed to save company settings');
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function continueToSiteSetup(): Promise<void> {
+    setIsBusy(true);
+    setError(null);
+    try {
+      const nextDesktopState = await saveDesktopConfig({ setupStage: 'site-setup' });
+      if (nextDesktopState) setDesktopState(nextDesktopState);
+      setStep('site-setup');
+    } catch (stageError) {
+      setError(stageError instanceof Error ? stageError.message : 'Failed to continue to site setup');
     } finally {
       setIsBusy(false);
     }
@@ -943,7 +950,7 @@ export function DesktopSetupPage(): JSX.Element {
         { method: 'POST' },
         token,
       );
-      const syncedState = await saveDesktopConfig({ setupCompleted: true });
+      const syncedState = await saveDesktopConfig({ setupCompleted: true, setupStage: 'complete' });
       setBootstrapStatus({
         ...completedStatus,
         setupCompleted: true,
@@ -1215,7 +1222,12 @@ export function DesktopSetupPage(): JSX.Element {
                 >
                   Set up WhatsApp later
                 </button>
-                <button type="button" className="secondary-button setup-action-button" onClick={() => setStep('site-setup')}>
+                <button
+                  type="button"
+                  className="secondary-button setup-action-button"
+                  disabled={isBusy}
+                  onClick={() => void continueToSiteSetup()}
+                >
                   Continue to site &amp; mapping
                 </button>
               </div>

@@ -53,6 +53,8 @@
     "release:windows:signed-rc": "node scripts/build-signed-windows-rc.js",
     "desktop:ensure-electron-runtime": "node scripts/ensure-electron-runtime-files.js",
     "desktop:smoke-backend": "node scripts/smoke-packaged-backend.js",
+    "desktop:smoke-first-run": "node scripts/smoke-packaged-first-run.js",
+    "desktop:smoke-first-run-ui": "node scripts/smoke-packaged-first-run-ui.js",
     "desktop:smoke-whatsapp": "node scripts/smoke-packaged-whatsapp.js",
     "collector:smoke": "node scripts/smoke-collector-helper.js",
     "collector:smoke-chat-discovery": "node scripts/smoke-collector-chat-discovery.js",

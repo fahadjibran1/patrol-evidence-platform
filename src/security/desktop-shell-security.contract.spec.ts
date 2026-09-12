@@ -5,6 +5,7 @@ const policy = require('../../desktop/security-policy') as {
   assertTrustedIpcSender: (event: unknown, window: unknown) => void;
   productionDevToolsAllowed: (input: { packaged: boolean; appDebug: boolean; supportMode: boolean }) => boolean;
   isTrustedRendererNavigation: (value: string, input: { packagedEntryUrl: string; developmentUrl: string }) => boolean;
+  sanitizeDesktopConfigPatch: (value: unknown) => Record<string, unknown>;
   validateExternalUrl: (value: string) => string;
   validateOpenPath: (value: string, roots: string[]) => string;
 };
@@ -37,6 +38,12 @@ describe('Electron trust boundary contract', () => {
     expect(policy.productionDevToolsAllowed({ packaged: true, appDebug: true, supportMode: true })).toBe(true);
     expect(desktopMain).toContain('devTools: shouldOpenDebugTools()');
     expect(desktopMain).toContain('event.preventDefault()');
+  });
+
+  it('allows bounded setup progress through trusted IPC without broadening config fields', () => {
+    expect(policy.sanitizeDesktopConfigPatch({ setupStage: 'storage' })).toEqual({ setupStage: 'storage' });
+    expect(() => policy.sanitizeDesktopConfigPatch({ setupStage: { arbitrary: true } })).toThrow(/unsupported value/);
+    expect(() => policy.sanitizeDesktopConfigPatch({ setupBypass: true })).toThrow(/unsupported field/);
   });
 
   it('prevents a trusted Electron window from navigating into an untrusted web origin', () => {

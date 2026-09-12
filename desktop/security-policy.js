@@ -12,7 +12,7 @@ const ALLOWED_MAIL_DOMAINS = new Set(['techguardsecurity.com', 'techguards.co.uk
 const ALLOWED_SECURE_STORE_KEYS = new Set(['desktop-auth-session']);
 const ALLOWED_CONFIG_KEYS = new Set([
   'workspaceName', 'companyName', 'localAdminEmail', 'localAdminFirstName', 'localAdminLastName',
-  'storageRootPath', 'autoLaunchApp', 'autoStartCollector', 'whatsappAllowFromMe', 'setupCompleted',
+  'storageRootPath', 'autoLaunchApp', 'autoStartCollector', 'whatsappAllowFromMe', 'setupCompleted', 'setupStage',
   'dbType', 'sqliteDbPath', 'dbHost', 'dbPort', 'dbUser', 'dbPassword', 'dbName',
 ]);
 const ALLOWED_POSTGRES_KEYS = new Set(['dbHost', 'dbPort', 'dbUser', 'dbPassword', 'dbName']);
