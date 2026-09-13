@@ -12,6 +12,7 @@ import {
 import * as os from 'os';
 import * as path from 'path';
 import * as readline from 'readline';
+import puppeteer = require('puppeteer');
 import type { Client, LocalAuth, Message, MessageMedia } from 'whatsapp-web.js';
 import { CollectorType } from '@/common/enums/collector-type.enum';
 import {
@@ -73,8 +74,10 @@ import {
   ProfileLockError,
   readHelperMutex,
   terminateBrowserOwners,
+  type BrowserProcessOwner,
   type HelperMutexHandle,
 } from './browser-profile-lock.util';
+import { createEdgeBrowserHandoffLaunchAdapter } from './edge-browser-handoff.util';
 import {
   buildModuleCompatibilityDetails,
   classifyPostAuthCompatibility,
@@ -154,6 +157,8 @@ let browserLaunchStartedAt: number | null = null;
 let browserLaunchCompletedAt: number | null = null;
 let whatsappPageLoadedAt: number | null = null;
 let runtimeModulePromise: Promise<WhatsAppRuntimeModule> | null = null;
+let edgeBrowserHandoffAdapterInstalled = false;
+let adoptedEdgeBrowserOwners: BrowserProcessOwner[] = [];
 let shutdownRequested = false;
 let reconnectAuthorizationPending = false;
 let releaseReconnectAuthorizationHold: ((authorized: boolean) => void) | null = null;
@@ -1332,6 +1337,25 @@ async function closeBrowserGracefully(
       `pid=${browserRootPid} alive=${isProcessAlive(browserRootPid)} reason=${reason}`,
     );
   }
+
+  if (!browserRootPid && adoptedEdgeBrowserOwners.length > 0) {
+    const adoptedOwners = adoptedEdgeBrowserOwners;
+    adoptedEdgeBrowserOwners = [];
+    const remaining = detectProfileLock(sessionProfileDirectory()).owners.filter((owner) =>
+      adoptedOwners.some((adopted) => adopted.pid === owner.pid),
+    );
+    if (remaining.length > 0) {
+      appendCollectorLog(
+        'browser-handoff-tree-release-start',
+        `owners=${formatBrowserOwners(remaining)} reason=${reason}`,
+      );
+      await terminateBrowserOwners(remaining, { forceAfterMs: 3_000 });
+      appendCollectorLog(
+        'browser-handoff-tree-release-finished',
+        `owners=${formatBrowserOwners(remaining)} alive=${remaining.some((owner) => isProcessAlive(owner.pid))} reason=${reason}`,
+      );
+    }
+  }
 }
 
 async function releaseStaleBrowserSession(): Promise<void> {
@@ -2132,11 +2156,39 @@ async function fullyDestroyClientSession(
 }
 
 async function loadWhatsAppRuntimeModule(): Promise<WhatsAppRuntimeModule> {
+  installEdgeBrowserHandoffAdapter();
   if (!runtimeModulePromise) {
     runtimeModulePromise = import('whatsapp-web.js');
   }
 
   return runtimeModulePromise;
+}
+
+function installEdgeBrowserHandoffAdapter(): void {
+  if (edgeBrowserHandoffAdapterInstalled) {
+    return;
+  }
+
+  const mutablePuppeteer = puppeteer as unknown as {
+    launch: typeof puppeteer.launch;
+    connect: typeof puppeteer.connect;
+  };
+  const originalLaunch = mutablePuppeteer.launch.bind(puppeteer);
+  const originalConnect = mutablePuppeteer.connect.bind(puppeteer);
+  mutablePuppeteer.launch = createEdgeBrowserHandoffLaunchAdapter({
+    launch: originalLaunch,
+    connect: originalConnect,
+    inspect: (userDataDir) => ({
+      endpoint: inspectDevToolsEndpoint(userDataDir),
+      lock: detectProfileLock(userDataDir),
+    }),
+    log: (event, details) => appendCollectorLog(event, details),
+    onAdoptedOwners: (owners) => {
+      adoptedEdgeBrowserOwners = owners;
+    },
+  }) as typeof puppeteer.launch;
+  edgeBrowserHandoffAdapterInstalled = true;
+  appendCollectorLog('edge-devtools-handoff-adapter', 'installed=true policy=clean-code0-new-endpoint');
 }
 
 function sleep(ms: number): Promise<void> {
@@ -4477,6 +4529,7 @@ async function runBrowserAttempt(
   qrScanDetected = false;
   qrReceivedLoggedForAttempt = null;
   recentPageConsoleErrors.length = 0;
+  adoptedEdgeBrowserOwners = [];
   authenticationReachedAttemptId = null;
   clearLatestQrPayload();
   updateStatus(
@@ -5148,7 +5201,13 @@ async function startCollector(): Promise<void> {
           const lockAfterFailure = detectProfileLock(profileDir);
           const devToolsEndpoint = inspectDevToolsEndpoint(profileDir);
           const currentBrowserRootPid = client?.pupBrowser?.process()?.pid ?? null;
-          const browserStarted = Boolean(currentBrowserRootPid || browserLaunchCompletedAt || whatsappPageLoadedAt);
+          const browserStarted = Boolean(
+            client?.pupBrowser ||
+            currentBrowserRootPid ||
+            adoptedEdgeBrowserOwners.length > 0 ||
+            browserLaunchCompletedAt ||
+            whatsappPageLoadedAt,
+          );
 
           appendCollectorLog(
             'browser-launch-failed',
@@ -5159,9 +5218,16 @@ async function startCollector(): Promise<void> {
             primaryLaunchError = launchError;
           }
 
-          const ownerClassification = classifyProfileOwners(lockAfterFailure.owners, currentBrowserRootPid);
+          const ownerClassification = classifyProfileOwners(
+            lockAfterFailure.owners,
+            currentBrowserRootPid,
+            adoptedEdgeBrowserOwners.map((owner) => owner.pid),
+          );
           const hasConflictingOwner = ownerClassification.conflictingOwners.length > 0;
-          const hasUnownedLockFiles = lockAfterFailure.lockFilesPresent.length > 0 && !currentBrowserRootPid;
+          const hasUnownedLockFiles =
+            lockAfterFailure.lockFilesPresent.length > 0 &&
+            !currentBrowserRootPid &&
+            adoptedEdgeBrowserOwners.length === 0;
           if (isProfileLockErrorMessage(launchError.message) || hasConflictingOwner || hasUnownedLockFiles) {
             if (lockAfterFailure.owners.length > 0) {
               appendCollectorLog(

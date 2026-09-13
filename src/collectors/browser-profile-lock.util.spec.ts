@@ -145,5 +145,16 @@ describe('browser-profile-lock.util', () => {
       100,
     );
     expect(unknown.conflictingOwners.map((owner) => owner.pid)).toEqual([300]);
+
+    const handedOff = classifyProfileOwners(
+      [
+        { pid: 401, parentPid: 40, name: 'msedge.exe', commandLine: '--user-data-dir=P1' },
+        { pid: 402, parentPid: 401, name: 'msedge.exe', commandLine: '--type=renderer P1' },
+      ],
+      null,
+      [401],
+    );
+    expect(handedOff.currentGenerationOwners.map((owner) => owner.pid)).toEqual([401, 402]);
+    expect(handedOff.conflictingOwners).toHaveLength(0);
   });
 });

@@ -40,7 +40,9 @@ describe('Edge clean-machine first-link launch contract', () => {
     );
     expect(helper).toContain('inspectDevToolsEndpoint(profileDir)');
     expect(helper).toContain('devToolsEndpoint=');
-    expect(helper).toContain('classifyProfileOwners(lockAfterFailure.owners, currentBrowserRootPid)');
+    expect(helper).toContain('createEdgeBrowserHandoffLaunchAdapter');
+    expect(helper).toContain('adoptedEdgeBrowserOwners.map((owner) => owner.pid)');
+    expect(helper).toContain("policy=clean-code0-new-endpoint");
   });
 
   it('does not introduce a Chrome fallback into the launch arguments', () => {

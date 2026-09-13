@@ -258,15 +258,20 @@ Get-CimInstance Win32_Process |
 
 /**
  * Classifies owners during an active browser attempt. An owner is current only
- * when it is the known browser root or a descendant of that root. Unknown or
- * foreign owners remain conflicts. Callers performing archive/release checks
- * should continue requiring owners.length === 0.
+ * when it is the known browser root, a verified Windows handoff owner, or a
+ * descendant of either. Unknown or foreign owners remain conflicts. Callers
+ * performing archive/release checks should continue requiring owners.length === 0.
  */
 export function classifyProfileOwners(
   owners: BrowserProcessOwner[],
   currentBrowserRootPid?: number | null,
+  knownCurrentOwnerPids: readonly number[] = [],
 ): ProfileOwnerClassification {
-  if (!currentBrowserRootPid || currentBrowserRootPid <= 0) {
+  const seeds = [
+    ...(currentBrowserRootPid && currentBrowserRootPid > 0 ? [currentBrowserRootPid] : []),
+    ...knownCurrentOwnerPids.filter((pid) => Number.isFinite(pid) && pid > 0),
+  ];
+  if (seeds.length === 0) {
     return { currentGenerationOwners: [], conflictingOwners: owners };
   }
 
@@ -279,8 +284,8 @@ export function classifyProfileOwners(
     byParent.set(parentPid, siblings);
   }
 
-  const currentPids = new Set<number>([currentBrowserRootPid]);
-  const queue = [currentBrowserRootPid];
+  const currentPids = new Set<number>(seeds);
+  const queue = [...seeds];
   while (queue.length > 0) {
     const parentPid = queue.shift()!;
     for (const child of byParent.get(parentPid) ?? []) {
