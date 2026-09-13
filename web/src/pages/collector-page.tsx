@@ -1,5 +1,6 @@
 ﻿import { Link } from 'react-router-dom';
 import QRCode from 'react-qr-code';
+import { customerErrorMessage } from '../lib/customer-errors';
 import { MonitoringStatusBar } from '../components/monitoring-status-bar';
 import { LoadingBlock, OpsStatusPill } from '../components/operator-ui';
 import { RefreshBar } from '../components/refresh-bar';
@@ -21,7 +22,6 @@ export function CollectorPage(): JSX.Element {
     start,
     stop,
     resetSession,
-    createFreshProfile,
     retryLink,
     relink,
     enableMonitoring,
@@ -36,10 +36,10 @@ export function CollectorPage(): JSX.Element {
     <div className="page-stack">
       <PageHeader
         title="Monitoring"
-        subtitle="Link WhatsApp, confirm sources are mapped in Setup, then keep this session running."
+        subtitle="Connect WhatsApp and control live evidence capture for your approved groups."
         actions={
-          <Link className="secondary-button" to="/settings/diagnostics">
-            Advanced diagnostics
+          <Link className="secondary-button" to="/settings/support">
+            Get help
           </Link>
         }
       />
@@ -55,7 +55,7 @@ export function CollectorPage(): JSX.Element {
 
       {error ? (
         <Card>
-          <p className="error-text">{error}</p>
+          <p className="error-text">{customerErrorMessage(new Error(error), 'Monitoring needs attention. Try again or open Support for help.')}</p>
         </Card>
       ) : null}
 
@@ -149,26 +149,8 @@ export function CollectorPage(): JSX.Element {
                   Re-link WhatsApp
                 </button>
               ) : null}
-              {view.phase !== 'link-retry-required' ? (
-                <button
-                  type="button"
-                  className="secondary-button"
-                  disabled={isBusy}
-                  onClick={() => {
-                    if (
-                      window.confirm(
-                        'Create a completely fresh WhatsApp browser profile? The current app profile will be archived and a new QR will be shown.',
-                      )
-                    ) {
-                      void createFreshProfile();
-                    }
-                  }}
-                >
-                  Create fresh WhatsApp profile
-                </button>
-              ) : null}
               <Link className="secondary-button" to="/setup">
-                Source & site setup
+                Manage groups and sites
               </Link>
             </div>
           </Card>

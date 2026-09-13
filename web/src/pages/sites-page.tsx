@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../lib/api';
+import { customerErrorMessage } from '../lib/customer-errors';
 import { useAuth } from '../state/auth';
 import type { Site } from '../types';
 import { Card, EmptyState, PageHeader, StatusBadge } from '../components/ui';
@@ -41,7 +42,7 @@ export function SitesPage(): JSX.Element {
   }
 
   useEffect(() => {
-    void loadSites().catch((loadError) => setError(loadError instanceof Error ? loadError.message : 'Check your setup and try again.'));
+    void loadSites().catch((loadError) => setError(customerErrorMessage(loadError, 'Sites could not be loaded. Try again.')));
   }, [token, includeArchived]);
 
   function resetForm(): void {
@@ -74,7 +75,7 @@ export function SitesPage(): JSX.Element {
       resetForm();
       await loadSites();
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'Check your setup and try again.');
+      setError(customerErrorMessage(saveError, 'The site could not be saved. Check the details and try again.'));
     } finally {
       setIsSaving(false);
     }
@@ -101,7 +102,7 @@ export function SitesPage(): JSX.Element {
       );
       await loadSites();
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'Check your setup and try again.');
+      setError(customerErrorMessage(saveError, 'The site could not be updated. Your previous details are unchanged.'));
     } finally {
       setIsSaving(false);
     }
@@ -117,7 +118,7 @@ export function SitesPage(): JSX.Element {
       setArchivePreview(preview);
     } catch (previewError) {
       setArchiveTarget(null);
-      setError(previewError instanceof Error ? previewError.message : 'Unable to load archive preview.');
+      setError(customerErrorMessage(previewError, 'The archive check could not be completed. Try again.'));
     }
   }
 
@@ -152,7 +153,7 @@ export function SitesPage(): JSX.Element {
       setIncludeArchived(true);
       await loadSites();
     } catch (archiveError) {
-      setError(archiveError instanceof Error ? archiveError.message : 'Unable to archive site.');
+      setError(customerErrorMessage(archiveError, 'The site could not be archived. No records were removed.'));
     } finally {
       setIsSaving(false);
     }
@@ -165,7 +166,7 @@ export function SitesPage(): JSX.Element {
       await apiRequest<Site>(`/sites/${site.id}/restore`, { method: 'POST', body: '{}' }, token ?? undefined);
       await loadSites();
     } catch (restoreError) {
-      setError(restoreError instanceof Error ? restoreError.message : 'Unable to restore site.');
+      setError(customerErrorMessage(restoreError, 'The site could not be restored. Try again.'));
     } finally {
       setIsSaving(false);
     }

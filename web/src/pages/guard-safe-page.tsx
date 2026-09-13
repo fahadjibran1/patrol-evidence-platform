@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { apiRequest } from '../lib/api';
+import { customerErrorMessage } from '../lib/customer-errors';
 import { buildSenderPersonKey, buildSiteSenderMergeKey, canonicalSenderKey, senderIdentityKeysOverlap, stripSourceFromSenderName } from '../lib/sender-identity';
 import { formatPatrolTime, getPatrolTimeParts, getPatrolToday } from '../lib/patrol-time';
 import { useLiveRefresh } from '../lib/use-live-refresh';
@@ -324,7 +325,7 @@ export function GuardSafePage(): JSX.Element {
     }
 
     void loadLookups().catch((loadError) =>
-      setError(loadError instanceof Error ? loadError.message : 'Failed to load Guard Safe filters'),
+      setError(customerErrorMessage(loadError, 'Guard Safe filters could not be loaded. Try again.')),
     );
   }, [token]);
 
@@ -358,7 +359,7 @@ export function GuardSafePage(): JSX.Element {
     setGuardRows(nextRows);
     setPatrolImages(nextImages);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Failed to load Guard Safe report');
+      setError(customerErrorMessage(loadError, 'The Guard Safe report could not be loaded. Try again.'));
     }
   }, [selectedDate, selectedGroupId, selectedSiteId, sites, token]);
 

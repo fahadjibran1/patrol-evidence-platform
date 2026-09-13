@@ -5,7 +5,7 @@ import { isDesktopApp } from '../lib/desktop';
 import { LICENCE_IMPORT_ACCEPT, readLocalLicenceFile } from '../lib/licence-file-import';
 import { useAuth } from '../state/auth';
 import type { LicenseStatusResponse } from '../types';
-import { StatusBadge } from '../components/ui';
+import { Card, PageHeader, StatusBadge } from '../components/ui';
 
 const SUPPLIER_CONTACT = 'mailto:support@techguards.co.uk?subject=PatrolSafe%20by%20S4%20Licence';
 
@@ -25,33 +25,24 @@ export function LicensePage(): JSX.Element {
   const loadStatus = useCallback(async () => {
     const next = await apiRequest<LicenseStatusResponse>('/license/status', {}, token ?? undefined);
     setStatus(next);
-    if (next.companyName) {
-      setCompanyName(next.companyName);
-    }
+    if (next.companyName) setCompanyName(next.companyName);
     return next;
   }, [token]);
 
   useEffect(() => {
-    void loadStatus().catch((loadError) => {
-      setError(loadError instanceof Error ? loadError.message : 'Could not load licence status.');
-    });
+    void loadStatus().catch(() => setError('Licence status could not be loaded. Try again.'));
   }, [loadStatus]);
 
   async function handleExportRequest(): Promise<void> {
     setIsSubmitting(true);
     setError(null);
     setSuccess(null);
-
     try {
       const result = await apiRequest<{ fileName: string; contents: string }>(
         '/license/request-file',
-        {
-          method: 'POST',
-          body: JSON.stringify({ companyName: companyName.trim(), requestedPlan }),
-        },
+        { method: 'POST', body: JSON.stringify({ companyName: companyName.trim(), requestedPlan }) },
         token ?? undefined,
       );
-
       const blob = new Blob([result.contents], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
@@ -59,9 +50,9 @@ export function LicensePage(): JSX.Element {
       anchor.download = result.fileName;
       anchor.click();
       URL.revokeObjectURL(url);
-      setSuccess('Licence request file (.tgreq) downloaded. Send it to your supplier.');
-    } catch (exportError) {
-      setError(exportError instanceof Error ? exportError.message : 'Could not export request file.');
+      setSuccess('Licence request created. Send the downloaded file to your PatrolSafe supplier.');
+    } catch {
+      setError('The licence request could not be created. Check the company name and try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -71,37 +62,26 @@ export function LicensePage(): JSX.Element {
     setIsSubmitting(true);
     setError(null);
     setSuccess(null);
-
     try {
       const next = await apiRequest<LicenseStatusResponse>(
         '/license/import',
-        {
-          method: 'POST',
-          body: JSON.stringify({ licenceFileContents: raw }),
-        },
+        { method: 'POST', body: JSON.stringify({ licenceFileContents: raw }) },
         token ?? undefined,
       );
       setStatus(next);
-      setSuccess(next.uiState === 'Licensed' ? 'Commercial licence imported successfully.' : next.message);
-    } catch (importError) {
-      setError(importError instanceof Error ? importError.message : 'Licence import failed.');
+      setSuccess(next.uiState === 'Licensed' ? 'PatrolSafe is now activated.' : next.message);
+    } catch {
+      setError('That licence file could not be activated. Confirm it belongs to this workstation and try again.');
     } finally {
       setIsSubmitting(false);
     }
   }
 
   async function handleDeactivate(): Promise<void> {
-    const confirmed = window.confirm(
-      'Deactivate the commercial licence on this workstation? Evidence, configuration, database and images will be kept.',
-    );
-    if (!confirmed) {
-      return;
-    }
-
+    if (!window.confirm('Deactivate the licence on this workstation? Existing sites and evidence will be kept.')) return;
     setIsSubmitting(true);
     setError(null);
     setSuccess(null);
-
     try {
       const next = await apiRequest<LicenseStatusResponse>(
         '/license/deactivate',
@@ -109,260 +89,148 @@ export function LicensePage(): JSX.Element {
         token ?? undefined,
       );
       setStatus(next);
-      setSuccess('Commercial licence deactivated. Existing data was preserved.');
-    } catch (deactivateError) {
-      setError(deactivateError instanceof Error ? deactivateError.message : 'Could not deactivate licence.');
+      setSuccess('Licence deactivated. Existing data was preserved.');
+    } catch {
+      setError('The licence could not be deactivated. No company data was changed.');
     } finally {
       setIsSubmitting(false);
     }
   }
 
   async function handleCopyInstallationId(): Promise<void> {
-    if (!status?.installationId) {
-      return;
-    }
-
+    if (!status?.installationId) return;
     try {
       await navigator.clipboard.writeText(status.installationId);
       setCopyMessage('Installation ID copied.');
     } catch {
-      setCopyMessage('Could not copy automatically. Select and copy the installation ID manually.');
+      setCopyMessage('Select the installation ID and copy it manually.');
     }
   }
 
   async function handleImportLicenceFile(event: ChangeEvent<HTMLInputElement>): Promise<void> {
     const file = event.target.files?.[0];
     event.target.value = '';
-    if (!file) {
+    if (!file) return;
+    const result = await readLocalLicenceFile(file).catch(() => ({ ok: false as const, error: 'The selected file could not be read.' }));
+    if (!result.ok) {
+      setError(result.error);
       return;
     }
-
-    setError(null);
-    setSuccess(null);
-
-    try {
-      const result = await readLocalLicenceFile(file);
-      if (!result.ok) {
-        setError(result.error);
-        return;
-      }
-
-      await handleImportAndActivate(result.key);
-    } catch {
-      setError('Could not read the selected licence file.');
-    }
+    await handleImportAndActivate(result.key);
   }
 
   function handleManualImport(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
-    const textarea = (event.currentTarget.elements.namedItem('licenceJson') as HTMLTextAreaElement | null)
-      ?.value;
-    if (!textarea?.trim()) {
-      setError('Paste a .tglic JSON licence or use Import licence file.');
+    const value = (event.currentTarget.elements.namedItem('licenceJson') as HTMLTextAreaElement | null)?.value;
+    if (!value?.trim()) {
+      setError('Paste the licence file contents or choose a licence file.');
       return;
     }
-    void handleImportAndActivate(textarea.trim());
+    void handleImportAndActivate(value.trim());
   }
 
   if (!desktop) {
-    return (
-      <div className="page-shell narrow">
-        <h1>Licence</h1>
-        <p className="muted-text">Commercial licensing applies to the installed desktop application only.</p>
-      </div>
-    );
+    return <div className="page-shell narrow"><h1>Licence</h1><p>Licensing is managed in the installed PatrolSafe app.</p></div>;
   }
 
-  const uiState = status?.uiState ?? status?.displayMode ?? 'Loading';
+  const isTrial = status?.mode === 'trial' || status?.plan === 'trial' || status?.uiState === 'Trial Active';
+  const isLicensed = status?.uiState === 'Licensed' || (status?.status === 'ACTIVE' && !isTrial);
+  const isExpired = status?.uiState === 'Expired' || status?.status === 'EXPIRED';
+  const stateLabel = isTrial ? 'Free trial' : isLicensed ? 'Licensed' : isExpired ? 'Trial expired' : 'Activation needed';
+  const expiryLabel = status?.expiresAt
+    ? new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(status.expiresAt))
+    : isLicensed ? 'No expiry' : 'Not available';
 
   return (
-    <div className="page-shell narrow">
-      <div className="page-header">
-        <div>
-          <p className="eyebrow">Commercial Licence</p>
-          <h1>Workstation licence</h1>
-          <p className="muted-text">
-            Offline licensing for this installation. Evidence, configuration, database and images are always preserved
-            when a trial or licence expires.
+    <div className="page-stack licence-page">
+      <PageHeader
+        eyebrow="Settings"
+        title="Licence"
+        subtitle="Review your trial or licence and activate PatrolSafe for this workstation. Your evidence remains protected if access expires."
+      />
+      {error ? <div className="banner banner-danger" role="alert">{error}</div> : null}
+      {success ? <div className="banner banner-success" role="status">{success}</div> : null}
+
+      <Card className={`licence-hero${isExpired ? ' licence-hero-danger' : ''}`}>
+        <div className="licence-hero-copy">
+          <StatusBadge value={stateLabel} />
+          <h3>{stateLabel}</h3>
+          <p className="licence-lead">
+            {isTrial
+              ? `${status?.daysRemaining ?? '—'} day${status?.daysRemaining === 1 ? '' : 's'} remaining`
+              : isLicensed
+                ? 'PatrolSafe is activated for this company.'
+                : isExpired
+                  ? 'Live operations are paused until PatrolSafe is activated. Existing evidence remains available.'
+                  : 'Activate PatrolSafe to continue live patrol monitoring.'}
           </p>
+          {!isTrial && !isLicensed && status?.message ? <p className="muted-text">{status.message}</p> : null}
         </div>
-        <StatusBadge value={uiState} />
-      </div>
+        <dl className="licence-summary">
+          <div><dt>Company</dt><dd>{status?.companyName ?? 'Not set'}</dd></div>
+          <div><dt>Expires</dt><dd>{expiryLabel}</dd></div>
+          <div><dt>Plan</dt><dd>{isTrial ? 'Trial' : status?.plan ? status.plan.replace('_', ' ') : 'Not activated'}</dd></div>
+        </dl>
+      </Card>
 
-      <section className="panel-grid">
-        <article className="panel">
-          <h2>Current status</h2>
-          <dl className="detail-list">
-            <div>
-              <dt>State</dt>
-              <dd>{uiState}</dd>
-            </div>
-            <div>
-              <dt>Status</dt>
-              <dd>{status?.status ?? '—'}</dd>
-            </div>
-            <div>
-              <dt>Licensed company</dt>
-              <dd>{status?.companyName ?? '—'}</dd>
-            </div>
-            <div>
-              <dt>Plan</dt>
-              <dd>{status?.plan ?? '—'}</dd>
-            </div>
-            <div>
-              <dt>Licence ID</dt>
-              <dd>{status?.licenseId ?? '—'}</dd>
-            </div>
-            <div>
-              <dt>Start date</dt>
-              <dd>{status?.startsAt ?? '—'}</dd>
-            </div>
-            <div>
-              <dt>Expiry date</dt>
-              <dd>{status?.expiresAt ?? (status?.uiState === 'Licensed' ? 'Lifetime' : '—')}</dd>
-            </div>
-            <div>
-              <dt>Days remaining</dt>
-              <dd>
-                {status?.status === 'ACTIVE' || status?.status === 'TRIAL_ACTIVE'
-                  ? status.expiresAt
-                    ? status.daysRemaining
-                    : 'Lifetime'
-                  : '—'}
-              </dd>
-            </div>
-            <div>
-              <dt>Build</dt>
-              <dd>
-                {status?.appVersion ?? '—'}
-                {status?.buildId ? ` (${status.buildId})` : ''}
-              </dd>
-            </div>
-          </dl>
-          <p className="muted-text">{status?.message}</p>
-          {status?.diagnostics?.lastTrialBootstrapError ? (
-            <div className="frontend-diagnostics-log frontend-diagnostics-log-spaced">
-              <p className="muted-text">Licence bootstrap diagnostic</p>
-              <pre>{status.diagnostics.lastTrialBootstrapError}</pre>
-              <pre>
-                {[
-                  `dataRoot=${status.diagnostics.dataRoot ?? 'null'}`,
-                  `trialFile=${status.diagnostics.trialFilePath ?? 'null'}`,
-                  `markerPresent=${status.diagnostics.trialMarkerPresent}`,
-                  `writable=${String(status.diagnostics.licensingDirectoryWritable)}`,
-                  `crypto=${status.diagnostics.cryptoMode}`,
-                  `trialCreationDisabled=${status.diagnostics.trialCreationDisabled}`,
-                ].join('\n')}
-              </pre>
-            </div>
-          ) : null}
-        </article>
-
-        <article className="panel">
-          <h2>Installation</h2>
-          <p className="muted-text">Share this installation ID with your supplier when requesting a licence.</p>
-          <div className="frontend-diagnostics-log">
-            <pre>{status?.installationId ?? 'Generating installation ID…'}</pre>
-          </div>
+      <div className="settings-grid">
+        <Card className="action-card">
+          <h3>Activate a licence</h3>
+          <p className="muted-text">Select the PatrolSafe licence file supplied for this workstation.</p>
+          <input ref={fileInputRef} type="file" accept={LICENCE_IMPORT_ACCEPT} hidden onChange={(event) => void handleImportLicenceFile(event)} />
           <div className="button-row">
-            <button type="button" className="secondary-button" onClick={() => void handleCopyInstallationId()}>
-              Copy installation ID
+            <button type="button" className="primary-button" disabled={isSubmitting} onClick={() => fileInputRef.current?.click()}>
+              {isSubmitting ? 'Checking licence…' : 'Choose licence file'}
             </button>
-            {token ? (
-              <button type="button" className="secondary-button" onClick={() => navigate('/settings/diagnostics')}>
-                Open diagnostics
-              </button>
-            ) : (
-              <button type="button" className="secondary-button" onClick={() => navigate('/login')}>
-                Sign in
-              </button>
-            )}
+            <a className="secondary-button" href={SUPPLIER_CONTACT}>Contact supplier</a>
           </div>
-          {copyMessage ? <p className="muted-text">{copyMessage}</p> : null}
-        </article>
-      </section>
+        </Card>
 
-      <section className="panel">
-        <h2>Export licence request</h2>
-        <p className="muted-text">
-          Creates a `.tgreq` file with installation ID and machine fingerprint only — no secrets.
-        </p>
-        <div className="stack-form">
+        <Card className="action-card">
+          <h3>Request a licence</h3>
+          <p className="muted-text">Create a request file for your PatrolSafe supplier. It contains workstation identity information but no passwords.</p>
+          <label>Company name<input value={companyName} onChange={(event) => setCompanyName(event.target.value)} /></label>
           <label>
-            Company name
-            <input value={companyName} onChange={(event) => setCompanyName(event.target.value)} />
-          </label>
-          <label>
-            Requested plan
-            <select
-              value={requestedPlan}
-              onChange={(event) => setRequestedPlan(event.target.value as typeof requestedPlan)}
-            >
+            Licence term
+            <select value={requestedPlan} onChange={(event) => setRequestedPlan(event.target.value as typeof requestedPlan)}>
               <option value="annual">Annual</option>
-              <option value="three_year">Three year</option>
+              <option value="three_year">Three years</option>
               <option value="lifetime">Lifetime</option>
             </select>
           </label>
-          <button
-            type="button"
-            className="primary-button"
-            disabled={isSubmitting || companyName.trim().length < 2}
-            onClick={() => void handleExportRequest()}
-          >
-            Export request file (.tgreq)
+          <button type="button" className="primary-button" disabled={isSubmitting || companyName.trim().length < 2} onClick={() => void handleExportRequest()}>
+            Create licence request
           </button>
-        </div>
-      </section>
+        </Card>
+      </div>
 
-      <section className="panel">
-        <h2>Import commercial licence</h2>
-        <form className="stack-form" onSubmit={handleManualImport}>
-          <label>
-            Paste `.tglic` JSON
-            <textarea name="licenceJson" rows={6} placeholder='{"payload":{...},"signature":"..."}' />
-          </label>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept={LICENCE_IMPORT_ACCEPT}
-            hidden
-            onChange={(event) => void handleImportLicenceFile(event)}
-          />
-          {error ? <p className="form-error">{error}</p> : null}
-          {success ? <p className="muted-text">{success}</p> : null}
+      <Card>
+        <details className="customer-details">
+          <summary>Licence details</summary>
+          <dl className="customer-detail-list">
+            <div><dt>Installation ID</dt><dd className="breakable-value">{status?.installationId ?? 'Preparing…'}</dd></div>
+            <div><dt>Licence ID</dt><dd>{status?.licenseId ?? 'Not activated'}</dd></div>
+            <div><dt>Version</dt><dd>{status?.appVersion ?? '—'}{status?.buildId ? ` · build ${status.buildId}` : ''}</dd></div>
+            <div><dt>Activated</dt><dd>{status?.activatedAt ? new Date(status.activatedAt).toLocaleDateString('en-GB') : 'Not yet'}</dd></div>
+          </dl>
           <div className="button-row">
-            <button type="submit" className="primary-button" disabled={isSubmitting}>
-              {isSubmitting ? 'Working…' : 'Import pasted licence'}
-            </button>
-            <button
-              type="button"
-              className="secondary-button"
-              disabled={isSubmitting}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              Import .tglic file
-            </button>
-            <button
-              type="button"
-              className="secondary-button"
-              disabled={isSubmitting || status?.mode !== 'commercial'}
-              onClick={() => void handleDeactivate()}
-            >
-              Deactivate commercial licence
-            </button>
-            <a className="secondary-button" href={SUPPLIER_CONTACT}>
-              Contact supplier
-            </a>
+            <button type="button" className="secondary-button" onClick={() => void handleCopyInstallationId()}>Copy installation ID</button>
+            <button type="button" className="secondary-button" disabled={isSubmitting || status?.mode !== 'commercial'} onClick={() => void handleDeactivate()}>Deactivate licence</button>
+            <button type="button" className="secondary-button" onClick={() => navigate('/settings/support')}>Open Support</button>
           </div>
-        </form>
-      </section>
+          {copyMessage ? <p className="muted-text">{copyMessage}</p> : null}
+          <details className="advanced-inline-details">
+            <summary>Advanced licence import</summary>
+            <form className="stack-form" onSubmit={handleManualImport}>
+              <label>Paste licence file contents<textarea name="licenceJson" rows={5} /></label>
+              <button type="submit" className="secondary-button" disabled={isSubmitting}>Import pasted licence</button>
+            </form>
+          </details>
+        </details>
+      </Card>
 
       {status?.status === 'ACTIVE' && token ? (
-        <div className="button-row">
-          <button type="button" className="primary-button" onClick={() => navigate('/')}>
-            Continue to dashboard
-          </button>
-        </div>
+        <div className="button-row"><button type="button" className="primary-button" onClick={() => navigate('/')}>Continue to dashboard</button></div>
       ) : null}
     </div>
   );

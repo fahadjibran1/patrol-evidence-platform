@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../lib/api';
+import { customerErrorMessage } from '../lib/customer-errors';
 import { useAuth } from '../state/auth';
 import type { PatrolAlert, Site } from '../types';
 import { Card, PageHeader, StatusBadge } from '../components/ui';
@@ -29,7 +30,7 @@ export function AlertsPage(): JSX.Element {
   }
 
   useEffect(() => {
-    loadData().catch((loadError) => setError(loadError instanceof Error ? loadError.message : 'Check your setup and try again.'));
+    loadData().catch((loadError) => setError(customerErrorMessage(loadError, 'Alerts could not be loaded. Try again.')));
   }, [token]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -49,7 +50,7 @@ export function AlertsPage(): JSX.Element {
       setAlertType('WELFARE');
       await loadData();
     } catch (submissionError) {
-      setError(submissionError instanceof Error ? submissionError.message : 'Check your setup and try again.');
+      setError(customerErrorMessage(submissionError, 'The alert could not be created. Check the details and try again.'));
     }
   }
 
@@ -59,7 +60,7 @@ export function AlertsPage(): JSX.Element {
       await apiRequest(`/patrol-alerts/${alertId}/resolve`, { method: 'PATCH' }, token ?? undefined);
       await loadData();
     } catch (resolveError) {
-      setError(resolveError instanceof Error ? resolveError.message : 'Check your setup and try again.');
+      setError(customerErrorMessage(resolveError, 'The alert could not be resolved. Try again.'));
     }
   }
 

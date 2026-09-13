@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../lib/api';
+import { customerErrorMessage } from '../lib/customer-errors';
 import { BuildLabel } from '../components/build-label';
 import { beginDesktopAdminRecovery, isDesktopApp } from '../lib/desktop';
 import { useAuth } from '../state/auth';
@@ -9,6 +10,7 @@ import { PRODUCT_INFO } from '../lib/product-info';
 
 export function LoginPage(): JSX.Element {
   const navigate = useNavigate();
+  const location = useLocation();
   const { login } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -53,7 +55,7 @@ export function LoginPage(): JSX.Element {
       await login(email.trim(), password);
       navigate('/');
     } catch (submissionError) {
-      setError(submissionError instanceof Error ? submissionError.message : 'Login failed');
+      setError(customerErrorMessage(submissionError, 'Sign in failed. Check your email and password, then try again.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -95,14 +97,10 @@ export function LoginPage(): JSX.Element {
       setShowForgotPassword(false);
       setResetSuccess(`Password reset for ${result.email}. Sign in with your new password.`);
     } catch (resetError) {
-      setError(resetError instanceof Error ? resetError.message : 'Password reset failed');
+      setError(customerErrorMessage(resetError, 'The password was not changed. Authorise recovery and try again.'));
     } finally {
       setIsResettingPassword(false);
     }
-  }
-
-  function openRecoverySetup(): void {
-    navigate('/desktop/setup', { state: { recoverySetup: true } });
   }
 
   return (
@@ -128,6 +126,10 @@ export function LoginPage(): JSX.Element {
           </p>
           <BuildLabel />
         </div>
+
+        {(location.state as { message?: string } | null)?.message ? (
+          <p className="login-notice" role="status">{(location.state as { message?: string }).message}</p>
+        ) : null}
 
         <label>
           Email
@@ -197,9 +199,7 @@ export function LoginPage(): JSX.Element {
               </div>
             ) : null}
 
-            <button type="button" className="secondary-button" onClick={openRecoverySetup}>
-              First-time setup / Reset workspace
-            </button>
+            <p className="help-text">Workspace settings become available after you sign in.</p>
           </>
         ) : null}
 

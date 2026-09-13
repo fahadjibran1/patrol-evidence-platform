@@ -1,7 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiRequest } from '../lib/api';
-import { isDesktopApp } from '../lib/desktop';
+import { customerErrorMessage } from '../lib/customer-errors';
 import { useAuth } from '../state/auth';
 import type {
   DesktopBootstrapStatus,
@@ -87,6 +87,7 @@ export function SetupPage(): JSX.Element {
   const [scheduleAdvancedOpen, setScheduleAdvancedOpen] = useState(false);
   const [licenseAdvancedOpen, setLicenseAdvancedOpen] = useState(false);
   const [mappingSiteSelections, setMappingSiteSelections] = useState<Record<string, string>>({});
+  const [selectedStep, setSelectedStep] = useState<number | null>(null);
 
   const loadData = useCallback(async (): Promise<void> => {
     const [
@@ -127,7 +128,7 @@ export function SetupPage(): JSX.Element {
 
   useEffect(() => {
     void loadData().catch((loadError) =>
-      setError(loadError instanceof Error ? loadError.message : 'Could not load setup. Refresh the page and try again.'),
+      setError(customerErrorMessage(loadError, 'Setup could not be loaded. Refresh the page and try again.')),
     );
   }, [loadData]);
 
@@ -159,6 +160,8 @@ export function SetupPage(): JSX.Element {
   );
 
   const setupReady = hasSites && whatsAppLinked && hasMappings && hasSchedules && monitoringLive;
+  const nextStep = !hasSites ? 1 : !whatsAppLinked ? 2 : !hasMappings ? 3 : !hasSchedules ? 5 : 6;
+  const activeStep = selectedStep ?? nextStep;
 
   const discoveredSources =
     groupForm.sourceType === 'group' ? whatsAppGroups : whatsAppContacts;
@@ -216,7 +219,7 @@ export function SetupPage(): JSX.Element {
           : 'No eligible WhatsApp sources found. Open the group on the linked phone, then try again.',
       );
     } catch (refreshError) {
-      setError(refreshError instanceof Error ? refreshError.message : 'Could not refresh WhatsApp sources.');
+      setError(customerErrorMessage(refreshError, 'WhatsApp groups could not be refreshed. WhatsApp remains connected; try again.'));
     } finally {
       setIsRefreshingSources(false);
     }
@@ -244,8 +247,9 @@ export function SetupPage(): JSX.Element {
       setSiteForm({ siteCode: '', siteName: '', clientName: '' });
       setSuccess('Site saved. Next, link WhatsApp on the Monitoring page.');
       await loadData();
+      setSelectedStep(2);
     } catch (submissionError) {
-      setError(submissionError instanceof Error ? submissionError.message : 'Could not save site. Check the details and try again.');
+      setError(customerErrorMessage(submissionError, 'The site could not be saved. Check the details and try again.'));
     } finally {
       setIsSavingSite(false);
     }
@@ -273,8 +277,9 @@ export function SetupPage(): JSX.Element {
       setGroupForm((current) => ({ ...current, groupName: '', externalGroupId: '' }));
       setSuccess('WhatsApp source linked to site. Set the patrol schedule next.');
       await loadData();
+      setSelectedStep(5);
     } catch (submissionError) {
-      setError(submissionError instanceof Error ? submissionError.message : 'Could not save mapping. Check your selections and try again.');
+      setError(customerErrorMessage(submissionError, 'The WhatsApp group could not be mapped. Check your selections and try again.'));
     }
   }
 
@@ -296,9 +301,10 @@ export function SetupPage(): JSX.Element {
       );
       setSuccess('Patrol schedule saved. Go to Monitoring to start live capture.');
       await loadData();
+      setSelectedStep(6);
     } catch (submissionError) {
       setError(
-        submissionError instanceof Error ? submissionError.message : 'Could not save schedule. Check the times and try again.',
+        customerErrorMessage(submissionError, 'The patrol schedule could not be saved. Check the times and try again.'),
       );
     }
   }
@@ -338,7 +344,7 @@ export function SetupPage(): JSX.Element {
       );
       await loadData();
     } catch (mappingError) {
-      setError(mappingError instanceof Error ? mappingError.message : 'Could not update this mapping.');
+      setError(customerErrorMessage(mappingError, 'The mapping could not be updated. Your previous mapping is unchanged.'));
     }
   }
 
@@ -365,7 +371,7 @@ export function SetupPage(): JSX.Element {
       setBootstrapStatus(nextBootstrapStatus);
       setSuccess('Licence updated.');
     } catch (licenseError) {
-      setError(licenseError instanceof Error ? licenseError.message : 'Could not update licence.');
+      setError(customerErrorMessage(licenseError, 'The licence could not be updated. Try again or contact your PatrolSafe supplier.'));
     }
   }
 
@@ -425,11 +431,11 @@ export function SetupPage(): JSX.Element {
             </p>
           </div>
           <div className="setup-progress-badges">
-            <StatusBadge value={hasSites ? 'READY' : 'Missing setup'} />
-            <StatusBadge value={whatsAppLinked ? 'CONNECTED' : 'Missing setup'} />
-            <StatusBadge value={hasMappings ? 'READY' : 'Missing setup'} />
-            <StatusBadge value={hasSchedules ? 'READY' : 'Missing setup'} />
-            <StatusBadge value={monitoringLive ? 'ACTIVE' : 'PENDING'} />
+            <span className="setup-progress-item"><span>Sites</span><strong>{hasSites ? 'Ready' : 'Needed'}</strong></span>
+            <span className="setup-progress-item"><span>WhatsApp</span><strong>{whatsAppLinked ? 'Connected' : 'Not linked'}</strong></span>
+            <span className="setup-progress-item"><span>Groups</span><strong>{hasMappings ? 'Mapped' : 'Needed'}</strong></span>
+            <span className="setup-progress-item"><span>Schedule</span><strong>{hasSchedules ? 'Ready' : 'Needed'}</strong></span>
+            <span className="setup-progress-item"><span>Monitoring</span><strong>{monitoringLive ? 'Active' : 'Paused'}</strong></span>
           </div>
         </div>
       </Card>
@@ -451,15 +457,17 @@ export function SetupPage(): JSX.Element {
             key={step.id}
             className={`setup-wizard-step${stepComplete[step.id] ? ' setup-wizard-step-done' : ''}${
               step.id === 3 && stepComplete[4] ? ' setup-wizard-step-done' : ''
-            }`}
+            }${activeStep === step.id ? ' setup-wizard-step-active' : ''}`}
           >
-            <span className="setup-wizard-step-index">{stepComplete[step.id] || (step.id === 3 && stepComplete[4]) ? '✓' : step.id}</span>
-            <span className="setup-wizard-step-label">{step.title}</span>
+            <button type="button" onClick={() => setSelectedStep(step.id)} aria-current={activeStep === step.id ? 'step' : undefined}>
+              <span className="setup-wizard-step-index">{stepComplete[step.id] || (step.id === 3 && stepComplete[4]) ? '✓' : step.id}</span>
+              <span className="setup-wizard-step-label">{step.title}</span>
+            </button>
           </li>
         ))}
       </ol>
 
-      <Card className={`setup-step-card${stepComplete[1] ? ' setup-step-card-done' : ''}`}>
+      <Card className={`setup-step-card${stepComplete[1] ? ' setup-step-card-done' : ''}${activeStep !== 1 ? ' setup-step-card-hidden' : ''}`}>
         <div className="setup-step-header">
           <div>
             <p className="setup-step-eyebrow">Step 1</p>
@@ -535,7 +543,7 @@ export function SetupPage(): JSX.Element {
         </form>
       </Card>
 
-      <Card className={`setup-step-card${stepComplete[2] ? ' setup-step-card-done' : ''}`}>
+      <Card className={`setup-step-card${stepComplete[2] ? ' setup-step-card-done' : ''}${activeStep !== 2 ? ' setup-step-card-hidden' : ''}`}>
         <div className="setup-step-header">
           <div>
             <p className="setup-step-eyebrow">Step 2</p>
@@ -587,7 +595,7 @@ export function SetupPage(): JSX.Element {
         )}
       </Card>
 
-      <Card className={`setup-step-card${stepComplete[4] ? ' setup-step-card-done' : ''}`}>
+      <Card className={`setup-step-card${stepComplete[4] ? ' setup-step-card-done' : ''}${activeStep !== 3 && activeStep !== 4 ? ' setup-step-card-hidden' : ''}`}>
         <div className="setup-step-header">
           <div>
             <p className="setup-step-eyebrow">Steps 3 & 4</p>
@@ -803,7 +811,7 @@ export function SetupPage(): JSX.Element {
         )}
       </Card>
 
-      <Card className={`setup-step-card${stepComplete[5] ? ' setup-step-card-done' : ''}`}>
+      <Card className={`setup-step-card${stepComplete[5] ? ' setup-step-card-done' : ''}${activeStep !== 5 ? ' setup-step-card-hidden' : ''}`}>
         <div className="setup-step-header">
           <div>
             <p className="setup-step-eyebrow">Step 5</p>
@@ -1020,7 +1028,7 @@ export function SetupPage(): JSX.Element {
         )}
       </Card>
 
-      <Card className={`setup-step-card setup-step-card-final${stepComplete[6] ? ' setup-step-card-done' : ''}`}>
+      <Card className={`setup-step-card setup-step-card-final${stepComplete[6] ? ' setup-step-card-done' : ''}${activeStep !== 6 ? ' setup-step-card-hidden' : ''}`}>
         <div className="setup-step-header">
           <div>
             <p className="setup-step-eyebrow">Step 6</p>
@@ -1066,7 +1074,7 @@ export function SetupPage(): JSX.Element {
         open={licenseAdvancedOpen}
         onToggle={(event) => setLicenseAdvancedOpen(event.currentTarget.open)}
       >
-        <summary>Advanced — licence &amp; technical details</summary>
+        <summary>Licence details</summary>
         <Card className="setup-section">
           <div className="section-header">
             <div>
@@ -1076,7 +1084,7 @@ export function SetupPage(): JSX.Element {
                 monitoring needs an active licence.
               </p>
             </div>
-            <StatusBadge value={bootstrapStatus?.license.status ?? 'Unavailable'} />
+            <StatusBadge value={licenceLabel} />
           </div>
           <div className="ops-stats-grid compact">
             <div className="ops-stat">
@@ -1090,10 +1098,6 @@ export function SetupPage(): JSX.Element {
             <div className="ops-stat">
               <span>Trial ends</span>
               <strong>{bootstrapStatus?.license.trialEndDate ?? '—'}</strong>
-            </div>
-            <div className="ops-stat">
-              <span>App mode</span>
-              <strong>{isDesktopApp() ? 'Desktop app' : 'Browser'}</strong>
             </div>
           </div>
           <div className="input-button-row">

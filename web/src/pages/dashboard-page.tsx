@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { apiRequest } from '../lib/api';
+import { customerErrorMessage } from '../lib/customer-errors';
 import { useAuthenticatedPatrolImageUrls } from '../lib/use-authenticated-media';
 import {
   findPatrolGroup,
@@ -70,7 +71,7 @@ export function DashboardPage(): JSX.Element {
       [...nextImages].sort((left, right) => new Date(right.sentAt).getTime() - new Date(left.sentAt).getTime()).slice(0, 6),
     );
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Failed to load dashboard');
+      setError(customerErrorMessage(loadError, 'The dashboard could not be updated. Your saved patrol records are unchanged.'));
     }
   }, [date, token, user?.role]);
 
@@ -209,9 +210,9 @@ export function DashboardPage(): JSX.Element {
           {showOnboarding && !isFullscreen ? (
             <Card className="onboarding-card onboarding-card-compact">
               <p className="muted-text">
-                Complete setup on <Link to="/collector">Monitoring</Link> and <Link to="/setup">Setup</Link> to populate
-                this board.
+                Follow the Setup guide to add a site, choose a WhatsApp group and start monitoring.
               </p>
+              <Link className="secondary-button inline-action" to="/setup">Open Setup guide</Link>
             </Card>
           ) : null}
 
@@ -221,6 +222,7 @@ export function DashboardPage(): JSX.Element {
                 <EmptyState
                   title="No sites on the board"
                   description="Create a site and map a WhatsApp source to see live compliance cards."
+                  actions={<Link className="primary-button inline-action" to="/setup">Create your first site</Link>}
                 />
               ) : (
                 rows.map((row) => {

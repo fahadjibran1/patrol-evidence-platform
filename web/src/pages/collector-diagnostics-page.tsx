@@ -1,5 +1,6 @@
 ﻿import { useEffect, useState } from 'react';
 import QRCode from 'react-qr-code';
+import { Link } from 'react-router-dom';
 import { apiRequest } from '../lib/api';
 import {
   createDesktopDataBackup,
@@ -253,8 +254,10 @@ export function CollectorDiagnosticsPage(): JSX.Element {
   return (
     <div className="page-stack">
       <PageHeader
-        title="Advanced Diagnostics"
-        subtitle="Runtime logs, listener state, session paths, and technical recovery tools for support staff."
+        eyebrow="Advanced support"
+        title="Advanced diagnostics"
+        subtitle="Technical details for guided troubleshooting. Share this information only with trusted PatrolSafe support."
+        actions={<Link className="secondary-button inline-action" to="/settings/support">Back to Support</Link>}
       />
 
       <MonitoringStatusBar showRefresh />

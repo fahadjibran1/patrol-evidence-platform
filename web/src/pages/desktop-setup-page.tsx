@@ -1,12 +1,12 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import QRCode from 'react-qr-code';
 import { apiRequest } from '../lib/api';
+import { customerErrorMessage } from '../lib/customer-errors';
 import {
   chooseDesktopStoragePath,
   getDesktopState,
   isDesktopApp,
-  openDesktopPath,
   restartDesktopBackend,
   saveDesktopConfig,
 } from '../lib/desktop';
@@ -87,18 +87,6 @@ function formatDateTime(value: string | null): string {
   return new Date(value).toLocaleString();
 }
 
-function collectorStageLabel(status: WhatsAppCollectorStatus): string {
-  if (status.ready) {
-    return 'Connected';
-  }
-
-  if (status.qrCode) {
-    return 'QR received';
-  }
-
-  return status.startupStage ?? status.info;
-}
-
 function collectorStateLabel(state: WhatsAppCollectorStatus['state']): string {
   switch (state) {
     case 'idle':
@@ -145,8 +133,6 @@ function isCurrentAccountMapping(group: PatrolGroup, activeLinkedAccountId: stri
 
 export function DesktopSetupPage(): JSX.Element {
   const navigate = useNavigate();
-  const location = useLocation();
-  const recoverySetup = Boolean((location.state as { recoverySetup?: boolean } | null)?.recoverySetup);
   const { login, token } = useAuth();
   const [step, setStep] = useState<WizardStep>('company');
   const [desktopState, setDesktopState] = useState<DesktopState | null>(null);
@@ -171,7 +157,7 @@ export function DesktopSetupPage(): JSX.Element {
     adminFirstName: 'Local',
     adminLastName: 'Admin',
     adminEmail: 'admin@patrol.local',
-    adminPassword: 'Password123!',
+    adminPassword: '',
     autoLaunchApp: false,
     autoStartCollector: false,
     whatsappAllowFromMe: false,
@@ -404,14 +390,14 @@ export function DesktopSetupPage(): JSX.Element {
 
     void loadBootstrap()
       .then((status) => {
-        if (status?.setupCompleted && !recoverySetup) {
+        if (status?.setupCompleted) {
           navigate(token ? '/' : '/login', { replace: true });
         }
       })
       .catch((loadError) =>
-        setError(loadError instanceof Error ? loadError.message : 'Failed to load desktop setup'),
+        setError(customerErrorMessage(loadError, 'PatrolSafe setup could not be loaded. Close the app, reopen it and try again.')),
       );
-  }, [isDesktop, navigate, recoverySetup, token]);
+  }, [isDesktop, navigate, token]);
 
   useEffect(() => {
     if (!token) {
@@ -419,7 +405,7 @@ export function DesktopSetupPage(): JSX.Element {
     }
 
     void loadProtectedData(token).catch((loadError) =>
-      setError(loadError instanceof Error ? loadError.message : 'Failed to load setup data'),
+      setError(customerErrorMessage(loadError, 'Setup information could not be loaded. Try again.')),
     );
   }, [token]);
 
@@ -614,7 +600,7 @@ export function DesktopSetupPage(): JSX.Element {
     } catch (submissionError) {
       sessionStorage.removeItem(DESKTOP_SETUP_STEP_KEY);
       sessionStorage.removeItem(DESKTOP_SETUP_STORAGE_APPLIED_KEY);
-      setError(submissionError instanceof Error ? submissionError.message : 'Failed to continue to WhatsApp setup');
+      setError(customerErrorMessage(submissionError, 'Company setup could not be completed. Your details were not changed; try again.'));
     } finally {
       setIsBusy(false);
     }
@@ -659,7 +645,7 @@ export function DesktopSetupPage(): JSX.Element {
       setSuccess('Company admin created. Continue to choose where patrol images are stored.');
       setStep('storage');
     } catch (submissionError) {
-      setError(submissionError instanceof Error ? submissionError.message : 'Failed to save company settings');
+      setError(customerErrorMessage(submissionError, 'Company settings could not be saved. Your existing settings are unchanged.'));
     } finally {
       setIsBusy(false);
     }
@@ -673,7 +659,7 @@ export function DesktopSetupPage(): JSX.Element {
       if (nextDesktopState) setDesktopState(nextDesktopState);
       setStep('site-setup');
     } catch (stageError) {
-      setError(stageError instanceof Error ? stageError.message : 'Failed to continue to site setup');
+      setError(customerErrorMessage(stageError, 'PatrolSafe could not continue to site setup. Try again.'));
     } finally {
       setIsBusy(false);
     }
@@ -707,7 +693,7 @@ export function DesktopSetupPage(): JSX.Element {
       await loadProtectedData(token ?? '');
       setSuccess('WhatsApp session reset. Scan the new QR code when it appears.');
     } catch (resetError) {
-      setError(resetError instanceof Error ? resetError.message : 'Failed to reset WhatsApp session');
+      setError(customerErrorMessage(resetError, 'WhatsApp could not be relinked. Try again or open Support.'));
     } finally {
       setIsBusy(false);
     }
@@ -732,7 +718,7 @@ export function DesktopSetupPage(): JSX.Element {
       setCollectorStatus(nextStatus);
       await loadProtectedData(token);
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : 'Patrol monitoring action failed');
+      setError(customerErrorMessage(actionError, 'Monitoring could not be updated. Try again.'));
     } finally {
       setIsBusy(false);
     }
@@ -753,7 +739,7 @@ export function DesktopSetupPage(): JSX.Element {
       await loadProtectedData(token);
       setSuccess('Site created. Map a WhatsApp group or contact below.');
     } catch (submissionError) {
-      setError(submissionError instanceof Error ? submissionError.message : 'Failed to create site');
+      setError(customerErrorMessage(submissionError, 'The site could not be created. Check the details and try again.'));
     } finally {
       setIsBusy(false);
     }
@@ -790,7 +776,7 @@ export function DesktopSetupPage(): JSX.Element {
       await loadProtectedData(token);
       setSuccess('WhatsApp source mapped. Patrol images from this source will import.');
     } catch (submissionError) {
-      setError(submissionError instanceof Error ? submissionError.message : 'Failed to create WhatsApp mapping');
+      setError(customerErrorMessage(submissionError, 'The WhatsApp group could not be mapped. Check the selections and try again.'));
     } finally {
       setIsBusy(false);
     }
@@ -810,7 +796,7 @@ export function DesktopSetupPage(): JSX.Element {
       await loadProtectedData(token);
       setSuccess('Patrol schedule saved.');
     } catch (submissionError) {
-      setError(submissionError instanceof Error ? submissionError.message : 'Failed to create schedule');
+      setError(customerErrorMessage(submissionError, 'The patrol schedule could not be created. Check the details and try again.'));
     } finally {
       setIsBusy(false);
     }
@@ -841,7 +827,7 @@ export function DesktopSetupPage(): JSX.Element {
           : 'WhatsApp sources refreshed.',
       );
     } catch (refreshError) {
-      setError(refreshError instanceof Error ? refreshError.message : 'Failed to refresh WhatsApp chats');
+      setError(customerErrorMessage(refreshError, 'WhatsApp groups could not be refreshed. Try again.'));
     } finally {
       setIsBusy(false);
     }
@@ -898,7 +884,7 @@ export function DesktopSetupPage(): JSX.Element {
       setSelectedSource(null);
       setDuplicateSourceWarning(null);
     } catch (mapError) {
-      setError(mapError instanceof Error ? mapError.message : 'Failed to map WhatsApp source');
+      setError(customerErrorMessage(mapError, 'The WhatsApp group could not be mapped. Check the selections and try again.'));
     } finally {
       setIsBusy(false);
     }
@@ -929,12 +915,12 @@ export function DesktopSetupPage(): JSX.Element {
       );
       setVerificationResult(result);
       if (result.passed) {
-        setSuccess('Configuration test PASSED. Your patrol system is ready.');
+        setSuccess('Setup check complete. Your patrol system is ready.');
       } else {
-        setError('Configuration test FAILED. Review the checks below and fix any issues.');
+        setError('Setup needs attention. Review the checks below and follow the suggested actions.');
       }
     } catch (testError) {
-      setError(testError instanceof Error ? testError.message : 'Configuration test failed');
+      setError(customerErrorMessage(testError, 'PatrolSafe could not complete the setup check. Try again.'));
     } finally {
       setIsBusy(false);
     }
@@ -974,7 +960,7 @@ export function DesktopSetupPage(): JSX.Element {
       window.dispatchEvent(new Event('patrol:desktop-setup-completed'));
       navigate('/');
     } catch (finishError) {
-      setError(finishError instanceof Error ? finishError.message : 'Failed to complete setup');
+      setError(customerErrorMessage(finishError, 'Setup could not be completed. Your saved information is protected; try again.'));
     } finally {
       setIsBusy(false);
     }
@@ -1002,12 +988,9 @@ export function DesktopSetupPage(): JSX.Element {
   return (
     <div className="page-stack">
       <PageHeader
-        title={recoverySetup ? 'Workspace Setup' : 'First-Run Setup'}
-        subtitle={
-          recoverySetup
-            ? 'Review or update company, storage, WhatsApp, and site settings without deleting existing data.'
-            : 'Four steps: company login, storage folder, WhatsApp, then site mapping.'
-        }
+        eyebrow="Welcome to PatrolSafe"
+        title="Set up your workspace"
+        subtitle="Create your company login, choose evidence storage, connect WhatsApp, then add your first site."
         actions={<BuildLabel />}
       />
 
@@ -1041,7 +1024,7 @@ export function DesktopSetupPage(): JSX.Element {
       {step === 'company' ? (
         <Card className="wizard-card">
           <h3>Company and admin login</h3>
-          <p className="muted-text">Create the local company and admin account used to sign in to this workstation.</p>
+          <p className="muted-text">Create the company workspace and administrator account used on this workstation.</p>
           <form className="form-grid" onSubmit={(event) => void submitCompanyStep(event)}>
             <div className="two-column-grid">
               <label>
@@ -1132,19 +1115,11 @@ export function DesktopSetupPage(): JSX.Element {
                 </button>
               </div>
             </label>
-            <p className="muted-text">
-              Patrol images are saved in this folder. The database stays in the app data folder.
+            <p className="muted-text">Patrol images are saved in this folder. PatrolSafe manages the supporting records automatically.</p>
+            <p className="selected-folder-summary">
+              <span>Selected folder</span>
+              <strong>{bootstrapStatus?.activeStorageRootPath ?? setupForm.storageRootPath ?? 'Not selected yet'}</strong>
             </p>
-            <div className="ops-stats-grid compact">
-              <div className="ops-stat">
-                <span>Database path</span>
-                <strong>{bootstrapStatus?.databasePath ?? 'Created automatically in app data'}</strong>
-              </div>
-              <div className="ops-stat">
-                <span>Active patrol image path</span>
-                <strong>{bootstrapStatus?.activeStorageRootPath ?? setupForm.storageRootPath ?? 'Not set yet'}</strong>
-              </div>
-            </div>
             <div className="button-row">
               <button type="submit" className="primary-button" disabled={isBusy}>
                 Continue to WhatsApp
@@ -1173,14 +1148,10 @@ export function DesktopSetupPage(): JSX.Element {
 
           {collectorStatus ? (
             <>
-              <div className="ops-stats-grid compact">
+              <div className="customer-status-grid">
                 <div className="ops-stat">
-                  <span>Status</span>
-                  <strong>{collectorStateLabel(collectorStatus.state)}</strong>
-                </div>
-                <div className="ops-stat">
-                  <span>Ready</span>
-                  <strong>{collectorStatus.ready ? 'Yes' : 'No'}</strong>
+                  <span>WhatsApp</span>
+                  <strong>{collectorStatus.ready ? 'Connected' : collectorStateLabel(collectorStatus.state)}</strong>
                 </div>
                 <div className="ops-stat">
                   <span>Monitoring</span>
@@ -1189,14 +1160,6 @@ export function DesktopSetupPage(): JSX.Element {
                 <div className="ops-stat">
                   <span>Mapped sources</span>
                   <strong>{mappedSourcesCount}</strong>
-                </div>
-                <div className="ops-stat">
-                  <span>Stage</span>
-                  <strong>{collectorStageLabel(collectorStatus)}</strong>
-                </div>
-                <div className="ops-stat">
-                  <span>Current WhatsApp account</span>
-                  <strong>{activeLinkedAccountId ?? 'Not linked yet'}</strong>
                 </div>
               </div>
               <div className="button-row setup-whatsapp-actions">
@@ -1213,22 +1176,6 @@ export function DesktopSetupPage(): JSX.Element {
                   }
                 >
                   {collectorStatus.state === 'LINK_RETRY_REQUIRED' ? 'Try Again' : 'Connect WhatsApp'}
-                </button>
-                <button
-                  type="button"
-                  className="secondary-button setup-action-button"
-                  disabled={isBusy}
-                  onClick={() => void resetWhatsAppSession()}
-                >
-                  Reset WhatsApp session
-                </button>
-                <button
-                  type="button"
-                  className="secondary-button setup-action-button"
-                  disabled={!collectorStatus.collectorLogPath}
-                  onClick={() => void openDesktopPath(collectorStatus.collectorLogPath)}
-                >
-                  Open debug log
                 </button>
                 <button
                   type="button"
@@ -1280,7 +1227,7 @@ export function DesktopSetupPage(): JSX.Element {
                       ? 'Check your internet connection and try again.'
                       : collectorStatus.failureCode === 'WWEBJS_MODULE_COMPATIBILITY_ERROR' ||
                     collectorStatus.lastError?.toLowerCase().includes('not compatible')
-                      ? 'WhatsApp connected, but this WhatsApp Web version is not compatible with the installed collector runtime.'
+                      ? 'PatrolSafe could not complete the WhatsApp connection. Open Support for help.'
                       : (collectorStatus.lastError ?? 'Retry Connect WhatsApp.')}
                   </p>
                 </Card>
@@ -1301,9 +1248,9 @@ export function DesktopSetupPage(): JSX.Element {
       {step === 'site-setup' ? (
         <div className="page-stack">
           <Card className="wizard-card">
-            <h3>WhatsApp account</h3>
+            <h3>WhatsApp connection</h3>
             <p className="muted-text">
-              Current WhatsApp account: <strong>{activeLinkedAccountId ?? 'Not linked yet'}</strong>
+              {activeLinkedAccountId ? 'WhatsApp is connected. Choose the group used for patrol photos.' : 'Connect WhatsApp before choosing a group.'}
             </p>
             {oldAccountMappings.length > 0 ? (
               <p className="muted-text">
@@ -1362,14 +1309,15 @@ export function DesktopSetupPage(): JSX.Element {
                   {(selectedSource || groupForm.externalGroupId.trim()) && (
                     <div className="setup-source-selected">
                       Selected:{' '}
-                      <strong>{selectedSource?.name || groupForm.groupName || 'Manual entry'}</strong> —{' '}
-                      <code>{selectedSource?.id || groupForm.externalGroupId}</code>
+                      <strong>{selectedSource?.name || groupForm.groupName || 'Manually entered group'}</strong>
                     </div>
                   )}
                   {duplicateSourceWarning ? (
                     <p className="setup-source-warning">{duplicateSourceWarning}</p>
                   ) : null}
-                  <form className="form-grid" onSubmit={(event) => void createGroup(event)}>
+                  <details className="setup-advanced-details">
+                    <summary>Advanced: enter a group identifier manually</summary>
+                    <form className="form-grid setup-advanced-panel" onSubmit={(event) => void createGroup(event)}>
                     <label>
                       Site
                       <select
@@ -1403,10 +1351,11 @@ export function DesktopSetupPage(): JSX.Element {
                         required
                       />
                     </label>
-                    <button type="submit" className="secondary-button setup-source-save-button" disabled={isBusy}>
-                      Save mapping manually
-                    </button>
-                  </form>
+                      <button type="submit" className="secondary-button setup-source-save-button" disabled={isBusy}>
+                        Save manual mapping
+                      </button>
+                    </form>
+                  </details>
                 </>
               ) : null}
             </Card>
@@ -1442,7 +1391,7 @@ export function DesktopSetupPage(): JSX.Element {
                       <input
                         value={sourceSearch}
                         onChange={(event) => setSourceSearch(event.target.value)}
-                        placeholder="Search by name or WhatsApp ID"
+                        placeholder="Search by group or contact name"
                       />
                     </label>
                     <div className="setup-source-filter-tabs" role="tablist" aria-label="Filter sources">
@@ -1471,7 +1420,7 @@ export function DesktopSetupPage(): JSX.Element {
 
                   {selectedSource ? (
                     <div className="setup-source-selected">
-                      Selected: <strong>{selectedSource.name}</strong> — <code>{selectedSource.id}</code>
+                      Selected: <strong>{selectedSource.name}</strong>
                     </div>
                   ) : null}
 
@@ -1484,7 +1433,6 @@ export function DesktopSetupPage(): JSX.Element {
                       <thead>
                         <tr>
                           <th>Name</th>
-                          <th>WhatsApp ID</th>
                           <th>Type</th>
                           <th>Status</th>
                           <th aria-label="Actions" />
@@ -1493,7 +1441,7 @@ export function DesktopSetupPage(): JSX.Element {
                       <tbody>
                         {filteredDetectableSources.length === 0 ? (
                           <tr>
-                            <td colSpan={5} className="setup-source-empty">
+                            <td colSpan={4} className="setup-source-empty">
                               No sources match your search or filter.
                             </td>
                           </tr>
@@ -1504,9 +1452,6 @@ export function DesktopSetupPage(): JSX.Element {
                             return (
                               <tr key={source.id} className={isSelected ? 'selected' : undefined}>
                                 <td className="setup-source-name">{source.name}</td>
-                                <td className="setup-source-id">
-                                  <code>{source.id}</code>
-                                </td>
                                 <td>{source.sourceType === 'group' ? 'Group' : 'Contact'}</td>
                                 <td>
                                   <StatusBadge value={isMapped ? 'MAPPED' : 'UNMAPPED'} />
@@ -1545,7 +1490,6 @@ export function DesktopSetupPage(): JSX.Element {
                       <thead>
                         <tr>
                           <th>Name</th>
-                          <th>WhatsApp ID</th>
                           <th>Status</th>
                         </tr>
                       </thead>
@@ -1553,9 +1497,6 @@ export function DesktopSetupPage(): JSX.Element {
                         {currentAccountMappings.map((group) => (
                           <tr key={group.id}>
                             <td className="setup-source-name">{group.groupName}</td>
-                            <td className="setup-source-id">
-                              <code>{group.externalGroupId}</code>
-                            </td>
                             <td>
                               <StatusBadge value={group.active ? 'MAPPED' : 'INACTIVE'} />
                             </td>
@@ -1568,33 +1509,7 @@ export function DesktopSetupPage(): JSX.Element {
               ) : null}
 
               {oldAccountMappings.length > 0 ? (
-                <details className="setup-source-saved">
-                  <summary>
-                    <h4>Old mappings ({oldAccountMappings.length})</h4>
-                  </summary>
-                  <div className="setup-source-table-wrap setup-source-table-scroll">
-                    <table className="setup-source-table compact">
-                      <thead>
-                        <tr>
-                          <th>Name</th>
-                          <th>WhatsApp ID</th>
-                          <th>Previous account</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {oldAccountMappings.map((group) => (
-                          <tr key={group.id}>
-                            <td className="setup-source-name">{group.groupName}</td>
-                            <td className="setup-source-id">
-                              <code>{group.externalGroupId}</code>
-                            </td>
-                            <td className="muted-text">{group.linkedAccountId ?? 'Unscoped legacy mapping'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </details>
+                <p className="help-text">{oldAccountMappings.length} previous-account mapping{oldAccountMappings.length === 1 ? '' : 's'} retained for historical records.</p>
               ) : null}
               </div>
             </Card>
@@ -1751,18 +1666,12 @@ export function DesktopSetupPage(): JSX.Element {
           </Card>
 
           <Card className="wizard-card">
-            <h3>Configuration test</h3>
-            <p className="muted-text">
-              Verifies WhatsApp, source mapping, storage folder, schedule, and saves a test patrol image.
-            </p>
-            <div className="ops-stats-grid compact">
+            <h3>Final setup check</h3>
+            <p className="muted-text">Checks the WhatsApp connection, group mapping, evidence storage and patrol schedule before opening the dashboard.</p>
+            <div className="customer-status-grid">
               <div className="ops-stat">
-                <span>Database path</span>
-                <strong>{bootstrapStatus?.databasePath ?? 'Unknown'}</strong>
-              </div>
-              <div className="ops-stat">
-                <span>Active image storage</span>
-                <strong>{bootstrapStatus?.activeStorageRootPath ?? 'Not set'}</strong>
+                <span>Evidence storage</span>
+                <strong>{bootstrapStatus?.settingsApplied === false ? 'Needs attention' : 'Ready'}</strong>
               </div>
               <div className="ops-stat">
                 <span>Mapped sources</span>
@@ -1775,7 +1684,7 @@ export function DesktopSetupPage(): JSX.Element {
             </div>
             <div className="button-row">
               <button type="button" className="primary-button" disabled={isBusy} onClick={() => void runConfigurationTest()}>
-                Send test / check configuration
+                Check setup
               </button>
               <button type="button" className="secondary-button" disabled={isBusy} onClick={() => void finishSetup(true)}>
                 Finish setup and open dashboard
@@ -1783,14 +1692,14 @@ export function DesktopSetupPage(): JSX.Element {
             </div>
             {verificationResult ? (
               <div className="stack-list">
-                <h4>{verificationResult.passed ? 'PASS' : 'FAIL'}</h4>
+                <h4>{verificationResult.passed ? 'Setup ready' : 'Setup needs attention'}</h4>
                 {verificationResult.checks.map((check) => (
                   <div key={check.name} className="list-row">
                     <div>
-                      <strong>{check.passed ? 'PASS' : 'FAIL'} — {check.name}</strong>
+                      <strong>{check.passed ? 'Ready' : 'Needs attention'} — {check.name}</strong>
                       <p>{check.message}</p>
                     </div>
-                    <StatusBadge value={check.passed ? 'PASS' : 'FAIL'} />
+                    <StatusBadge value={check.passed ? 'READY' : 'Missing setup'} />
                   </div>
                 ))}
               </div>

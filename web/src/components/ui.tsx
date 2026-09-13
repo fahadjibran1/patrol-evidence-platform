@@ -1,10 +1,12 @@
 import type { PropsWithChildren } from 'react';
 
 export function PageHeader({
+  eyebrow = 'Security operations',
   title,
   subtitle,
   actions,
 }: {
+  eyebrow?: string;
   title: string;
   subtitle: string;
   actions?: JSX.Element;
@@ -12,7 +14,7 @@ export function PageHeader({
   return (
     <header className="page-header">
       <div>
-        <p className="eyebrow">Security operations</p>
+        <p className="eyebrow">{eyebrow}</p>
         <h2>{title}</h2>
         <p className="page-subtitle">{subtitle}</p>
       </div>
@@ -111,11 +113,20 @@ export function StatusBadge({ value }: { value: string | boolean }): JSX.Element
   return <span className={`status-badge ${tone}`}>{displayValue}</span>;
 }
 
-export function EmptyState({ title, description }: { title: string; description: string }): JSX.Element {
+export function EmptyState({
+  title,
+  description,
+  actions,
+}: {
+  title: string;
+  description: string;
+  actions?: JSX.Element;
+}): JSX.Element {
   return (
     <Card className="empty-state">
       <h3>{title}</h3>
       <p>{description}</p>
+      {actions ? <div className="empty-state-actions">{actions}</div> : null}
     </Card>
   );
 }

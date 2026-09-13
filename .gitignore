@@ -48,6 +48,7 @@ tmp-portable-verify/
 sqt/
 .playwright-cli/
 **/.playwright-cli/
+/output/
 
 # Generated release / build artefacts
 Releases/

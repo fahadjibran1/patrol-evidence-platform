@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../lib/api';
+import { customerErrorMessage } from '../lib/customer-errors';
 import { useAuth } from '../state/auth';
 import type { Incident, Site } from '../types';
 import { Card, PageHeader, StatusBadge } from '../components/ui';
@@ -29,7 +30,7 @@ export function IncidentsPage(): JSX.Element {
   }
 
   useEffect(() => {
-    loadData().catch((loadError) => setError(loadError instanceof Error ? loadError.message : 'Check your setup and try again.'));
+    loadData().catch((loadError) => setError(customerErrorMessage(loadError, 'Incidents could not be loaded. Try again.')));
   }, [token]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -49,7 +50,7 @@ export function IncidentsPage(): JSX.Element {
       setSeverity('MEDIUM');
       await loadData();
     } catch (submissionError) {
-      setError(submissionError instanceof Error ? submissionError.message : 'Check your setup and try again.');
+      setError(customerErrorMessage(submissionError, 'The incident could not be created. Check the details and try again.'));
     }
   }
 
@@ -66,7 +67,7 @@ export function IncidentsPage(): JSX.Element {
       );
       await loadData();
     } catch (updateError) {
-      setError(updateError instanceof Error ? updateError.message : 'Check your setup and try again.');
+      setError(customerErrorMessage(updateError, 'The incident could not be updated. Try again.'));
     }
   }
 

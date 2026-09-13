@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../lib/api';
+import { customerErrorMessage } from '../lib/customer-errors';
 import { useAuth } from '../state/auth';
 import type { PatrolSlot, Site } from '../types';
 import { Card, PageHeader, StatusBadge } from '../components/ui';
@@ -45,13 +46,13 @@ export function PatrolOpsPage(): JSX.Element {
   }
 
   useEffect(() => {
-    loadSites().catch((loadError) => setError(loadError instanceof Error ? loadError.message : 'Check your setup and try again.'));
+    loadSites().catch((loadError) => setError(customerErrorMessage(loadError, 'Sites could not be loaded. Try again.')));
   }, [token]);
 
   useEffect(() => {
     if (selectedSiteCode) {
       loadSlots().catch((loadError) =>
-        setError(loadError instanceof Error ? loadError.message : 'Check your setup and try again.'),
+        setError(customerErrorMessage(loadError, 'Patrol operations could not be loaded. Try again.')),
       );
     }
   }, [selectedDate, selectedSiteCode]);
@@ -64,7 +65,7 @@ export function PatrolOpsPage(): JSX.Element {
       setMessage("Today's patrol times have been prepared.");
       await loadSlots();
     } catch (generationError) {
-      setError(generationError instanceof Error ? generationError.message : 'Check your setup and try again.');
+      setError(customerErrorMessage(generationError, 'The patrol schedule could not be generated. Check the details and try again.'));
     }
   }
 
@@ -83,7 +84,7 @@ export function PatrolOpsPage(): JSX.Element {
       setMessage(`Patrol times prepared for ${selectedDate}.`);
       await loadSlots();
     } catch (generationError) {
-      setError(generationError instanceof Error ? generationError.message : 'Check your setup and try again.');
+      setError(customerErrorMessage(generationError, 'The patrol schedule could not be updated. Try again.'));
     }
   }
 
@@ -111,7 +112,7 @@ export function PatrolOpsPage(): JSX.Element {
       setFile(null);
       await loadSlots();
     } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : 'Check your setup and try again.');
+      setError(customerErrorMessage(uploadError, 'The patrol evidence could not be uploaded. The selected file is unchanged; try again.'));
     }
   }
 

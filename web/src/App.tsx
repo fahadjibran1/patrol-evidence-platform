@@ -16,6 +16,9 @@ import { AdvancedDiagnosticsPage } from './pages/advanced-diagnostics-page';
 import { DesktopSetupPage } from './pages/desktop-setup-page';
 import { GuardSafePage } from './pages/guard-safe-page';
 import { LicensePage } from './pages/license-page';
+import { CompanySettingsPage } from './pages/company-settings-page';
+import { SupportPage } from './pages/support-page';
+import { DataProtectionPage } from './pages/data-protection-page';
 import { LicenseRouteGate } from './components/license-route-gate';
 import { apiRequest } from './lib/api';
 import { getDesktopApiBaseUrl, isDesktopApp } from './lib/desktop';
@@ -41,6 +44,10 @@ export function App(): JSX.Element {
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const [desktopState, setDesktopState] = useState<DesktopState | null>(null);
   const [startupTimeoutReached, setStartupTimeoutReached] = useState(false);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  }, [location.pathname]);
 
   const frontendBootStatus = useMemo<FrontendBootStatus>(() => ({
     frontendLoaded: true,
@@ -265,9 +272,12 @@ export function App(): JSX.Element {
     <Routes>
       <Route
         path="/desktop/setup"
-        element={setupCompleted && token ? <Navigate to="/" replace /> : <DesktopSetupPage />}
+        element={
+          setupCompleted
+            ? <Navigate to={token ? '/' : '/login'} replace state={token ? undefined : { message: 'Please sign in to continue.' }} />
+            : <DesktopSetupPage />
+        }
       />
-      <Route path="/license" element={<LicensePage />} />
       <Route
         path="/login"
         element={token ? <Navigate to="/" replace /> : shouldForceDesktopSetup ? <Navigate to="/desktop/setup" replace /> : <LoginPage />}
@@ -292,6 +302,11 @@ export function App(): JSX.Element {
         <Route path="sites" element={<SitesPage />} />
         <Route path="setup" element={<SetupPage />} />
         <Route path="collector" element={<CollectorPage />} />
+        <Route path="license" element={<LicensePage />} />
+        <Route path="settings" element={<Navigate to="/settings/company" replace />} />
+        <Route path="settings/company" element={<CompanySettingsPage />} />
+        <Route path="settings/support" element={<SupportPage />} />
+        <Route path="settings/backup" element={<DataProtectionPage />} />
         <Route path="settings/diagnostics" element={<AdvancedDiagnosticsPage />} />
         <Route path="guard-safe" element={<GuardSafePage />} />
         <Route path="patrol" element={<PatrolOpsPage />} />
@@ -322,12 +337,16 @@ function StartupLoadingPage({ status }: { status: FrontendBootStatus }): JSX.Ele
   return (
     <div className="frontend-diagnostics-shell">
       <div className="frontend-diagnostics-card">
-        <p className="eyebrow">Desktop Startup</p>
+        <img className="startup-brand-icon" src="./patrolsafe-icon.png" alt="" width="64" height="64" />
+        <p className="eyebrow">PatrolSafe by S4</p>
         <h1>Starting PatrolSafe...</h1>
         <p className="muted-text">
-          The desktop screen is loading local services and checking the workstation status.
+          Your workspace and patrol records are being prepared.
         </p>
-        <StatusGrid status={status} />
+        <div className="loading-block customer-startup-loading" role="status" aria-live="polite">
+          <span className="loading-spinner" aria-hidden="true" />
+          <span>Please wait</span>
+        </div>
       </div>
     </div>
   );
@@ -345,16 +364,20 @@ function StartupRecoveryPage({
   return (
     <div className="frontend-diagnostics-shell">
       <div className="frontend-diagnostics-card">
-        <p className="eyebrow">Startup Recovery</p>
+        <img className="startup-brand-icon" src="./patrolsafe-icon.png" alt="" width="64" height="64" />
+        <p className="eyebrow">PatrolSafe support</p>
         <h1>{title}</h1>
         <p className="muted-text">
-          PatrolSafe did not move past startup normally, so this recovery screen is shown instead of leaving the desktop window on the background.
+          Your data has not been changed. Close PatrolSafe, reopen it and try again. If the issue continues, contact PatrolSafe support.
         </p>
-        <div className="frontend-diagnostics-log">
-          <strong>Last startup issue</strong>
-          <pre>{reason}</pre>
-        </div>
-        <StatusGrid status={status} />
+        <details className="customer-details startup-support-details">
+          <summary>Show support details</summary>
+          <div className="frontend-diagnostics-log">
+            <strong>Last startup issue</strong>
+            <pre>{reason}</pre>
+          </div>
+          <StatusGrid status={status} />
+        </details>
       </div>
     </div>
   );

@@ -4,7 +4,14 @@ import { apiRequest } from '../lib/api';
 import { isDesktopApp } from '../lib/desktop';
 import type { LicenseStatusResponse } from '../types';
 
-const LICENSE_ALLOWED_PATHS = new Set(['/license', '/login', '/settings/diagnostics', '/evidence']);
+const LICENSE_ALLOWED_PATHS = new Set([
+  '/license',
+  '/login',
+  '/settings/support',
+  '/settings/diagnostics',
+  '/settings/backup',
+  '/evidence',
+]);
 
 export function LicenseRouteGate({ children }: { children?: ReactNode }): JSX.Element {
   const location = useLocation();

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { apiRequest } from '../lib/api';
+import { customerErrorMessage } from '../lib/customer-errors';
 import { useAuthenticatedPatrolImageUrls } from '../lib/use-authenticated-media';
 import { formatHourLabel, formatOperatorDateTime, formatSentByLabel } from '../lib/operator-ui';
 import { getPatrolToday } from '../lib/patrol-time';
@@ -45,7 +46,7 @@ export function EvidencePage(): JSX.Element {
           }
         }
       })
-      .catch((loadError) => setError(loadError instanceof Error ? loadError.message : 'Failed to load sites'));
+      .catch((loadError) => setError(customerErrorMessage(loadError, 'Sites could not be loaded. Try again.')));
   }, [includeArchived, searchParams, selectedSiteId, token]);
 
   useEffect(() => {
@@ -90,7 +91,7 @@ export function EvidencePage(): JSX.Element {
       );
       setImages(nextImages);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Failed to load evidence');
+      setError(customerErrorMessage(loadError, 'Evidence could not be loaded. Your saved records are unchanged. Try again.'));
     }
   }, [includeArchived, selectedDate, selectedHour, selectedSiteId, token]);
 
@@ -276,6 +277,7 @@ export function EvidencePage(): JSX.Element {
         <EmptyState
           title="No evidence for this view"
           description="Adjust filters or confirm patrol images are being received on Monitoring."
+          actions={<Link className="primary-button inline-action" to="/collector">Open Monitoring</Link>}
         />
       ) : viewMode === 'gallery' ? (
         <div className="evidence-gallery">
