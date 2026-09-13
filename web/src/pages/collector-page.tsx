@@ -75,6 +75,8 @@ export function CollectorPage(): JSX.Element {
                     ? 'WhatsApp could not restore the saved linked session. Relink WhatsApp to continue.'
                     : view.phase === 'link-retry-required'
                       ? 'WhatsApp could not initialise. Check your internet connection and try again.'
+                    : view.phase === 'reconnecting'
+                      ? 'Connection lost. PatrolSafe is reconnecting the saved WhatsApp session.'
                     : view.isLive
                     ? 'Patrol images from mapped sources will appear on the dashboard and in Evidence.'
                     : view.isSessionReady && status.monitoringState === 'NO_GROUPS_CONFIGURED'
@@ -119,13 +121,17 @@ export function CollectorPage(): JSX.Element {
                 >
                   Try Again
                 </button>
+              ) : view.phase === 'reconnecting' ? (
+                <button type="button" className="secondary-button" disabled>
+                  Reconnecting…
+                </button>
               ) : view.isLinking ? (
                 <button type="button" className="secondary-button" disabled={isBusy} onClick={() => void stop()}>
                   Cancel linking
                 </button>
               ) : !view.isSessionReady ? (
                 <button type="button" className="primary-button" disabled={isBusy} onClick={() => void start()}>
-                  {view.isError ? 'Retry linking' : 'Link WhatsApp'}
+                  {status.failureCode === 'NETWORK_UNAVAILABLE' ? 'Try again' : view.isError ? 'Retry linking' : 'Link WhatsApp'}
                 </button>
               ) : view.isLive ? (
                 <button type="button" className="secondary-button" disabled={isBusy} onClick={() => void pauseMonitoring()}>

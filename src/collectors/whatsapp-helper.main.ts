@@ -67,9 +67,11 @@ import {
   detectProfileLock,
   ensureProfileUnlocked,
   formatBrowserOwners,
+  isProcessAlive,
   isProfileLockErrorMessage,
   ProfileLockError,
   readHelperMutex,
+  terminateBrowserOwners,
   type HelperMutexHandle,
 } from './browser-profile-lock.util';
 import {
@@ -88,6 +90,10 @@ import {
   shouldFallbackToNextBrowser,
   startupAttemptCount,
 } from './whatsapp-link-retry.util';
+import {
+  isWhatsAppTransportFailure,
+  WHATSAPP_NETWORK_FAILURE_CODE,
+} from './whatsapp-network-recovery.util';
 
 type MessageSource = 'live' | 'backfill';
 type MessageProcessingResult = 'imported' | 'duplicate' | 'skipped';
@@ -473,6 +479,18 @@ function isRetryableStartupFailure(outcome: StartupGateOutcome): boolean {
   }
 
   if (outcome === 'ready' || outcome === 'auth_failure') {
+    return false;
+  }
+
+  // Retrying a full browser generation while the destination is unreachable
+  // only accumulates Edge processes and profile owners. The desktop supervisor
+  // performs a bounded WhatsApp-origin connectivity probe before replacing the
+  // generation.
+  if (
+    status.failureCode === WHATSAPP_NETWORK_FAILURE_CODE ||
+    isWhatsAppTransportFailure(status.lastError) ||
+    isWhatsAppTransportFailure(status.info)
+  ) {
     return false;
   }
 
@@ -1267,6 +1285,8 @@ async function closeBrowserGracefully(
     return;
   }
 
+  const browserRootPid = currentClient.pupBrowser?.process()?.pid ?? null;
+
   logDestructiveAction('client.destroy', reason, currentClient);
 
   if (hasPassedQrScanPhase() && !isDestructiveLifecycleAllowed()) {
@@ -1295,6 +1315,21 @@ async function closeBrowserGracefully(
     if (isSessionCorruptionSignal(message)) {
       reportSessionCorruption('browser-close-error', message);
     }
+  }
+
+  // Puppeteer's WebSocket can already be broken after a network/navigation
+  // failure. In that case Client.destroy() may return/throw without reaping the
+  // Edge tree. Enforce ownership release without touching LocalAuth.
+  if (browserRootPid && isProcessAlive(browserRootPid)) {
+    appendCollectorLog('browser-tree-release-start', `pid=${browserRootPid} reason=${reason}`);
+    await terminateBrowserOwners(
+      [{ pid: browserRootPid, name: 'edge-browser-root', commandLine: `pid=${browserRootPid}` }],
+      { forceAfterMs: 3_000 },
+    );
+    appendCollectorLog(
+      'browser-tree-release-finished',
+      `pid=${browserRootPid} alive=${isProcessAlive(browserRootPid)} reason=${reason}`,
+    );
   }
 }
 
@@ -4752,6 +4787,9 @@ async function runBrowserAttempt(
           : normalizedReason === 'LOGOUT'
             ? 'WhatsApp logged out on the phone or session ended.'
             : normalizedReason,
+        failureCode: isWhatsAppTransportFailure(normalizedReason)
+          ? WHATSAPP_NETWORK_FAILURE_CODE
+          : status.failureCode,
         lastDisconnectAt: new Date().toISOString(),
       },
       'disconnected-event',

@@ -52,6 +52,11 @@ import {
   isQrOnlyCertificationMode,
   redactQrOnlyCertificationLog,
 } from './whatsapp-certification-guard';
+import {
+  isRecoverableWhatsAppNetworkFailure,
+  probeWhatsAppWebConnectivity,
+  WHATSAPP_NETWORK_FAILURE_CODE,
+} from './whatsapp-network-recovery.util';
 
 export type { WhatsAppCollectorContact, WhatsAppCollectorGroup } from './whatsapp-helper.types';
 
@@ -96,6 +101,12 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
   private startPromise: Promise<WhatsAppCollectorStatus> | null = null;
   private stopPromise: Promise<void> | null = null;
   private linkRetryCleanupPromise: Promise<void> | null = null;
+  private networkRecoveryPromise: Promise<WhatsAppCollectorStatus> | null = null;
+  private networkRecoverySequence = 0;
+  private automaticNetworkRecoveryAttempts = 0;
+  private readonly maxAutomaticNetworkRecoveryAttempts = 2;
+  private readonly networkConnectivityCheckAttempts = 4;
+  private readonly networkConnectivityCheckDelayMs = 5_000;
   private helperGeneration = 0;
   private activeHelperGeneration = 0;
   private currentGenerationAuthenticationObserved = false;
@@ -215,6 +226,9 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
   async onModuleDestroy(): Promise<void> {
     this.unsubscribeMappingChanges?.();
     this.unsubscribeMappingChanges = null;
+    const activeRecovery = this.networkRecoveryPromise;
+    this.cancelNetworkRecovery();
+    await activeRecovery?.catch(() => undefined);
     await this.stopHelperProcess();
   }
 
@@ -433,6 +447,14 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
 
     this.licensingService.assertCollectorStartAllowed();
 
+    if (this.networkRecoveryPromise) {
+      return this.networkRecoveryPromise;
+    }
+
+    if (isRecoverableWhatsAppNetworkFailure(this.helperStatus)) {
+      return this.beginNetworkRecovery('customer-retry', true);
+    }
+
     if (this.isHelperRunning()) {
       return this.getStatus();
     }
@@ -450,6 +472,9 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
   }
 
   async stop(): Promise<WhatsAppCollectorStatus> {
+    const activeRecovery = this.networkRecoveryPromise;
+    this.cancelNetworkRecovery();
+    await activeRecovery?.catch(() => undefined);
     if (this.linkRetryCleanupPromise) {
       await this.linkRetryCleanupPromise;
     }
@@ -1330,8 +1355,11 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
           );
         }
         if (previousState !== 'ready' && this.helperStatus.state === 'ready') {
+          this.automaticNetworkRecoveryAttempts = 0;
           this.maybeRequestChatDiscoveryRefresh();
+          void this.reconcileProductionMonitoring('network-or-session-ready');
         }
+        this.maybeBeginNetworkRecovery(this.helperStatus, generation);
         this.maybeBeginLinkRetryCleanup(this.helperStatus, generation);
       }
     } catch (error) {
@@ -1412,6 +1440,171 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
     } catch {
       return false;
     }
+  }
+
+  private maybeBeginNetworkRecovery(status: WhatsAppHelperStatusSnapshot, generation: number): void {
+    if (
+      isQrOnlyCertificationMode() ||
+      generation !== this.activeHelperGeneration ||
+      this.networkRecoveryPromise ||
+      !isRecoverableWhatsAppNetworkFailure(status) ||
+      this.currentGenerationProfileSafety !== 'EXISTING_SESSION_PROTECTED' ||
+      !this.whatsAppSourceMappingService.getConfiguredLinkedAccountId() ||
+      this.isSessionProfileEmpty()
+    ) {
+      return;
+    }
+
+    if (this.automaticNetworkRecoveryAttempts >= this.maxAutomaticNetworkRecoveryAttempts) {
+      this.helperStatus = {
+        ...this.helperStatus,
+        state: 'failed',
+        connected: false,
+        ready: false,
+        productionListenerCount: 0,
+        failureCode: WHATSAPP_NETWORK_FAILURE_CODE,
+        startupStage: 'Unable to reconnect',
+        info: "We couldn't reconnect to WhatsApp. Check your internet connection and try again.",
+        lastError: 'WhatsApp Web is not reachable after bounded reconnect attempts.',
+      };
+      this.appendCollectorLog(
+        'network-recovery-bounded-failure',
+        `generation=${generation} attempts=${this.automaticNetworkRecoveryAttempts}`,
+      );
+      return;
+    }
+
+    this.automaticNetworkRecoveryAttempts += 1;
+    void this.beginNetworkRecovery('automatic', false).catch((error) => {
+      this.appendCollectorLog(
+        'network-recovery-failed',
+        `generation=${generation} error=${error instanceof Error ? error.message : String(error)}`,
+      );
+    });
+  }
+
+  private async beginNetworkRecovery(
+    reason: 'automatic' | 'customer-retry',
+    explicitCustomerRetry: boolean,
+  ): Promise<WhatsAppCollectorStatus> {
+    if (this.networkRecoveryPromise) {
+      return this.networkRecoveryPromise;
+    }
+
+    if (
+      isQrOnlyCertificationMode() ||
+      !this.whatsAppSourceMappingService.getConfiguredLinkedAccountId() ||
+      this.isSessionProfileEmpty()
+    ) {
+      return this.getStatus();
+    }
+
+    if (explicitCustomerRetry) {
+      this.automaticNetworkRecoveryAttempts = 0;
+    }
+
+    const recoverySequence = ++this.networkRecoverySequence;
+    const failedGeneration = this.activeHelperGeneration;
+    const recovery = this.runNetworkRecovery(recoverySequence, failedGeneration, reason);
+    const trackedRecovery = recovery.finally(() => {
+      if (this.networkRecoveryPromise === trackedRecovery) {
+        this.networkRecoveryPromise = null;
+      }
+    });
+    this.networkRecoveryPromise = trackedRecovery;
+    return trackedRecovery;
+  }
+
+  private async runNetworkRecovery(
+    recoverySequence: number,
+    failedGeneration: number,
+    reason: 'automatic' | 'customer-retry',
+  ): Promise<WhatsAppCollectorStatus> {
+    const profileDir = path.join(this.sessionPath, 'session-patrol-evidence-platform');
+    this.helperStatus = {
+      ...this.helperStatus,
+      state: 'reconnecting',
+      connected: false,
+      ready: false,
+      productionListenerCount: 0,
+      failureCode: WHATSAPP_NETWORK_FAILURE_CODE,
+      startupStage: 'Reconnecting to WhatsApp',
+      info: 'Connection lost. PatrolSafe is waiting for WhatsApp to become reachable.',
+      lastError: null,
+    };
+    this.appendCollectorLog(
+      'network-recovery-start',
+      `reason=${reason} failedGeneration=${failedGeneration} recoverySequence=${recoverySequence} monitoring=${this.monitoringEnabled ? 'enabled' : 'paused'}`,
+    );
+
+    await this.stopHelperProcess();
+    await this.releaseCurrentProfileOwnership(profileDir, failedGeneration);
+
+    for (let attempt = 1; attempt <= this.networkConnectivityCheckAttempts; attempt += 1) {
+      if (recoverySequence !== this.networkRecoverySequence) {
+        this.appendCollectorLog('network-recovery-cancelled', `recoverySequence=${recoverySequence}`);
+        return this.getStatus();
+      }
+
+      const reachable = await this.checkWhatsAppConnectivity();
+      this.appendCollectorLog(
+        'network-connectivity-check',
+        `recoverySequence=${recoverySequence} attempt=${attempt}/${this.networkConnectivityCheckAttempts} reachable=${reachable}`,
+      );
+      if (recoverySequence !== this.networkRecoverySequence) {
+        this.appendCollectorLog('network-recovery-cancelled', `recoverySequence=${recoverySequence}`);
+        return this.getStatus();
+      }
+      if (reachable) {
+        this.helperStatus = this.buildDefaultStatus({
+          state: 'starting',
+          info: 'WhatsApp is reachable. Reconnecting the saved session...',
+          startupStage: 'Reconnecting saved WhatsApp session',
+          failureCode: null,
+          lastError: null,
+          qrCode: null,
+          connectedAccount: null,
+          productionListenerCount: 0,
+        });
+        this.appendCollectorLog(
+          'network-connectivity-restored',
+          `recoverySequence=${recoverySequence} nextGeneration=${this.helperGeneration + 1}`,
+        );
+        this.licensingService.assertCollectorStartAllowed();
+        return this.startInternal();
+      }
+
+      if (attempt < this.networkConnectivityCheckAttempts) {
+        await this.sleep(this.networkConnectivityCheckDelayMs);
+      }
+    }
+
+    this.helperStatus = {
+      ...this.helperStatus,
+      state: 'failed',
+      connected: false,
+      ready: false,
+      productionListenerCount: 0,
+      failureCode: WHATSAPP_NETWORK_FAILURE_CODE,
+      startupStage: 'Unable to reconnect',
+      info: "We couldn't reconnect to WhatsApp. Check your internet connection and try again.",
+      lastError: 'WhatsApp Web is not reachable.',
+      lastDisconnectAt: new Date().toISOString(),
+    };
+    this.appendCollectorLog(
+      'network-recovery-awaiting-customer',
+      `recoverySequence=${recoverySequence} checks=${this.networkConnectivityCheckAttempts} sessionPreserved=true`,
+    );
+    return this.getStatus();
+  }
+
+  private checkWhatsAppConnectivity(): Promise<boolean> {
+    return probeWhatsAppWebConnectivity();
+  }
+
+  private cancelNetworkRecovery(): void {
+    this.networkRecoverySequence += 1;
+    this.automaticNetworkRecoveryAttempts = 0;
   }
 
   private maybeBeginLinkRetryCleanup(status: WhatsAppHelperStatusSnapshot, generation: number): void {

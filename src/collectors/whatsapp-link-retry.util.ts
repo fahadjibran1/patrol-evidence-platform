@@ -1,4 +1,5 @@
 import type { WhatsAppHelperStatusSnapshot } from './whatsapp-helper.types';
+import { isWhatsAppTransportFailure } from './whatsapp-network-recovery.util';
 
 export const LINK_RETRY_REQUIRED = 'LINK_RETRY_REQUIRED' as const;
 
@@ -8,6 +9,7 @@ export type WhatsAppLinkProfileSafety =
   | 'UNKNOWN';
 
 export type WhatsAppBootstrapFailureCode =
+  | 'NETWORK_UNAVAILABLE'
   | 'REMOTE_BOOTSTRAP_FAILURE'
   | 'AUTH_SELECTOR_TIMEOUT'
   | 'QR_INITIALIZATION_TIMEOUT'
@@ -33,6 +35,9 @@ export function classifyBootstrapFailureCode(input: {
   pageLoaded: boolean;
   criticalBootstrapResourceFailure?: boolean;
 }): WhatsAppBootstrapFailureCode {
+  if (isWhatsAppTransportFailure(input.message)) {
+    return 'NETWORK_UNAVAILABLE';
+  }
   if (input.criticalBootstrapResourceFailure) {
     return 'REMOTE_BOOTSTRAP_FAILURE';
   }

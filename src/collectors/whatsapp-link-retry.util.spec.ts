@@ -145,4 +145,12 @@ describe('bounded WhatsApp link retry policy', () => {
   ] as const)('classifies safe structured bootstrap failures', (input, expected) => {
     expect(classifyBootstrapFailureCode(input)).toBe(expected);
   });
+
+  it('classifies a WhatsApp navigation timeout as network-unavailable before QR/bootstrap failure', () => {
+    expect(classifyBootstrapFailureCode({
+      message: 'Error: net::ERR_CONNECTION_TIMED_OUT at https://web.whatsapp.com/',
+      browserStarted: true,
+      pageLoaded: false,
+    })).toBe('NETWORK_UNAVAILABLE');
+  });
 });

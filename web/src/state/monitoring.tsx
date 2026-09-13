@@ -69,7 +69,7 @@ export function MonitoringProvider({ children }: PropsWithChildren): JSX.Element
     status?.state === 'failed' &&
     Boolean(status.failureCode && LINK_RETRY_CLEANUP_FAILURE_CODES.has(status.failureCode));
   const pollIntervalMs =
-    (view.isLinking && !view.isLive) || awaitingLinkRetryCleanup
+    (view.isLinking && !view.isLive) || awaitingLinkRetryCleanup || view.connectionState === 'RECONNECTING'
       ? MONITORING_POLL_LINKING_MS
       : MONITORING_POLL_IDLE_MS;
 

@@ -92,6 +92,37 @@ describe('WhatsApp customer state model', () => {
     expect(deriveMonitoringView(status({ state: 'disconnected' })).connectionLabel).toBe('Reconnecting');
   });
 
+  it('presents transient transport recovery without QR or relink language', () => {
+    const current = status({
+      state: 'reconnecting',
+      monitoringPreference: 'ENABLED',
+      monitoringState: 'STARTING',
+      failureCode: 'NETWORK_UNAVAILABLE',
+      startupStage: 'Reconnecting to WhatsApp',
+      info: 'Connection lost. PatrolSafe is waiting for WhatsApp to become reachable.',
+    });
+    const view = deriveMonitoringView(current);
+
+    expect(view.connectionLabel).toBe('Reconnecting');
+    expect(view.connectionState).toBe('RECONNECTING');
+    expect(view.label).toBe('Reconnecting');
+    expect(view.isError).toBe(false);
+    expect(view.showQr).toBe(false);
+    expect(view.accountTitle).toBe('Reconnecting WhatsApp');
+    expect(shouldShowWhatsAppQrTimeout(current, Date.now())).toBe(false);
+  });
+
+  it('keeps the customer retry copy free of raw browser and stack terminology', () => {
+    const collectorPage = readFileSync(
+      path.join(process.cwd(), 'web', 'src', 'pages', 'collector-page.tsx'),
+      'utf8',
+    );
+    expect(collectorPage).toContain("status.failureCode === 'NETWORK_UNAVAILABLE' ? 'Try again'");
+    expect(collectorPage).toContain('Connection lost. PatrolSafe is reconnecting the saved WhatsApp session.');
+    expect(collectorPage).not.toContain('net::ERR_CONNECTION_TIMED_OUT');
+    expect(collectorPage).not.toContain('NodeWebSocketTransport');
+  });
+
   it('keeps diagnostics fields bound to connection/readiness rather than isLive', () => {
     const diagnostics = readFileSync(
       path.join(process.cwd(), 'web', 'src', 'pages', 'collector-diagnostics-page.tsx'),

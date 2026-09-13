@@ -11,6 +11,7 @@ export type CollectorState =
   | 'qr-ready'
   | 'authenticated'
   | 'waiting-for-client-info'
+  | 'reconnecting'
   | 'ready'
   | 'UNEXPECTED_AUTHENTICATION'
   | 'disconnected'

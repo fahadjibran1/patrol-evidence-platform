@@ -127,6 +127,7 @@ export interface WhatsAppCollectorStatus {
     | 'qr-ready'
     | 'authenticated'
     | 'waiting-for-client-info'
+    | 'reconnecting'
     | 'ready'
     | 'disconnected'
     | 'failed';

@@ -105,6 +105,8 @@ function collectorStateLabel(state: WhatsAppCollectorStatus['state']): string {
       return 'Try again';
     case 'authenticated':
       return 'Authenticated';
+    case 'reconnecting':
+      return 'Reconnecting';
     case 'ready':
       return 'Ready';
     case 'disconnected':

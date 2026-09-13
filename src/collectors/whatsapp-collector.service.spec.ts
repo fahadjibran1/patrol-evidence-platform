@@ -845,6 +845,194 @@ describe('WhatsAppCollectorService', () => {
     );
   });
 
+  describe('transient network recovery supervisor', () => {
+    type NetworkRecoveryInternals = {
+      helperStatus: WhatsAppHelperStatusSnapshot;
+      helperProcess: unknown;
+      activeHelperGeneration: number;
+      currentGenerationProfileSafety: 'EXISTING_SESSION_PROTECTED';
+      networkRecoveryPromise: Promise<unknown> | null;
+      automaticNetworkRecoveryAttempts: number;
+      networkConnectivityCheckAttempts: number;
+      networkConnectivityCheckDelayMs: number;
+      stopHelperProcess(): Promise<void>;
+      releaseCurrentProfileOwnership(profileDir: string, generation: number): Promise<void>;
+      checkWhatsAppConnectivity(): Promise<boolean>;
+      startInternal(): Promise<unknown>;
+      isSessionProfileEmpty(): boolean;
+    };
+
+    function prepareRecovery(
+      monitoringEnabled: boolean,
+      connectivity: boolean,
+    ): {
+      service: WhatsAppCollectorService;
+      internal: NetworkRecoveryInternals;
+      order: string[];
+      startInternal: jest.SpyInstance;
+    } {
+      const service = createService({ whatsappAutoStart: monitoringEnabled });
+      attachRunningHelper(service);
+      const internal = service as unknown as NetworkRecoveryInternals;
+      internal.activeHelperGeneration = 1;
+      internal.currentGenerationProfileSafety = 'EXISTING_SESSION_PROTECTED';
+      internal.networkConnectivityCheckAttempts = 1;
+      internal.networkConnectivityCheckDelayMs = 0;
+      jest.spyOn(internal, 'isSessionProfileEmpty').mockReturnValue(false);
+      const order: string[] = [];
+      jest.spyOn(internal, 'stopHelperProcess').mockImplementation(async () => {
+        order.push('helper-stopped');
+        internal.helperProcess = null;
+      });
+      jest.spyOn(internal, 'releaseCurrentProfileOwnership').mockImplementation(async (_path, generation) => {
+        order.push(`profile-released:${generation}`);
+      });
+      jest.spyOn(internal, 'checkWhatsAppConnectivity').mockImplementation(async () => {
+        order.push(`connectivity:${connectivity}`);
+        return connectivity;
+      });
+      const startInternal = jest.spyOn(internal, 'startInternal').mockImplementation(async () => {
+        order.push('new-generation-started');
+        internal.activeHelperGeneration += 1;
+        internal.helperStatus = readyStatus({
+          state: 'ready',
+          connected: true,
+          ready: true,
+          connectedAccount: 'linked-account-1',
+          productionListenerCount: monitoringEnabled ? 3 : 0,
+          backfillMessagesScanned: 0,
+        });
+        // Mirrors the real ready-status handler, which closes the bounded
+        // recovery episode before a later outage can begin.
+        internal.automaticNetworkRecoveryAttempts = 0;
+        return service.getStatus();
+      });
+      return { service, internal, order, startInternal };
+    }
+
+    it('stops and releases the failed generation before one connectivity-gated replacement', async () => {
+      const { service, internal, order, startInternal } = prepareRecovery(true, true);
+
+      emitHelperStatus(service, readyStatus({
+        state: 'failed',
+        connected: false,
+        ready: false,
+        connectedAccount: null,
+        productionListenerCount: 0,
+        failureCode: 'NETWORK_UNAVAILABLE',
+        lastError: 'net::ERR_CONNECTION_TIMED_OUT at https://web.whatsapp.com/',
+      }));
+      await internal.networkRecoveryPromise;
+
+      expect(order).toEqual([
+        'helper-stopped',
+        'profile-released:1',
+        'connectivity:true',
+        'new-generation-started',
+      ]);
+      expect(startInternal).toHaveBeenCalledTimes(1);
+      await expect(service.getStatus()).resolves.toMatchObject({
+        state: 'ready',
+        monitoringPreference: 'ENABLED',
+        monitoringState: 'ACTIVE',
+        productionListenerCount: 3,
+        backfillMessagesScanned: 0,
+        qrCode: null,
+      });
+    });
+
+    it('waits without launching another browser while WhatsApp Web remains unreachable', async () => {
+      const { service, internal, order, startInternal } = prepareRecovery(true, false);
+
+      emitHelperStatus(service, readyStatus({
+        state: 'failed',
+        connected: false,
+        ready: false,
+        connectedAccount: null,
+        productionListenerCount: 0,
+        failureCode: 'NETWORK_UNAVAILABLE',
+      }));
+      await internal.networkRecoveryPromise;
+
+      expect(order).toEqual(['helper-stopped', 'profile-released:1', 'connectivity:false']);
+      expect(startInternal).not.toHaveBeenCalled();
+      await expect(service.getStatus()).resolves.toMatchObject({
+        state: 'failed',
+        monitoringPreference: 'ENABLED',
+        monitoringState: 'ERROR',
+        failureCode: 'NETWORK_UNAVAILABLE',
+        productionListenerCount: 0,
+        info: "We couldn't reconnect to WhatsApp. Check your internet connection and try again.",
+      });
+    });
+
+    it('allows one later customer retry to re-enter a live-but-failed helper state', async () => {
+      const { service, internal, startInternal } = prepareRecovery(true, true);
+      internal.helperStatus = readyStatus({
+        state: 'failed',
+        connected: false,
+        ready: false,
+        connectedAccount: null,
+        productionListenerCount: 0,
+        failureCode: 'NETWORK_UNAVAILABLE',
+      });
+
+      const [first, second] = await Promise.all([service.start(), service.start()]);
+
+      expect(startInternal).toHaveBeenCalledTimes(1);
+      expect(first.state).toBe('ready');
+      expect(second.state).toBe('ready');
+      expect(internal.automaticNetworkRecoveryAttempts).toBe(0);
+    });
+
+    it('reconnects a saved session while preserving a paused monitoring preference', async () => {
+      const { service, internal } = prepareRecovery(false, true);
+
+      emitHelperStatus(service, readyStatus({
+        state: 'failed',
+        connected: false,
+        ready: false,
+        connectedAccount: null,
+        failureCode: 'NETWORK_UNAVAILABLE',
+      }));
+      await internal.networkRecoveryPromise;
+
+      await expect(service.getStatus()).resolves.toMatchObject({
+        state: 'ready',
+        monitoringPreference: 'PAUSED',
+        monitoringState: 'PAUSED',
+        productionListenerCount: 0,
+        backfillMessagesScanned: 0,
+      });
+    });
+
+    it('survives three sequential offline/online cycles without accumulating generations or listeners', async () => {
+      const { service, internal, startInternal } = prepareRecovery(true, true);
+
+      for (let cycle = 1; cycle <= 3; cycle += 1) {
+        emitHelperStatus(service, readyStatus({
+          state: 'failed',
+          connected: false,
+          ready: false,
+          connectedAccount: null,
+          productionListenerCount: 0,
+          failureCode: 'NETWORK_UNAVAILABLE',
+          lastError: `net::ERR_CONNECTION_TIMED_OUT cycle=${cycle}`,
+        }));
+        await internal.networkRecoveryPromise;
+        expect((await service.getStatus()).productionListenerCount).toBe(3);
+      }
+
+      expect(startInternal).toHaveBeenCalledTimes(3);
+      expect(internal.activeHelperGeneration).toBe(4);
+      await expect(service.getStatus()).resolves.toMatchObject({
+        monitoringState: 'ACTIVE',
+        productionListenerCount: 3,
+        backfillMessagesScanned: 0,
+      });
+    });
+  });
+
   it('does not start or auto-recover after an unexpected-authentication terminal state', async () => {
     const service = createService();
     (service as unknown as { certificationTerminal: boolean }).certificationTerminal = true;

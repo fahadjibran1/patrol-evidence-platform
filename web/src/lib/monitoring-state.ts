@@ -19,6 +19,7 @@ export type MonitoringPhase =
   | 'link-retry-required'
   | 'relink-required'
   | 'authenticated'
+  | 'reconnecting'
   | 'ready'
   | 'error'
   | 'disabled';
@@ -77,6 +78,8 @@ function phaseLabel(phase: MonitoringPhase, backfillRunning: boolean): string {
       return 'QR Ready';
     case 'authenticated':
       return 'Authenticating';
+    case 'reconnecting':
+      return 'Reconnecting';
     case 'link-retry-required':
       return 'Try again';
     case 'error':
@@ -137,6 +140,10 @@ function derivePhase(status: WhatsAppCollectorStatus): MonitoringPhase {
 
   if (status.state === 'failed' || status.state === 'disconnected') {
     return 'error';
+  }
+
+  if (status.state === 'reconnecting') {
+    return 'reconnecting';
   }
 
   if (status.state === 'idle') {
@@ -218,7 +225,7 @@ export function deriveMonitoringView(status: WhatsAppCollectorStatus | null): Mo
     ? 'CONNECTED'
     : phase === 'relink-required'
       ? 'RELINK_REQUIRED'
-      : status.state === 'disconnected'
+      : status.state === 'disconnected' || status.state === 'reconnecting'
         ? 'RECONNECTING'
         : phase === 'error'
           ? 'ERROR'
@@ -281,6 +288,8 @@ export function deriveMonitoringView(status: WhatsAppCollectorStatus | null): Mo
 
   const accountTitle = isSessionReady
     ? status.connectedAccount || 'Patrol WhatsApp linked'
+    : phase === 'reconnecting'
+      ? 'Reconnecting WhatsApp'
     : phase === 'relink-required'
       ? 'Session expired'
     : phase === 'link-retry-required'
@@ -291,6 +300,8 @@ export function deriveMonitoringView(status: WhatsAppCollectorStatus | null): Mo
 
   const statusBadge = isSessionReady
     ? monitoringState
+    : phase === 'reconnecting'
+      ? 'RECONNECTING'
     : phase === 'relink-required'
       ? 'RELINK REQUIRED'
     : phase === 'link-retry-required'
@@ -318,10 +329,10 @@ export function deriveMonitoringView(status: WhatsAppCollectorStatus | null): Mo
     isLinking,
     isError,
     isOffline,
-    showQr: isLinking && !isSessionReady,
+    showQr: isLinking && phase !== 'reconnecting' && !isSessionReady,
     accountTitle,
     statusBadge,
-    isSessionActive: isSessionReady || isLinking,
+    isSessionActive: isSessionReady || isLinking || phase === 'reconnecting',
   };
 }
 
@@ -369,6 +380,8 @@ export function monitoringHelperStateLabel(state: WhatsAppCollectorStatus['state
       return 'Authenticated';
     case 'waiting-for-client-info':
       return 'Authenticated';
+    case 'reconnecting':
+      return 'Reconnecting';
     case 'ready':
       return 'Ready';
     case 'failed':
