@@ -9,6 +9,10 @@ const releaseDisplayName =
 const { getPackagerRuntimeIgnoreBlocklist } = require('./scripts/lib/electron-runtime-manifest');
 const { ensureElectronRuntimeFiles } = require('./scripts/ensure-electron-runtime-files');
 const {
+  assertRuntimePackageManifest,
+  pruneDesktopRuntimeWorkspacePayload,
+} = require('./scripts/lib/desktop-runtime-package-manifest');
+const {
   getTrackedPublicKeyPath,
   resolvePackagedPublicKeyPath,
   validatePublicKeyFile,
@@ -260,6 +264,11 @@ function pruneCopiedApp(buildPath, _electronVersion, _platform, _arch, callback)
       'tsconfig.json',
     ].forEach((fileName) => removeIfPresent(path.join(buildPath, fileName)));
 
+    const runtimePrune = pruneDesktopRuntimeWorkspacePayload(buildPath);
+    console.log(
+      `[forge] Runtime workspace payload verified: license-core files=${runtimePrune.manifest.fileCount} removed=${runtimePrune.removed.length}`,
+    );
+
     callback();
   } catch (error) {
     callback(error);
@@ -314,6 +323,7 @@ module.exports = {
         const packagedAppRoot =
           getPackagedAppRoot({ resourcesPath: packagedResourcesPath }) ||
           path.join(packagedResourcesPath, 'app');
+        assertRuntimePackageManifest(packagedAppRoot);
         const backendResolution = getBackendEntryCandidates({
           appRoot: packagedAppRoot,
           resourcesPath: packagedResourcesPath,

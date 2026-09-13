@@ -5,6 +5,12 @@
   "description": "Shared TG1 Ed25519 licence payload and signing for PatrolSafe by S4",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
+    "!dist/**/*.spec.js",
+    "!dist/**/*.spec.d.ts"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "jest --config jest.config.js"

@@ -8,6 +8,9 @@ const {
   getLicensePublicKeyUtilCandidates,
   getPackagedAppRoot,
 } = require('../desktop/packaged-runtime-paths');
+const {
+  assertRuntimePackageManifest,
+} = require('./lib/desktop-runtime-package-manifest');
 
 const projectRoot = path.resolve(__dirname, '..');
 const outRoot = path.join(projectRoot, 'out');
@@ -207,19 +210,13 @@ if (privateKeyHits.length > 0) {
   pass('No private key material found under packaged output');
 }
 
-const licenseCorePackage = path.join(appRoot, 'node_modules', '@patrol', 'license-core', 'package.json');
-const licenseCoreDist = path.join(appRoot, 'node_modules', '@patrol', 'license-core', 'dist', 'index.js');
-const licenseCoreLocalDist = path.join(appRoot, 'packages', 'license-core', 'dist', 'index.js');
-if (fs.existsSync(licenseCoreDist) || fs.existsSync(licenseCoreLocalDist) || fs.existsSync(path.join(appRoot, 'dist', 'licensing', 'license.service.js'))) {
-  pass('Licensing runtime is present in packaged app');
-} else if (fs.existsSync(licenseCorePackage)) {
-  pass(`license-core package present at ${licenseCorePackage}`);
-} else {
-  // Nest bundles compiled licensing into dist/licensing
-  const licensingEntry = path.join(appRoot, 'dist', 'licensing', 'license.controller.js');
-  if (!ensureExists(licensingEntry, 'Compiled licensing controller')) {
-    fail('license-core / licensing runtime missing from packaged app');
-  }
+try {
+  const licenseCoreManifest = assertRuntimePackageManifest(appRoot);
+  pass(
+    `Runtime-only license-core package verified at ${licenseCoreManifest.runtimeRoot} (${licenseCoreManifest.fileCount} files)`,
+  );
+} catch (error) {
+  fail(error instanceof Error ? error.message : String(error));
 }
 
 const buildInfoCandidates = [
