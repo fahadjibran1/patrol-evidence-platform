@@ -3,6 +3,7 @@ import {
   resolveWhatsAppBrowserPreference,
   resolveWhatsAppWebVersionMode,
   buildWhatsAppWebClientOptions,
+  WHATSAPP_PUPPETEER_ARGS,
   getWhatsAppWebVersionLogSnapshot,
 } from './whatsapp-web-runtime.config';
 
@@ -41,6 +42,18 @@ describe('whatsapp-web-runtime browser and version selection', () => {
     expect(resolved.available.every((browser) => !/msedge\.exe$/i.test(browser.executablePath))).toBe(
       true,
     );
+  });
+
+  it('disables Edge Startup Boost without changing browser family selection', () => {
+    expect(WHATSAPP_PUPPETEER_ARGS).toContain('--disable-features=msEdgeStartupBoost');
+    expect(WHATSAPP_PUPPETEER_ARGS.some((argument) => /chrome\.exe/i.test(argument))).toBe(false);
+
+    const options = buildWhatsAppWebClientOptions({
+      headless: false,
+      executablePath: 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+    });
+    expect(options.puppeteer.executablePath).toMatch(/msedge\.exe$/i);
+    expect(options.puppeteer.args).toContain('--disable-features=msEdgeStartupBoost');
   });
 
   it('uses live WhatsApp Web runtime with explicit cache none when mode=live', () => {

@@ -12,6 +12,11 @@ export const WHATSAPP_PUPPETEER_ARGS = [
   '--disable-dev-shm-usage',
   '--no-first-run',
   '--no-default-browser-check',
+  // Edge Startup Boost can hand a fresh-profile launch to a background Edge
+  // process and let Puppeteer's original child exit cleanly before it emits a
+  // DevTools endpoint. Keep the dedicated PatrolSafe browser generation under
+  // Puppeteer ownership from its first clean-machine launch.
+  '--disable-features=msEdgeStartupBoost',
 ] as const;
 
 /**

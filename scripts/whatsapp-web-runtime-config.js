@@ -91,6 +91,7 @@ const WHATSAPP_PUPPETEER_ARGS = [
   '--disable-dev-shm-usage',
   '--no-first-run',
   '--no-default-browser-check',
+  '--disable-features=msEdgeStartupBoost',
 ];
 
 function buildWhatsAppPuppeteerOptions({ headless, executablePath, dumpio = false }) {

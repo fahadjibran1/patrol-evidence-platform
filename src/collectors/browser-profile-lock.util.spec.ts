@@ -6,6 +6,7 @@ import {
   buildProfileLockFailureMessage,
   classifyProfileOwners,
   detectProfileLock,
+  inspectDevToolsEndpoint,
   isProfileLockErrorMessage,
   readHelperMutex,
   releaseProfileOwnership,
@@ -30,6 +31,31 @@ describe('browser-profile-lock.util', () => {
     const status = detectProfileLock(userDataDir);
     expect(status.locked).toBe(true);
     expect(status.lockFilesPresent).toContain('SingletonLock');
+  });
+
+  it('requires a complete DevTools endpoint marker before reporting readiness', () => {
+    const userDataDir = path.join(tempRoot, 'session-patrol-evidence-platform');
+    mkdirSync(userDataDir, { recursive: true });
+
+    expect(inspectDevToolsEndpoint(userDataDir)).toMatchObject({
+      ready: false,
+      port: null,
+      websocketPath: null,
+    });
+
+    writeFileSync(path.join(userDataDir, 'DevToolsActivePort'), 'not-a-port\n', 'utf8');
+    expect(inspectDevToolsEndpoint(userDataDir).ready).toBe(false);
+
+    writeFileSync(
+      path.join(userDataDir, 'DevToolsActivePort'),
+      '61234\n/devtools/browser/patrol-generation\n',
+      'utf8',
+    );
+    expect(inspectDevToolsEndpoint(userDataDir)).toMatchObject({
+      ready: true,
+      port: 61234,
+      websocketPath: '/devtools/browser/patrol-generation',
+    });
   });
 
   it('acquires and releases helper mutex with single-instance semantics', () => {
@@ -91,7 +117,7 @@ describe('browser-profile-lock.util', () => {
     expect(existsSync(path.join(userDataDir, 'SingletonLock'))).toBe(false);
   }, 30_000);
 
-  it('allows only the current browser tree while preserving fail-closed conflicts', () => {
+  it('keeps current descendants owned when the original browser root has already exited', () => {
     const currentTree = [
       { pid: 100, parentPid: 1, name: 'msedge.exe', commandLine: '--user-data-dir=P1' },
       { pid: 101, parentPid: 100, name: 'msedge.exe', commandLine: '--type=renderer P1' },

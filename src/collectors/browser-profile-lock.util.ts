@@ -33,6 +33,13 @@ export interface ProfileLockStatus {
   owners: BrowserProcessOwner[];
 }
 
+export interface DevToolsEndpointStatus {
+  path: string;
+  ready: boolean;
+  port: number | null;
+  websocketPath: string | null;
+}
+
 export interface HelperMutexInfo {
   pid: number;
   startedAt: string;
@@ -168,6 +175,37 @@ export function listProfileLockFiles(userDataDir: string): string[] {
   }
 
   return PROFILE_LOCK_FILES.filter((name) => existsSync(path.join(userDataDir, name)));
+}
+
+/**
+ * Reads Chromium's atomic DevTools readiness marker without connecting to the
+ * browser. A valid marker has a TCP port followed by the browser WebSocket
+ * path. Missing or partially written markers are never treated as ready.
+ */
+export function inspectDevToolsEndpoint(userDataDir: string): DevToolsEndpointStatus {
+  const endpointPath = path.join(userDataDir, 'DevToolsActivePort');
+  if (!existsSync(endpointPath)) {
+    return { path: endpointPath, ready: false, port: null, websocketPath: null };
+  }
+
+  try {
+    const [portLine, websocketLine] = readFileSync(endpointPath, 'utf8').split(/\r?\n/);
+    const port = Number(portLine);
+    const websocketPath = websocketLine?.trim() || null;
+    const ready =
+      Number.isInteger(port) &&
+      port > 0 &&
+      port <= 65_535 &&
+      Boolean(websocketPath?.startsWith('/devtools/browser/'));
+    return {
+      path: endpointPath,
+      ready,
+      port: ready ? port : null,
+      websocketPath: ready ? websocketPath : null,
+    };
+  } catch {
+    return { path: endpointPath, ready: false, port: null, websocketPath: null };
+  }
 }
 
 export function findBrowserProcessesUsingProfile(userDataDir: string): BrowserProcessOwner[] {

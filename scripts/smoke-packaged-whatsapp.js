@@ -1,4 +1,4 @@
-const { spawn } = require('child_process');
+const { execFileSync, spawn } = require('child_process');
 const fs = require('fs');
 const http = require('http');
 const os = require('os');
@@ -11,6 +11,7 @@ const HEALTH_URL = `http://localhost:${HEALTH_PORT}/health`;
 const HEALTH_TIMEOUT_MS = 180_000;
 const COLLECTOR_TIMEOUT_MS = 180_000;
 const LOG_POLL_INTERVAL_MS = 1_000;
+const QR_HOLD_MS = 30_000;
 
 function fail(message) {
   console.error(`WHATSAPP SMOKE FAILED: ${message}`);
@@ -100,13 +101,17 @@ function collectChildOutput(child) {
   child.stdout?.on('data', (chunk) => {
     const text = chunk.toString();
     stdoutBuffer.push(text);
-    process.stdout.write(text);
+    if (process.env.PATROL_SMOKE_VERBOSE === 'true') {
+      process.stdout.write(text);
+    }
   });
 
   child.stderr?.on('data', (chunk) => {
     const text = chunk.toString();
     stderrBuffer.push(text);
-    process.stderr.write(text);
+    if (process.env.PATROL_SMOKE_VERBOSE === 'true') {
+      process.stderr.write(text);
+    }
   });
 
   child.on('exit', (code, signal) => {
@@ -119,6 +124,117 @@ function collectChildOutput(child) {
     stderrBuffer,
     getExitDetails: () => ({ exitCode, exitSignal }),
   };
+}
+
+async function requestJson(url, init = {}) {
+  const response = await fetch(url, {
+    ...init,
+    headers: {
+      ...(init.body ? { 'content-type': 'application/json' } : {}),
+      ...(init.headers ?? {}),
+    },
+  });
+  const text = await response.text();
+  let body = null;
+  if (text) {
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = text;
+    }
+  }
+  if (!response.ok) {
+    throw new Error(`${response.status} ${response.statusText}: ${text}`);
+  }
+  return body;
+}
+
+function readDesktopApiToken(configRoot) {
+  const tokenPath = path.join(configRoot, 'desktop-api-token.txt');
+  const token = fs.readFileSync(tokenPath, 'utf8').trim();
+  if (token.length < 32) {
+    throw new Error(`Packaged desktop API token is unavailable: ${tokenPath}`);
+  }
+  return token;
+}
+
+async function initializeAndStartCollector(apiBaseUrl, configRoot) {
+  const email = 'fresh-link-smoke@patrol.local';
+  const password = 'FreshLinkSmoke123!';
+  const desktopApiToken = readDesktopApiToken(configRoot);
+  await requestJson(`${apiBaseUrl}/desktop/bootstrap/initialize`, {
+    method: 'POST',
+    headers: { 'x-patrolsafe-desktop-token': desktopApiToken },
+    body: JSON.stringify({
+      companyName: 'PatrolSafe Fresh Link Smoke',
+      workspaceName: 'Fresh Link Smoke',
+      adminFirstName: 'Fresh',
+      adminLastName: 'Link',
+      adminEmail: email,
+      adminPassword: password,
+      autoStartCollector: false,
+      autoLaunchApp: false,
+      whatsappAllowFromMe: false,
+    }),
+  });
+  const login = await requestJson(`${apiBaseUrl}/auth/login`, {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  });
+  await requestJson(`${apiBaseUrl}/collectors/whatsapp/start`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${login.accessToken}` },
+  });
+  return login.accessToken;
+}
+
+async function stopCollector(apiBaseUrl, accessToken) {
+  await requestJson(`${apiBaseUrl}/collectors/whatsapp/stop`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${accessToken}` },
+  });
+}
+
+function delay(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function listProcessesUsingPath(targetPath) {
+  const escapedPath = targetPath.replace(/'/g, "''");
+  const script = [
+    `$target = '${escapedPath}'`,
+    '$matches = Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine.IndexOf($target, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 } | Select-Object ProcessId, Name, CommandLine',
+    'if ($matches) { $matches | ConvertTo-Json -Compress }',
+  ].join('; ');
+  const encoded = Buffer.from(script, 'utf16le').toString('base64');
+  const output = execFileSync(
+    'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+    ['-NoProfile', '-EncodedCommand', encoded],
+    { encoding: 'utf8', windowsHide: true },
+  ).trim();
+  if (!output) {
+    return [];
+  }
+  const parsed = JSON.parse(output);
+  return Array.isArray(parsed) ? parsed : [parsed];
+}
+
+async function waitForNoPathOwners(targetPath, timeoutMs = 30_000) {
+  const startedAt = Date.now();
+  let owners = [];
+  do {
+    owners = listProcessesUsingPath(targetPath);
+    if (owners.length === 0) {
+      return;
+    }
+    await delay(500);
+  } while (Date.now() - startedAt <= timeoutMs);
+
+  throw new Error(
+    `Packaged smoke left processes owning its disposable profile: ${owners
+      .map((owner) => `${owner.Name}:${owner.ProcessId}`)
+      .join(', ')}`,
+  );
 }
 
 function readLogTail(logPath, maxLines = 80) {
@@ -227,13 +343,15 @@ async function main() {
     WHATSAPP_ENABLED: 'true',
     APP_DEBUG: 'true',
     PATROL_SMOKE_BACKEND_ONLY: 'true',
+    PATROL_LICENSE_DATA_ROOT: configRoot,
+    PATROL_LICENSE_USE_FILE_MARKER: 'true',
   };
 
   console.log(`WHATSAPP SMOKE INFO: packagedAppDir=${packagedAppDir}`);
   console.log(`WHATSAPP SMOKE INFO: configPath=${configPath}`);
   console.log(`WHATSAPP SMOKE INFO: collectorLogPath=${collectorLogPath}`);
 
-  const child = spawn(packagedExePath, [], {
+  const child = spawn(packagedExePath, [`--user-data-dir=${configRoot}`], {
     cwd: appRoot,
     env,
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -247,11 +365,27 @@ async function main() {
     pass(`health ready at ${HEALTH_URL}`);
     console.log(`WHATSAPP SMOKE HEALTH BODY: ${healthBody}`);
 
+    const apiBaseUrl = `http://localhost:${HEALTH_PORT}`;
+    const accessToken = await initializeAndStartCollector(apiBaseUrl, configRoot);
+
     const result = await waitForCollectorOutcome(collectorLogPath, COLLECTOR_TIMEOUT_MS);
     pass(`collector outcome=${result.outcome}`);
+    if (result.outcome === 'qr') {
+      pass(`holding fresh-link QR for ${QR_HOLD_MS / 1000} seconds`);
+      await delay(QR_HOLD_MS);
+      const heldLog = readLogTail(collectorLogPath, 250).join('\n');
+      if (/browser-exit|browser-launch-failed|collector-attempt-error/i.test(heldLog)) {
+        throw new Error('Browser did not remain healthy during the 30-second QR hold.');
+      }
+    }
     console.log('---COLLECTOR LOG TAIL---');
     console.log(result.logLines.join('\n'));
+    await stopCollector(apiBaseUrl, accessToken);
+    await delay(2_000);
     killChild(child);
+    await delay(3_000);
+    await waitForNoPathOwners(configRoot);
+    pass('packaged process tree released the disposable profile');
     process.exit(0);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

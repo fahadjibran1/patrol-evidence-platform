@@ -67,6 +67,7 @@ import {
   detectProfileLock,
   ensureProfileUnlocked,
   formatBrowserOwners,
+  inspectDevToolsEndpoint,
   isProcessAlive,
   isProfileLockErrorMessage,
   ProfileLockError,
@@ -5145,12 +5146,13 @@ async function startCollector(): Promise<void> {
         } catch (error) {
           const launchError = error instanceof Error ? error : new Error(String(error));
           const lockAfterFailure = detectProfileLock(profileDir);
+          const devToolsEndpoint = inspectDevToolsEndpoint(profileDir);
           const currentBrowserRootPid = client?.pupBrowser?.process()?.pid ?? null;
           const browserStarted = Boolean(currentBrowserRootPid || browserLaunchCompletedAt || whatsappPageLoadedAt);
 
           appendCollectorLog(
             'browser-launch-failed',
-            `source=${browser.source} executable=${browser.executablePath} error=${formatRuntimeError(launchError)} profileLocked=${lockAfterFailure.locked} owners=${formatBrowserOwners(lockAfterFailure.owners)}`,
+            `source=${browser.source} executable=${browser.executablePath} error=${formatRuntimeError(launchError)} devToolsEndpoint=${devToolsEndpoint.ready ? `ready:${devToolsEndpoint.port}` : 'missing'} profileLocked=${lockAfterFailure.locked} owners=${formatBrowserOwners(lockAfterFailure.owners)}`,
           );
 
           if (browserIndex === 0) {
