@@ -9,6 +9,7 @@ import { Card, PageHeader, StatusBadge } from '../components/ui';
 import { formatPatrolDate } from '../lib/patrol-time';
 
 const SUPPLIER_CONTACT = 'mailto:support@sfour.co.uk?subject=PatrolSafe%20by%20S4%20Licence';
+const PUBLIC_REQUEST_PLAN = 'annual' as const;
 
 export function LicensePage(): JSX.Element {
   const navigate = useNavigate();
@@ -16,7 +17,6 @@ export function LicensePage(): JSX.Element {
   const desktop = isDesktopApp();
   const [status, setStatus] = useState<LicenseStatusResponse | null>(null);
   const [companyName, setCompanyName] = useState('');
-  const [requestedPlan, setRequestedPlan] = useState<'annual' | 'three_year' | 'lifetime'>('annual');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -41,7 +41,7 @@ export function LicensePage(): JSX.Element {
     try {
       const result = await apiRequest<{ fileName: string; contents: string }>(
         '/license/request-file',
-        { method: 'POST', body: JSON.stringify({ companyName: companyName.trim(), requestedPlan }) },
+        { method: 'POST', body: JSON.stringify({ companyName: companyName.trim(), requestedPlan: PUBLIC_REQUEST_PLAN }) },
         token ?? undefined,
       );
       const blob = new Blob([result.contents], { type: 'application/json' });
@@ -189,16 +189,10 @@ export function LicensePage(): JSX.Element {
 
         <Card className="action-card">
           <h3>Request a licence</h3>
+          <p className="muted-text">Annual subscription — £299 plus VAT where applicable for one Windows workstation per year. Renewal is manual.</p>
           <p className="muted-text">Create a request file for your PatrolSafe supplier. It contains workstation identity information but no passwords.</p>
           <label>Company name<input value={companyName} onChange={(event) => setCompanyName(event.target.value)} /></label>
-          <label>
-            Licence term
-            <select value={requestedPlan} onChange={(event) => setRequestedPlan(event.target.value as typeof requestedPlan)}>
-              <option value="annual">Annual</option>
-              <option value="three_year">Three years</option>
-              <option value="lifetime">Lifetime</option>
-            </select>
-          </label>
+          <div className="customer-detail-list"><strong>Licence term</strong><span>Annual</span></div>
           <button type="button" className="primary-button" disabled={isSubmitting || companyName.trim().length < 2} onClick={() => void handleExportRequest()}>
             Create licence request
           </button>

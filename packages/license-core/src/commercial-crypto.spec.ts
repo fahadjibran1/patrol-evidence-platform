@@ -102,6 +102,22 @@ describe('commercial licence crypto', () => {
     expect(daysRemainingUntil(null)).toBeNull();
   });
 
+  it('continues to accept a valid previously issued three-year licence', () => {
+    const signed = signCommercialLicencePayload(
+      samplePayload({ plan: 'three_year', expiresAt: '2029-07-01' }),
+      privatePem,
+    );
+    const result = verifyCommercialLicence({
+      licence: signed,
+      publicKey,
+      installationId: 'inst-1',
+      machineFingerprint: 'a'.repeat(64),
+      today: '2028-07-01',
+    });
+
+    expect(result.valid).toBe(true);
+  });
+
   it('rejects an expired commercial licence', () => {
     const signed = signCommercialLicencePayload(
       samplePayload({ startsAt: '2019-01-01', expiresAt: '2020-01-01' }),

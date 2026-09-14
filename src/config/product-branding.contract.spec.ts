@@ -40,6 +40,17 @@ describe('PatrolSafe release branding contract', () => {
     expect(customerRuntime).not.toMatch(/support@techguardsecurity\.com|support@techguards\.co\.uk/i);
   });
 
+  it('offers only the annual subscription through the normal customer licence request flow', () => {
+    const licencePage = read('web/src/pages/license-page.tsx');
+
+    expect(licencePage).toContain("const PUBLIC_REQUEST_PLAN = 'annual' as const");
+    expect(licencePage).toContain('requestedPlan: PUBLIC_REQUEST_PLAN');
+    expect(licencePage).toContain('Annual subscription — £299 plus VAT where applicable');
+    expect(licencePage).not.toContain('<option value="three_year">');
+    expect(licencePage).not.toContain('<option value="lifetime">');
+    expect(licencePage).not.toContain('setRequestedPlan');
+  });
+
   it('uses the display brand for Electron and Windows release metadata', () => {
     const forgeConfig = read('forge.config.js');
     const desktopMain = read('desktop/main.js');
