@@ -4,6 +4,19 @@ Status: **GA PREPARATION — REQUIRES BUSINESS, SUPPORT, SECURITY AND LEGAL APPR
 
 This plan assumes one immutable, verified installer per approved release and no unimplemented auto-update or remote kill-switch capability.
 
+## Ownership approval
+
+| Role | Named owner | Approval state |
+|---|---|---|
+| Rollout/release owner | `[blank]` | BUSINESS DECISION REQUIRED |
+| Deputy release/withdrawal authority | `[blank]` | BUSINESS DECISION REQUIRED |
+| Customer support owner | `[blank]` | BUSINESS DECISION REQUIRED |
+| Security incident owner | `[blank]` | BUSINESS DECISION REQUIRED |
+| Commercial approval owner | `[blank]` | BUSINESS DECISION REQUIRED |
+| Legal/privacy approval owner | `[blank]` | LEGAL REVIEW REQUIRED |
+
+Stage progression, download withdrawal and customer notification require the named release owner or deputy. No owner is inferred from repository authorship.
+
 ## Entry conditions for every stage
 
 - exact source commit, version/build, signed installer SHA-256 and manifest recorded;

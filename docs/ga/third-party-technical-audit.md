@@ -2,87 +2,58 @@
 
 Status: **TECHNICALLY COMPLETE FOR CURRENT UNSIGNED PACKAGE — LEGAL REVIEW AND FINAL-ARTIFACT RECONCILIATION REQUIRED**
 
-Audit source commit: `b785ac88f69acb285b616623b78eb152172be634`
+Audited source commit: `3a9c40bfcfc821fdccad049a7a873db4a3374650`<br>
 Audited tree: `out/PatrolSafe by S4-win32-x64/resources/app`
 
-## Reconciliation result
+## Exact reconciliation
 
-Phase 11B counted 488 unique package/version records in the repository's production dependency resolution. That number is not the shipped package count: it includes workspace/application resolution that Electron packaging prunes or transforms.
+The repository production dependency resolution contains **488** unique package/version records. The unsigned packaged application built from the audited commit contains **403 package instances** and **361 unique package/version records**. The generated notice bundle contains **241 unique licence/notice texts**: 238 direct packaged-dependency texts and three supplemental Electron/Squirrel build-input texts.
 
-The current unsigned packaged application contains:
+The difference is traceable in [the reconciliation CSV](generated/third-party-reconciliation.csv). Dev-only and non-shipped repository records are not presented as shipped components.
 
-- 405 package instances with a usable name and version;
-- 363 unique package/version records;
-- 238 unique collected `LICENSE`, `LICENCE`, `COPYING`, `NOTICE` or `COPYRIGHT` texts;
-- Electron's root `LICENSE` (1,096 bytes; SHA-256 `5154E165BD6C2CC0CFBCD8916498C7ABAB0497923BAFCD5CB07673FE8480087D`);
-- Electron/Chromium `LICENSES.chromium.html` (19,472,684 bytes; SHA-256 `C1BC6CFDD6C5844720E5E6332698A6131F5402E77ABF1FDB9646740D38065A65`).
+| Artifact | SHA-256 |
+|---|---|
+| Repository production dependency inventory | `3BF3A54CF88767F9961F4078D78A920770066B43B74605AA7EF3CE3A5A605540` |
+| Packaged production dependency inventory | `DC45DBF4BC2C5D463597FCC536DACAC6C49A41B74378B2D5436FCB7DB8D2E963` |
+| Repository/package reconciliation | `AED6C962727A4AA7BEDCAEB80732C6D2F4ECBA58ED7CE514C6FD1DAC530A5C04` |
+| `THIRD_PARTY_NOTICES_DRAFT.txt` | `B7FDD1EF9C8543B326681FC99B7C102C3665F2ECEC1B32CD3828418D5A4B0C17` |
 
-The repeatable generator is `scripts/generate-ga-third-party-inventory.js`. Its outputs are:
+Packaged Electron also carries root `LICENSE` (SHA-256 `5154E165BD6C2CC0CFBCD8916498C7ABAB0497923BAFCD5CB07673FE8480087D`) and `LICENSES.chromium.html` (SHA-256 `C1BC6CFDD6C5844720E5E6332698A6131F5402E77ABF1FDB9646740D38065A65`).
 
-- [exact packaged dependency inventory](generated/third-party-production-dependencies.csv);
-- [collected dependency licence/notice texts](generated/third-party-license-texts.md);
-- [machine-readable counts and review queue](generated/third-party-inventory-summary.json).
+## Release-engineering findings
 
-The CSV records every unique packaged package/version, declared licence, direct licence-text filenames and hashes, packaged paths, repository and homepage metadata. The collected-text file preserves every direct package licence/notice text found and deduplicates identical texts by SHA-256.
+| Finding | Classification | Resolution |
+|---|---|---|
+| `beep-boop@1.2.3` | C — PACKAGE NOT SHIPPED | It came from a nested example `node_modules` tree that was incorrectly traversed. Actual package-root enumeration removes the false positive. |
+| Generated `.prisma/client` package | C — PACKAGE NOT SHIPPED | It was unnecessary licensing-service payload in the desktop tree. A narrow Forge exclusion removes `.prisma`; packaged backend/trial smoke passes. |
+| `@patrol/license-core@0.1.0` missing metadata | D then A — METADATA DEFECT RESOLVED | Private internal workspace now deliberately declares `UNLICENSED`; required runtime files are still verified. |
+| Two LGPL findings | B — LEGAL REVIEW REQUIRED | Components and texts are identified; engineering does not decide distribution obligations. |
+| Four compound/special expressions | A technically; B legally | All directly available licence texts are collected. Counsel must approve the relied-on alternative/combined obligations. |
 
-## Declared licence metadata
+There are now **zero shipped missing-metadata gaps**. No AGPL package was identified by declared metadata. This is a factual inventory result, not legal clearance.
 
-| Declared expression | Unique package/version records |
-|---|---:|
-| MIT | 283 |
-| ISC | 29 |
-| Apache-2.0 | 22 |
-| BSD-2-Clause | 9 |
-| BSD-3-Clause | 5 |
-| BlueOak-1.0.0 | 4 |
-| Missing | 3 |
-| Apache-2.0 AND LGPL-3.0-or-later | 1 |
-| LGPL-3.0-or-later | 1 |
-| Python-2.0 | 1 |
-| MIT OR WTFPL | 1 |
-| BSD-2-Clause OR MIT OR Apache-2.0 | 1 |
-| MIT AND BSD-3-Clause | 1 |
-| Apache 2.0 (non-SPDX form) | 1 |
-| 0BSD | 1 |
+## Remaining review queue
 
-Metadata describes packages; it does not establish that every obligation is satisfied.
+| Package | Version | Expression | Technical state | Remaining decision |
+|---|---:|---|---|---|
+| `@img/sharp-win32-x64` | 0.35.4 | `Apache-2.0 AND LGPL-3.0-or-later` | Text collected | LGPL/libvips obligations — **LEGAL REVIEW REQUIRED** |
+| `node-webpmux` | 3.2.1 | `LGPL-3.0-or-later` | `COPYING.LESSER` collected | LGPL obligations — **LEGAL REVIEW REQUIRED** |
+| `argparse` | 2.0.1 | `Python-2.0` | Text collected | Notice approval — **LEGAL REVIEW REQUIRED** |
+| `expand-template` | 2.0.3 | `MIT OR WTFPL` | Text collected | Approve relied-on alternative |
+| `rc` | 1.2.8 | `BSD-2-Clause OR MIT OR Apache-2.0` | All three supplied texts collected | Approve relied-on alternative |
+| `sha.js` | 2.4.12 | `MIT AND BSD-3-Clause` | Combined text collected | Confirm notice presentation |
 
-## Mandatory legal/release review queue
+## Reproducible artifacts
 
-| Package | Version | Finding | Technical evidence / decision needed |
-|---|---:|---|---|
-| `@img/sharp-win32-x64` | 0.35.4 | `Apache-2.0 AND LGPL-3.0-or-later` | Native libvips distribution; counsel must confirm LGPL notices, source/relinking obligations and delivery method |
-| `node-webpmux` | 3.2.1 | `LGPL-3.0-or-later` | Copyleft review required; exact use/distribution obligations must be approved |
-| `argparse` | 2.0.1 | `Python-2.0` | Special licence text collected; attribution/notice review required |
-| `expand-template` | 2.0.3 | `MIT OR WTFPL` | Select/document the relied-on alternative and ship its required text |
-| `rc` | 1.2.8 | BSD/MIT/Apache alternatives | Select/document the relied-on alternative; all three supplied texts were collected |
-| `sha.js` | 2.4.12 | `MIT AND BSD-3-Clause` | Preserve both applicable notices |
-| `@patrol/license-core` | 0.1.0 | Internal package without licence metadata | Confirm proprietary/internal status and set deliberate package metadata before the final artefact inventory |
-| `beep-boop` | 1.2.3 | No declared licence or direct licence file | Resolve provenance/licence or remove from shipped runtime through an approved engineering change before GA |
-| generated `prisma-client-…` | 5.22.0 | Generated package has no declared licence/direct file | Trace to Prisma generator/runtime notices and document correct attribution |
+- [Repository production inventory](generated/repository-production-dependencies.csv)
+- [Exact packaged inventory](generated/third-party-production-dependencies.csv)
+- [Repository/package reconciliation](generated/third-party-reconciliation.csv)
+- [Machine-readable summary](generated/third-party-inventory-summary.json)
+- [Collected licence texts](generated/third-party-license-texts.md)
+- [Customer notice bundle draft](THIRD_PARTY_NOTICES_DRAFT.txt)
 
-No AGPL package was identified by declared metadata. LGPL findings exist and are not cleared by this engineering audit. No commercial-use prohibition was concluded from the common permissive metadata, but that is a legal conclusion and remains for counsel. The two packages with missing external/generated metadata are unresolved.
+The generator is `scripts/generate-ga-third-party-inventory.js`. It enumerates actual package roots (including scoped and nested dependency roots), not arbitrary nested example fixtures.
 
-## Other distributable material
+## Gate boundary
 
-The npm inventory does not, by itself, decide rights for:
-
-- Electron, Chromium and Node binaries and their embedded credits;
-- Squirrel/Forge installer and updater binaries;
-- native libraries included by Sharp/libvips and `better-sqlite3`;
-- the approved PatrolSafe icon, fonts and other application assets;
-- WhatsApp Web compatibility/cache material and WhatsApp/Meta marks;
-- Windows/Microsoft Edge references or marks;
-- optional/platform-specific files introduced by the final maker/signing pipeline.
-
-Those items must be reconciled against the exact signed GA installer. The large Chromium credits file is present in the packaged application but is indexed rather than copied into this repository documentation pack.
-
-## Status boundary
-
-The inventory mechanism and current unsigned-package evidence are **TECHNICALLY COMPLETE**. Third-party legal compliance is **REQUIRES LEGAL REVIEW**. Publication remains **BLOCKED** until:
-
-1. the missing, compound, special and LGPL findings are resolved;
-2. the final notices/attributions and their in-product/distribution location are approved;
-3. the generator is rerun against the exact final signed GA package;
-4. package list, licence texts, Electron/Chromium credits, source commit and installer SHA-256 are reconciled and recorded;
-5. counsel signs off the final notice bundle.
+The current unsigned-package inventory is **TECHNICALLY COMPLETE**. Publication remains blocked until counsel approves third-party obligations and notice placement, and release engineering reruns the inventory against the exact final signed GA package and binds its hash to the final release association.

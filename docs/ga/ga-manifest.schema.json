@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:vesoft:patrolsafe:ga-manifest:v1",
+  "title": "PatrolSafe GA release manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "product",
+    "version",
+    "buildId",
+    "sourceCommit",
+    "documentationCommit",
+    "installer",
+    "mainExecutable",
+    "authenticode",
+    "thirdPartyInventorySha256",
+    "releaseDate"
+  ],
+  "properties": {
+    "product": { "const": "PatrolSafe by S4" },
+    "version": { "const": "1.0.0" },
+    "buildId": { "type": "string", "minLength": 1 },
+    "sourceCommit": { "$ref": "#/$defs/commit" },
+    "documentationCommit": { "$ref": "#/$defs/commit" },
+    "installer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["filename", "sha256"],
+      "properties": {
+        "filename": { "const": "PatrolEvidencePlatformSetup.exe" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "sizeBytes": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "mainExecutable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["filename", "sha256"],
+      "properties": {
+        "filename": { "const": "PatrolEvidencePlatform.exe" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "sizeBytes": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "authenticode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["publisher", "status", "timestampStatus"],
+      "properties": {
+        "publisher": { "const": "Vesoft Services Limited" },
+        "status": { "const": "Valid" },
+        "timestampStatus": { "const": "Valid" },
+        "timestampAuthority": { "type": "string", "minLength": 1 },
+        "timestampUtc": { "type": "string", "format": "date-time" }
+      }
+    },
+    "thirdPartyInventorySha256": { "$ref": "#/$defs/sha256" },
+    "thirdPartyNoticesSha256": { "$ref": "#/$defs/sha256" },
+    "requiredPeVerificationManifestSha256": { "$ref": "#/$defs/sha256" },
+    "releaseDate": { "type": "string", "format": "date" }
+  },
+  "$defs": {
+    "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" }
+  }
+}

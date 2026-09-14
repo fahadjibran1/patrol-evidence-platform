@@ -20,6 +20,8 @@ This document separates repository facts, technically certified statements, reco
 | Legal-notices email/address | None approved | PLACEHOLDER | Legal/business decision |
 | Security vulnerability contact | None approved | PLACEHOLDER | Security/business decision and secure-channel definition |
 
+Canonical placeholders for all unpublished materials are `SUPPORT_EMAIL`, `PRIVACY_EMAIL`, `SECURITY_EMAIL`, and `LEGAL_EMAIL`. The reusable identity block and approval fields are in `operator-decisions-required.md`; no candidate company number, address or mailbox is approved by repetition in this document.
+
 No unapproved address or mailbox may be copied into customer material merely to remove a placeholder.
 
 ## Approved-shape international wording
@@ -70,9 +72,9 @@ No fixed customer disk minimum is asserted. Microsoft Edge must remain supported
 | Privacy contact | Not approved | Use a dedicated monitored privacy route with an accountable owner |
 | Legal notices | Not approved | Use an address and/or mailbox approved for formal service; counsel to define permitted methods |
 | Security vulnerability contact | Not approved | Provide a monitored security route and a secure alternative to ordinary email for sensitive files |
-| Support hours | Not approved | State hours, days, holidays and time zone explicitly; avoid “24/7” unless resourced |
-| Support time zone | Not approved | Publish an IANA zone and plain-English location, for example Europe/London if selected |
-| Response target | No SLA | Begin with non-binding target wording only if operations can measure it; counsel to distinguish target from SLA |
+| Support hours | Not approved | Monday–Friday, 09:00–17:00 UK local time, excluding UK public holidays, if operations can resource it |
+| Support time zone | Not approved | Publish `Europe/London` and “UK local time” so daylight-saving handling is unambiguous |
+| Response target | No SLA | “We aim to respond within 1–2 business days,” only if operations can measure it; this is not an SLA |
 | Severity/escalation | Not approved | Define emergency security, service-blocking, major and routine request paths before pilots |
 
 ## Commercial-policy decision register

@@ -1,10 +1,11 @@
 {
   "generator": "scripts/generate-ga-third-party-inventory.js",
-  "sourceCommit": "b785ac88f69acb285b616623b78eb152172be634",
+  "sourceCommit": "3a9c40bfcfc821fdccad049a7a873db4a3374650",
   "sourceTree": "out/PatrolSafe by S4-win32-x64/resources/app",
-  "packageInstances": 405,
-  "uniquePackageVersions": 363,
-  "uniqueCollectedTexts": 238,
+  "repositoryProductionUniquePackageVersions": 488,
+  "packageInstances": 403,
+  "uniquePackageVersions": 361,
+  "uniqueCollectedTexts": 241,
   "licenceCounts": {
     "MIT": 283,
     "ISC": 29,
@@ -12,8 +13,8 @@
     "BSD-2-Clause": 9,
     "BSD-3-Clause": 5,
     "BlueOak-1.0.0": 4,
-    "[missing]": 3,
     "Apache-2.0 AND LGPL-3.0-or-later": 1,
+    "UNLICENSED": 1,
     "Python-2.0": 1,
     "(MIT OR WTFPL)": 1,
     "LGPL-3.0-or-later": 1,
@@ -24,9 +25,7 @@
   },
   "reviewCounts": {
     "COPYLEFT_REVIEW": 2,
-    "INTERNAL_METADATA_REVIEW": 1,
-    "METADATA_RECORDED": 354,
-    "MISSING_METADATA_REVIEW": 2,
+    "METADATA_RECORDED": 355,
     "MULTI_OR_SPECIAL_LICENCE_REVIEW": 4
   },
   "reviewPackages": [
@@ -43,13 +42,6 @@
       ]
     },
     {
-      "package": "@patrol/license-core",
-      "version": "0.1.0",
-      "declaredLicence": "[missing]",
-      "technicalReview": "INTERNAL_METADATA_REVIEW",
-      "licenceFiles": []
-    },
-    {
       "package": "argparse",
       "version": "2.0.1",
       "declaredLicence": "Python-2.0",
@@ -60,13 +52,6 @@
           "sha256": "DE4D1F2D2AD5AD0CFD1657A106476B31CB5DB5EF9D1FF842B237C0C81F0C8A23"
         }
       ]
-    },
-    {
-      "package": "beep-boop",
-      "version": "1.2.3",
-      "declaredLicence": "[missing]",
-      "technicalReview": "MISSING_METADATA_REVIEW",
-      "licenceFiles": []
     },
     {
       "package": "expand-template",
@@ -91,13 +76,6 @@
           "sha256": "E3A994D82E644B03A792A930F574002658412F62407F5FEE083F2555C5F23118"
         }
       ]
-    },
-    {
-      "package": "prisma-client-46c3aef436094650951a17aff6f627bdc8bf143dc53f07f45ae481f51ac5f4fb",
-      "version": "5.22.0",
-      "declaredLicence": "[missing]",
-      "technicalReview": "MISSING_METADATA_REVIEW",
-      "licenceFiles": []
     },
     {
       "package": "rc",
@@ -143,5 +121,11 @@
       "size": 19472684,
       "sha256": "C1BC6CFDD6C5844720E5E6332698A6131F5402E77ABF1FDB9646740D38065A65"
     }
-  ]
+  ],
+  "artifactHashes": {
+    "repositoryProductionDependenciesCsv": "3BF3A54CF88767F9961F4078D78A920770066B43B74605AA7EF3CE3A5A605540",
+    "packagedProductionDependenciesCsv": "DC45DBF4BC2C5D463597FCC536DACAC6C49A41B74378B2D5436FCB7DB8D2E963",
+    "reconciliationCsv": "AED6C962727A4AA7BEDCAEB80732C6D2F4ECBA58ED7CE514C6FD1DAC530A5C04",
+    "thirdPartyNoticesDraft": "B7FDD1EF9C8543B326681FC99B7C102C3665F2ECEC1B32CD3828418D5A4B0C17"
+  }
 }

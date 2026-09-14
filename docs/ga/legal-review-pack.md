@@ -73,7 +73,7 @@ Define controller versus processor purposes within a support case, subprocessors
 
 ### Third-party software
 
-- Resolve LGPL findings for `node-webpmux` and Sharp/libvips, two external/generated missing-metadata items, the internal package metadata gap, and compound/special licence expressions.
+- Resolve LGPL findings for `node-webpmux` and Sharp/libvips and four compound/special licence expressions. Release engineering has removed the prior false/generated payloads and resolved the private internal-package metadata gap; the exact final signed package must still be reconciled.
 - Approve the exact notices, attributions, source/relinking offers or other obligations and their delivery location.
 - Review Electron/Chromium/Node, Squirrel/Forge, native libraries, assets, icon, cached WhatsApp compatibility material and marks.
 - Require final reconciliation against the exact signed GA installer and hash.

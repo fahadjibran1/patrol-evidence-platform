@@ -30,12 +30,12 @@ Phase 11C source baseline: `b785ac88f69acb285b616623b78eb152172be634`. No status
 - Privacy Notice, controller/processor roles, DPA applicability and customer privacy checklist;
 - EULA, trial/commercial terms, governing law, liability, termination and mandatory local rights;
 - international transfers, subprocessors, retention, rights, incident/breach and representative requirements;
-- third-party LGPL, compound/special and missing-metadata findings, notices and asset/trademark rights.
+- third-party LGPL and compound/special findings, notices and asset/trademark rights; shipped missing-metadata gaps are technically closed.
 
 ### D. Requires release-engineering reconciliation
 
 - replace the two inconsistent runtime support mailboxes only after the operator supplies the approved value;
-- resolve external/generated/internal third-party metadata findings through an approved source change where required;
+- release-engineering metadata gaps are resolved in commit `3a9c40bfcfc821fdccad049a7a873db4a3374650`; preserve that exact package contract;
 - rerun the third-party inventory against the exact signed GA package and place approved notices as counsel directs;
 - create one approved signed GA candidate from the frozen runtime plus approved documentation/metadata changes;
 - bind the exact source commit, document revision, installer hash, signature manifest and supported-region approval.
@@ -60,7 +60,8 @@ Phase 11C source baseline: `b785ac88f69acb285b616623b78eb152172be634`. No status
 | Pricing, tax and payment availability | Commercial/finance | BUSINESS DECISION REQUIRED | Desktop has no payment flow; international price/currency/tax policy not approved |
 | Export controls and sanctions screening | Legal/compliance | BLOCKED | Required before approving supported countries/regions |
 | Operational and support-data retention | Legal/privacy + customer policy owner | BLOCKED | No approved Vesoft support retention or product default evidence retention schedule |
-| Third-party notices | Legal/release engineering | BLOCKED | Repository resolution (488) reconciled to current unsigned package (405 instances / 363 unique versions / 238 collected texts); LGPL, special/compound, missing metadata and exact final signed-package attribution remain unresolved; see `third-party-technical-audit.md` |
+| Third-party inventory engineering | Release engineering | TECHNICALLY CERTIFIED | Repository resolution (488) reconciled to current unsigned package (403 instances / 361 unique versions / 241 collected texts); zero shipped missing-metadata gaps; see `third-party-technical-audit.md` |
+| Third-party notices legal approval | Legal counsel | LEGAL REVIEW REQUIRED | Two LGPL findings, four special/compound expressions, notice placement and final signed-package attribution require counsel approval |
 | Final documentation proofreading | Product/support | BUSINESS DECISION REQUIRED | Customer and legal drafts need owner review after decisions above |
 | Final installer/hash association | Release engineering | BLOCKED | Phase 11B is unsigned by instruction; a later approved signed GA candidate must be tied to exact docs/source/hash |
 | GA publication authorisation | Authorised Vesoft officer | BLOCKED | No push, tag, release or publication authorised |
@@ -71,6 +72,8 @@ Phase 11C source baseline: `b785ac88f69acb285b616623b78eb152172be634`. No status
 |---|---|---|
 | Root package metadata / About panel | `support@techguardsecurity.com` | BUSINESS DECISION REQUIRED |
 | Licence customer action | `support@techguards.co.uk` | BUSINESS DECISION REQUIRED |
+| Licensing email sender fallback | `support@techguards.co.uk` | BUSINESS DECISION REQUIRED |
+| Billing/self-service fallback | `support@techguardsecurity.com` | BUSINESS DECISION REQUIRED |
 | Privacy notice | `[TO BE CONFIRMED]` | BLOCKED |
 | Support guide | `[TO BE CONFIRMED]` | BLOCKED |
 | Security incident route | `[TO BE CONFIRMED]` | BLOCKED |
@@ -84,6 +87,9 @@ No address has been selected arbitrarily. Approval must identify the monitored m
 - [Legal review pack](legal-review-pack.md)
 - [Controller/processor matrix](controller-processor-matrix.md)
 - [Third-party technical audit](third-party-technical-audit.md)
+- [Runtime contact audit](runtime-contact-audit.md)
+- [Final release association template](final-release-association-template.md)
+- [GA manifest schema](ga-manifest.schema.json)
 - [Website/download page copy](website-download-page-copy.md)
 - [Controlled rollout plan](first-customer-rollout-plan.md)
 - [GA rollback plan](ga-rollback-plan.md)
