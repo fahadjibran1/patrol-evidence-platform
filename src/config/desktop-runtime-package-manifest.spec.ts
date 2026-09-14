@@ -108,12 +108,21 @@ describe('desktop runtime package manifest', () => {
   it('declares an npm-pack runtime-only license-core manifest', () => {
     const packageMetadata = JSON.parse(
       fs.readFileSync(path.join(process.cwd(), 'packages', 'license-core', 'package.json'), 'utf8'),
-    ) as { files?: string[] };
+    ) as { files?: string[]; license?: string; private?: boolean };
 
+    expect(packageMetadata.private).toBe(true);
+    expect(packageMetadata.license).toBe('UNLICENSED');
     expect(packageMetadata.files).toContain('dist/**/*.js');
     expect(packageMetadata.files).toContain('!dist/**/*.spec.js');
     expect(packageMetadata.files).not.toContain('src');
     expect(packageMetadata.files).not.toContain('jest.config.js');
+  });
+
+  it('excludes the licensing-service Prisma client from the desktop package', () => {
+    const forgeConfig = fs.readFileSync(path.join(process.cwd(), 'forge.config.js'), 'utf8');
+
+    expect(forgeConfig).toContain("path.join('node_modules', '.prisma')");
+    expect(forgeConfig).toContain('/^\\/node_modules\\/\\.prisma($|\\/)/');
   });
 
   it('keeps the Azure signing hook from mutating non-PE staging files', async () => {

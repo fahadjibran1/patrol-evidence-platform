@@ -96,6 +96,7 @@ const packagerIgnore = [
   /^\/sqt($|\/)/,
   /^\/node_modules\/@patrol\/license-api($|\/)/,
   /^\/node_modules\/@patrol\/license-portal($|\/)/,
+  /^\/node_modules\/\.prisma($|\/)/,
   /^\/node_modules\/puppeteer-core\/\.local-chromium($|\/)/,
   /^\/node_modules\/puppeteer\/\.local-chromium($|\/)/,
   /^\/node_modules\/.*\/test($|\/)/i,
@@ -200,6 +201,9 @@ function pruneCopiedApp(buildPath, _electronVersion, _platform, _arch, callback)
       path.join('web', 'src'),
       path.join('node_modules', '@patrol', 'license-api'),
       path.join('node_modules', '@patrol', 'license-portal'),
+      // Generated Prisma client belongs to the excluded licensing service,
+      // not to the PatrolSafe desktop runtime.
+      path.join('node_modules', '.prisma'),
       path.join('node_modules', 'puppeteer-core', '.local-chromium'),
       path.join('node_modules', 'puppeteer', '.local-chromium'),
       path.join('node_modules', 'electron'),
