@@ -67,3 +67,5 @@ PatrolSafe v1 does not automate whole-workspace erasure, retention schedules or 
 - Consider geographic/data-transfer restrictions before using cloud or cross-border storage.
 
 For recovery assistance, contact **support@sfour.co.uk** before sending any backup or diagnostic material. Do not attach backups to ordinary email.
+
+Follow the [secure support-data transfer policy](secure-support-data-transfer.md). Full backups are an exceptional escalation after customer-safe diagnostics and narrower files have proved insufficient.

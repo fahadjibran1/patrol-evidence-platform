@@ -41,7 +41,9 @@ The application installer is about 202 MB; the installed app binary is about 223
 1. Read the Quick Start and WhatsApp troubleshooting guide.
 2. Open **Settings → Support** and record the customer-safe health summary.
 3. If requested, deliberately open **Advanced diagnostics** and disclose only the minimum required information.
-4. Use the approved secure support channel.
+4. If the issue remains, use an approved secure support channel for only the narrowly requested material.
+
+Support escalation follows this data-minimisation order: customer description/redacted screenshots; customer-safe diagnostics; an exported support bundle if available; narrowly requested files; and a full backup/database only as an exceptional authorised escalation. See [secure support-data transfer](secure-support-data-transfer.md).
 
 Product support: **support@sfour.co.uk**<br>
 General enquiries: **hello@sfour.co.uk**<br>
@@ -54,6 +56,17 @@ Support is available Monday–Friday, 09:00–17:00 UK local time, excluding UK 
 Do not send evidence, databases, backups, passwords or WhatsApp session material by ordinary email. Contact support first and use only a secure transfer method specifically approved for the case.
 
 Responsible security reports should describe the affected version, observed behavior, reproduction conditions and potential impact without accessing customer data or disrupting service. Vesoft does not currently offer a bug bounty or promise payment for reports.
+
+## Support severity
+
+| Severity | Meaning |
+|---|---|
+| CRITICAL | PatrolSafe cannot capture evidence across production monitoring, or a serious security/data-integrity issue is suspected |
+| HIGH | A major customer workflow is unavailable |
+| NORMAL | A usage, configuration or product problem report |
+| LOW | A question, cosmetic issue or request |
+
+Severity guides triage and escalation. It does not create a contractual response or resolution time.
 
 ## Service dependencies
 

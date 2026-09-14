@@ -31,6 +31,7 @@ Every document below is a draft and requires approval by Vesoft Services Limited
 - [Generated third-party notices draft](THIRD_PARTY_NOTICES_DRAFT.txt)
 - [Controller/processor review matrix](controller-processor-matrix.md)
 - [Legal counsel review pack](legal-review-pack.md)
+- [Legal-review decision sheet](legal-review-decision-sheet.md)
 
 ## Internal approval evidence
 
@@ -47,6 +48,8 @@ Every document below is a draft and requires approval by Vesoft Services Limited
 - [GA manifest schema](ga-manifest.schema.json)
 - [Controlled first-customer rollout plan](first-customer-rollout-plan.md)
 - [GA rollback and withdrawal plan](ga-rollback-plan.md)
+- [Manual licence recovery procedure](licence-recovery-procedure.md)
+- [Secure support-data transfer policy](secure-support-data-transfer.md)
 - [Frozen legal-review snapshot](legal-review/README.md)
 - [Generated packaged dependency inventory](generated/third-party-production-dependencies.csv)
 - [Generated repository production inventory](generated/repository-production-dependencies.csv)
@@ -57,10 +60,10 @@ Every document below is a draft and requires approval by Vesoft Services Limited
 
 `GA-GLOBAL-01` is technically closed by Phase 11B: PatrolSafe now stores a validated IANA workspace time zone and uses it for operational dates, schedules, filtering, storage classification and customer display. Public GA nevertheless remains **NO-GO** until:
 
-1. legal identity, contact, governing-law, commercial, privacy, retention and support placeholders are approved;
-2. Vesoft's role and any customer data-processing terms are confirmed by counsel;
+1. `privacy@sfour.co.uk` is operationally confirmed and a secure support-transfer provider/process is approved;
+2. Vesoft's role, Privacy Notice, EULA, data-processing terms, retention schedule and other mandatory legal questions are approved by counsel;
 3. supported countries/regions and applicable sanctions/export controls are approved;
 4. third-party LGPL and special/compound findings are legally resolved, notices are approved, and the technically reconciled inventory is regenerated from the exact final signed dependency tree;
-5. the approved documents are versioned alongside the exact released signed installer.
+5. the approved documents are versioned alongside the exact released signed installer and authorised for publication.
 
-The Phase 11C documentation and decision packs are ready for owner/counsel review; that readiness is not GA signing or publication approval.
+The Phase 11F frozen handoff is ready for external counsel once its hash manifest is generated. That readiness is not GA signing or publication approval.

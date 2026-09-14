@@ -21,6 +21,8 @@ Subject to payment where applicable, licence validity and these terms, Vesoft gr
 
 Trial access is for evaluation for 30 days, limited to the displayed feature set, and may not be used to avoid commercial licensing. The approved v1 commercial baseline is an annual subscription for one Windows workstation per licence, with support-assisted licence recovery for a replacement workstation. Transfer/recovery eligibility and misuse controls remain **REQUIRES LEGAL REVIEW**.
 
+Moving PatrolSafe to another workstation may require licence recovery. The customer contacts `support@sfour.co.uk` and provides its Installation ID; Vesoft verifies the request and manually issues any authorised replacement licence. Exact verification, transfer and retirement terms remain **REQUIRES LEGAL REVIEW**.
+
 ## 3. Customer responsibilities
 
 Customer must:

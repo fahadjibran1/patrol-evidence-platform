@@ -4,7 +4,7 @@ Status: **FROZEN CANDIDATE SET — REQUIRES QUALIFIED LEGAL REVIEW**
 
 Runtime/source basis: `8613fb9e4641ffe93b8d4631e601413acbdb7e1c`. This commit includes the reconciled role contacts and the Annual-only public customer catalogue while retaining legacy licence validation. No signed GA installer exists.
 
-This folder references, rather than duplicates, the controlled documents in `docs/ga`. Counsel must identify reviewed versions using [review-files.sha256](review-files.sha256). Any edit changes the hash and requires a new snapshot.
+This folder references, rather than duplicates, the controlled documents in `docs/ga`. Counsel must identify reviewed versions using [review-files.sha256](review-files.sha256). Any edit changes the hash and requires a new snapshot. The manifest is regenerated only after the complete Phase 11F handoff is frozen.
 
 ## Review set
 
@@ -19,6 +19,10 @@ This folder references, rather than duplicates, the controlled documents in `doc
 9. [Third-party counsel record](../third-party-legal-review-record.md)
 10. [Third-party notices draft](../THIRD_PARTY_NOTICES_DRAFT.txt)
 11. [Publication approval register](../publication-approval-register.md)
+12. [Third-party package technical audit](../third-party-technical-audit.md)
+13. [Secure support-data transfer policy](../secure-support-data-transfer.md)
+14. [Manual licence recovery procedure](../licence-recovery-procedure.md)
+15. [Legal-review decision sheet](../legal-review-decision-sheet.md)
 
 ## Counsel return requirements
 

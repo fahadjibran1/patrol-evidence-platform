@@ -86,9 +86,11 @@ If automatic recovery stops, choose **Try again** after confirming internet acce
 
 ## Trial and licence
 
-The Licence screen presents the current plan/status, remaining trial days or expiry, and actions. The public v1 customer catalogue offers an Annual subscription only: £299 plus VAT where applicable for one Windows workstation per year, with manual annual renewal. A trial or commercial licence applies to one installation identity. The request/import path is offline and customer-controlled; there is no live payment inside the v1 desktop app.
+The Licence screen presents the current plan/status, the eligible 30-day trial and its expiry, and licence actions. The public v1 customer catalogue offers an Annual subscription only: £299 plus VAT where applicable for one Windows workstation per year, with manual annual renewal. A trial or commercial licence applies to one installation identity. The request/import path is offline and customer-controlled; there is no live payment inside the v1 desktop app.
 
 PatrolSafe continues to validate previously issued compatible Three-year and Lifetime licence records, but those legacy types cannot be selected in the normal customer licence-request flow.
+
+Moving PatrolSafe to another workstation may require licence recovery. Contact **support@sfour.co.uk** and provide your Installation ID. Vesoft verifies and issues replacement-workstation licences through the manual v1 recovery process; do not send passwords, WhatsApp profiles or backups by ordinary email.
 
 If live entitlement expires, existing evidence remains available, but live licensed operations may be blocked. A machine replacement requires supplier-assisted licence recovery or a licence for the new installation.
 

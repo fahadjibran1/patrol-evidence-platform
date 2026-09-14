@@ -8,14 +8,14 @@ This plan assumes one immutable, verified installer per approved release and no 
 
 | Role | Named owner | Approval state |
 |---|---|---|
-| Rollout/release owner | `[blank]` | BUSINESS DECISION REQUIRED |
-| Deputy release/withdrawal authority | `[blank]` | BUSINESS DECISION REQUIRED |
-| Customer support owner | `[blank]` | BUSINESS DECISION REQUIRED |
-| Security incident owner | `[blank]` | BUSINESS DECISION REQUIRED |
-| Commercial approval owner | `[blank]` | BUSINESS DECISION REQUIRED |
+| Rollout/release authority | Vesoft Services Limited / company director | APPROVED |
+| Release/withdrawal authority | Vesoft Services Limited / company director | APPROVED; internal authorised person must be recorded per release |
+| Customer support owner | Vesoft Services Limited / PatrolSafe support | APPROVED |
+| Security incident owner | Vesoft Services Limited | APPROVED |
+| Commercial approval authority | Vesoft Services Limited / company director | APPROVED |
 | Legal/privacy approval owner | `[blank]` | LEGAL REVIEW REQUIRED |
 
-Stage progression, download withdrawal and customer notification require the named release owner or deputy. No owner is inferred from repository authorship.
+Stage progression, download withdrawal and customer notification require the approved corporate release authority. The acting authorised person must be recorded in each release/stage record; no individual is invented from repository authorship.
 
 ## Entry conditions for every stage
 
@@ -40,7 +40,7 @@ Exit criteria:
 
 ## Stage 2 — one to three friendly pilot customers
 
-Use written pilot terms and select customers in approved countries/regions with suitable Windows/WhatsApp environments. Provide direct onboarding, but require operators to complete the normal customer UI rather than engineering shortcuts.
+Use written pilot terms and select one to three friendly customers in individually reviewed countries/regions with suitable Windows/WhatsApp environments. Record each customer and jurisdiction before sale. Provide direct onboarding, but require operators to complete the normal customer UI rather than engineering shortcuts. Supporting additional countries must be a commercial/legal release decision, not a desktop runtime change; no hard-coded country allowlist or geoblocking is planned.
 
 Track per customer:
 

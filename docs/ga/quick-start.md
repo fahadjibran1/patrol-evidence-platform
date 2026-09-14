@@ -29,6 +29,8 @@ Stop and contact approved support if the hash or publisher differs, the signatur
 
 Product support: **support@sfour.co.uk**. Support hours are Monday–Friday, 09:00–17:00 UK local time, excluding UK public holidays. Vesoft aims to respond within 1–2 business days; this target is not an SLA.
 
+Moving PatrolSafe to another workstation may require licence recovery. Contact **support@sfour.co.uk** and provide your Installation ID.
+
 ## 2. Create the workspace
 
 Follow the guided setup:

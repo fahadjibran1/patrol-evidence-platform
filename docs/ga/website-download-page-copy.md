@@ -77,6 +77,8 @@ WhatsApp/Meta and Microsoft process information required by their services. Veso
 
 An eligible new installation can provide a 30-day local trial. A PatrolSafe v1 annual licence is **£299 plus VAT where applicable per Windows workstation per year**. Each licence permits one Windows workstation. Renewal is manual and annual; it does not renew automatically. Replacement-workstation licence recovery is support-assisted.
 
+Moving PatrolSafe to another workstation may require licence recovery. Contact **support@sfour.co.uk** and provide your Installation ID.
+
 GBP is the base currency. Other-currency arrangements may be quoted manually where commercially supported; automatic currency conversion is not provided. Applicable taxes may be added where required. Cancellation and refund terms remain subject to the approved order and final legal terms.
 
 General/licensing enquiries: **hello@sfour.co.uk**<br>

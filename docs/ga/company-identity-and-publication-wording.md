@@ -47,7 +47,7 @@ Product support is available Monday–Friday, 09:00–17:00 UK local time, exclu
 
 > We aim to respond within 1–2 business days.
 
-This is a response target, not a service-level agreement. Do not claim guaranteed responses or 24/7 support. Named support/security owners and the secure sensitive-file transfer route remain **BUSINESS DECISION REQUIRED**.
+This is a response target, not a service-level agreement. Do not claim guaranteed responses or 24/7 support. The approved corporate owners are Vesoft Services Limited / PatrolSafe support for product support and Vesoft Services Limited for security and privacy. A secure sensitive-file transfer provider remains **BUSINESS DECISION REQUIRED**.
 
 ## Commercial baseline
 
@@ -65,6 +65,10 @@ This is a response target, not a service-level agreement. Do not claim guarantee
 | International tax wording | “Applicable taxes may be added where required.” |
 
 The proposed principle that paid business licence fees are generally non-refundable after activation, except where applicable law requires otherwise, remains **LEGAL REVIEW REQUIRED** and is not final contract language.
+
+Customer recovery copy:
+
+> Moving PatrolSafe to another workstation may require licence recovery. Contact support@sfour.co.uk and provide your Installation ID.
 
 ## Retention wording
 
