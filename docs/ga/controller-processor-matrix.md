@@ -1,0 +1,33 @@
+# DRAFT — REQUIRES LEGAL REVIEW
+
+# PatrolSafe v1.0.0 controller/processor review matrix
+
+This matrix converts the engineering data-flow inventory into questions for qualified counsel. “Likely” roles are hypotheses, not legal conclusions. Role analysis may differ by country, contract, purpose and actual support practice.
+
+| Processing activity | Customer likely role | Vesoft likely role | Third party / separate actor | Confidence | Question for legal review |
+|---|---|---|---|---|---|
+| Customer configures company, administrators, sites, schedules, mappings and retention in the local workspace | Controller or corresponding responsible party | Software supplier with no routine access | None in the local operation | High technical / legal confirmation needed | Do the licence terms and customer notices allocate responsibilities accurately in each launch region? |
+| Local authentication, authorisation and login-session handling | Controller for its users | Software supplier; no automatic receipt | Microsoft provides OS protection facilities | Medium | Is Vesoft an independent controller for product-security design records despite not receiving the local account data? |
+| Collection and local storage of patrol images and related metadata | Controller, including for workforce/site monitoring | No routine role in local processing; possible processor only if support access is authorised | WhatsApp/Meta transports source communications | High technical / legal confirmation needed | What lawful bases, employment/surveillance rules, DPIA duties and special-category/criminal-data conditions apply? |
+| WhatsApp account linking, group discovery and message transport | Controller/customer account holder for configured use | Software supplier integrating the customer-controlled client | WhatsApp/Meta under its own terms and role | Medium | How should notices and contracts describe Meta's role and international transfers without implying Vesoft controls Meta? |
+| Local source-to-site mapping and Monitoring configuration | Controller | No routine access | None beyond source metadata supplied by WhatsApp | High | Are group participants and workers given adequate notice and is group use authorised? |
+| Workspace time-zone configuration and operational date/schedule classification | Controller | Software supplier | Windows/Intl time-zone data facilities | High | Does customer documentation adequately explain effects of later time-zone changes and records interpretation? |
+| Local trial marker, installation ID and machine fingerprint before export | Customer/user of licensed software; role depends on jurisdiction | Likely independent controller for entitlement purpose even though data is initially local | Microsoft DPAPI/registry facilities | Medium | When does Vesoft become controller, what lawful basis and retention apply, and is device fingerprinting adequately disclosed? |
+| Licence request received and licence/transaction administered by Vesoft | Data subject/customer may supply business contacts | Likely independent controller | Selected email, ticketing, payment/accounting providers | Medium | Confirm lawful bases, recipients, retention, access/rights process and international transfers. |
+| Customer asks ordinary support questions without operational data | Controller for staff contact data | Likely independent controller for support administration | Approved support provider/channel | Medium | Define support record retention, lawful basis, provider list and security controls. |
+| Customer submits diagnostics, screenshots or minimal operational identifiers for support | Controller | Could be processor for customer operational data and independent controller for case/security administration | Approved secure-transfer/support provider | Low/medium | Can purposes be separated contractually, and when is a DPA/service-provider clause mandatory? |
+| Vesoft remotely accesses or receives database, evidence, backup or WhatsApp session for support | Controller | Likely processor/service provider for instructed operational processing; possible separate security/legal obligations | Secure transfer/storage and any support subprocessors | Medium | Approve DPA scope, documented instructions, subprocessors, locations, deletion, audit, incident and transfer terms before any access. |
+| Customer-created backup stored locally or in its chosen cloud/storage | Controller | No automatic access | Customer-selected storage/cloud provider | High | Customer must assess the provider, location, transfer, access, retention and security; is this allocation clear enough? |
+| Product runtime uses Windows, Edge, certificate/update services and WhatsApp | Controller/customer contracts directly where applicable | Software supplier, without control over independent provider logs | Microsoft and WhatsApp/Meta | Medium | Confirm recipient/independent-controller wording and whether any joint-controller analysis is needed. |
+| Security incident or legal dispute records received by Vesoft | Customer role varies | Likely independent controller for legal/security administration; processor elements may coexist | Advisers, insurers, authorities, providers | Low/medium | Define purpose separation, legal bases, retention, disclosures, privilege and notification obligations. |
+| Website enquiries, downloads, orders, payment and marketing | Visitor/customer role varies | Likely independent controller | Website, analytics, payment and communications providers, once selected | Low because the public stack is not approved | A separate website/cookie/e-commerce inventory and privacy layer is required before those services launch. |
+
+## Counsel decisions required
+
+1. Confirm roles separately for local product use, licensing, customer support, remote access, security administration and future website/payment activity.
+2. Determine whether the DPA applies only when Vesoft processes operational personal data on documented customer instructions or should be incorporated into every business order as a conditional schedule.
+3. Approve the boundary between processor activity and Vesoft's independent licensing, fraud-prevention, security, accounting and legal purposes.
+4. Confirm required contracts and disclosures for WhatsApp/Meta, Microsoft, support, transfer, payment and hosting providers.
+5. Approve launch-region lawful-basis, employment-monitoring, DPIA, special-category/criminal-data, transfer, rights and regulator wording.
+
+Source: [Phase 11B data-flow inventory](phase11b-data-flow-inventory.md).

@@ -18,6 +18,8 @@ Vesoft Services Limited develops and publishes PatrolSafe by S4.
 - Data protection officer, if appointed: **[TO BE CONFIRMED / NOT APPLICABLE]**
 - EU/other representative, if required: **[TO BE CONFIRMED]**
 
+PatrolSafe v1.0 is currently provided in English. PatrolSafe may be offered internationally in supported countries and regions, subject to applicable law, sanctions and export restrictions, WhatsApp availability, Microsoft Windows availability and Vesoft commercial availability.
+
 ## 2. How the installed product works
 
 PatrolSafe is a local-first Windows desktop application. Company details, local users, sites, mappings, patrol images, evidence metadata, operational records, workspace configuration and logs are normally stored on the customer's workstation or customer-selected storage. The application does not automatically upload that operational database or evidence to Vesoft, and no Vesoft telemetry or cloud-backup client was identified in the audited v1.0 build.
@@ -75,7 +77,7 @@ No recipient list is approved yet. Add actual provider names, countries and role
 
 ## 7. International transfers
 
-PatrolSafe may be offered in supported countries/regions, but the installed local database is not automatically transferred to Vesoft. Transfers can nevertheless occur when a customer uses WhatsApp/Meta, Microsoft services, cross-border backup storage, licensing/support channels or Vesoft suppliers.
+PatrolSafe may be offered internationally in supported countries and regions, but the installed local database is not automatically transferred to Vesoft. Transfers can nevertheless occur when a customer uses WhatsApp/Meta, Microsoft services, cross-border backup storage, licensing/support channels or Vesoft suppliers.
 
 Vesoft and each customer must identify restricted transfers and establish the applicable adequacy mechanism, safeguards or exception before transfer. Approved safeguards, how to obtain them and relevant risk assessments: **[TO BE COMPLETED]**.
 

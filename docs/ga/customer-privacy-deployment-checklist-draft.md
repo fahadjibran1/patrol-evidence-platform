@@ -25,7 +25,7 @@ This checklist helps a customer assess a PatrolSafe deployment. It is not legal 
 - [ ] Keep history/backfill disabled unless separately authorised, necessary and lawful.
 - [ ] Do not enable test/certification endpoints in production.
 - [ ] Use synthetic images for setup testing.
-- [ ] Set the correct customer business timezone once the product supports and certifies it; do not deploy cross-timezone while `GA-GLOBAL-01` remains open.
+- [ ] Review and select the workspace time zone during setup. All sites in one v1 workspace use that saved zone for schedules, evidence dates and daily reporting; use separate workspaces where sites require different civil time zones.
 
 ## Security
 
@@ -38,6 +38,7 @@ This checklist helps a customer assess a PatrolSafe deployment. It is not legal 
 - [ ] Restrict remote access and never expose the local PatrolSafe API to a public network.
 - [ ] Treat WhatsApp LocalAuth, licence files, diagnostics and backups as sensitive.
 - [ ] Establish incident response, breach assessment and regulator/customer notification procedures.
+- [ ] Record who may export support diagnostics and review them for identifiers, filenames and local paths before disclosure.
 
 ## Retention and rights
 
@@ -46,6 +47,7 @@ This checklist helps a customer assess a PatrolSafe deployment. It is not legal 
 - [ ] Document how to locate, export where supported, correct, restrict and securely erase data across SQLite, evidence folders, logs and backups.
 - [ ] Remember site archive and uninstall preserve historical data.
 - [ ] Define how identity and rights requests are verified and handled without disclosing other people.
+- [ ] Record how access, correction, restriction, objection, deletion and evidence-preservation requests will be applied across the database, files, logs and every backup, subject to applicable rights and legal holds.
 - [ ] Review retention regularly and securely erase expired copies and retired workstation data.
 
 ## Suppliers and international transfers

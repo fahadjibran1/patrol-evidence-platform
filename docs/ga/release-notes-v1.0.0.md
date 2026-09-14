@@ -1,20 +1,17 @@
 # PatrolSafe by S4 v1.0.0 release notes
 
-Status: **PRIVATE GA CANDIDATE — NOT PUBLISHED**
+Status: **CUSTOMER COPY DRAFT — NOT PUBLISHED**
 Tagline: Patrol evidence. Automatically organised.
 
-## Candidate identity
+## Release verification
 
-- Source commit: `08223e6a5782eed4e1713d42180e9d42dc02a8ab`
-- Private signed build: `2026.09.13.23.14.35`
-- Windows file version: `2026.9.13.1394`
+- Version: 1.0.0
 - Installer: `PatrolEvidencePlatformSetup.exe`
-- Installer SHA-256: `7EFC26F22563BD7B71D902D9AFC29BDCE2953060A854547403D2768D4466B338`
 - Publisher: Vesoft Services Limited
-- Signature: Authenticode Valid with Microsoft timestamp; 33/33 required PEs verified
-- Technical UAT: passed on clean Windows 11 Pro 25H2 x64
+- Platform: Windows 11 x64
+- Installer SHA-256: **[INSERT FROM THE EXACT APPROVED SIGNED GA MANIFEST]**
 
-The public GA release, if approved, must publish the hash of the exact released installer. Do not reuse this private-candidate hash if the artifact changes.
+Verify the published SHA-256 and a valid Windows digital signature from Vesoft Services Limited before installation. A private UAT-candidate hash must not be reused for a changed GA artefact.
 
 ## v1 capabilities
 
@@ -31,12 +28,10 @@ The public GA release, if approved, must publish the hash of the exact released 
 - Commercial customer navigation with advanced diagnostics contained under Support.
 - A validated workspace time zone selected during setup and editable in Company Settings. Operational dates, patrol schedules, evidence filtering and daily grouping use that saved zone independently of later Windows time-zone changes.
 
-## Acceptance evidence
+PatrolSafe v1.0 is designed for international operation in supported countries and regions. The v1.0 interface and support documentation are currently provided in English.
 
-Final UAT covered signed install, setup persistence, trial, fresh WhatsApp link, source discovery, mapping/reassignment, live four-image ingestion, evidence UX, auto-monitor restart, pause/resume, mapping lifecycle, backup/restore, two network outage/recovery cycles, post-recovery evidence, Windows reboot, reinstall, uninstall/reinstall, signatures and process ownership. No functional Blocker or Major defect remained in that technical UAT.
+## Requirements and limitations
 
-## Publication status
+Live collection requires Microsoft Edge, an authorised eligible WhatsApp account and reliable internet access to WhatsApp Web. Each v1 workspace uses one customer-selected time zone for all sites. See [Known issues](known-issues-v1.0.0.md), [Quick Start](quick-start.md) and [Support and international availability](support-and-availability.md).
 
-Technical UAT and Phase 11B operational-time certification are not legal/commercial approval. `GA-GLOBAL-01` is technically closed, but public GA remains blocked by unapproved legal/contact/country/commercial decisions, incomplete final third-party notices, and the need to associate these changed sources with a later approved signed candidate. See [Known issues](known-issues-v1.0.0.md) and the [approval register](publication-approval-register.md).
-
-No GitHub release, public installer, v1.0.0 tag or publication is authorised by these notes.
+These release notes do not authorise a download. Publish them only with the exact approved signed installer, hash, legal documents, support route and supported-country/region scope.

@@ -23,23 +23,15 @@ Direct runtime package metadata currently reports:
 
 Electron, Chromium, Node.js, Squirrel/Forge packaging components, native libraries, fonts/icons and transitive packages also require review even if not listed as direct runtime dependencies.
 
-## Phase 11B production dependency inventory
+## Phase 11C packaged-tree reconciliation
 
-The production dependency tree resolved from the current repository contained **488 unique package-name/version records**. Declared metadata included 359 MIT, 55 ISC, 34 Apache-2.0, 9 BSD-2-Clause, 8 BSD-3-Clause and 4 BlueOak-1.0.0 records, plus compound or less common licence expressions that require notice-by-notice review. Counts are an engineering inventory, not a legal conclusion and not a substitute for the licence texts shipped with the exact final package.
+The repository production resolution contained **488 unique package/version records**. The current unsigned packaged application was then audited directly: **405 packaged instances, 363 unique package/version records and 238 unique collected licence/notice texts**. The difference reflects workspace/development resolution versus the pruned/transformed Electron application and is recorded rather than treated as a missing-package error.
 
-Five internal workspace/application package records did not declare a `license` field:
-
-- `@patrol/customer-portal@0.1.0`
-- `@patrol/license-api@0.1.0`
-- `@patrol/license-core@0.1.0`
-- `@patrol/license-portal@0.1.0`
-- `patrol-evidence-web@1.0.0`
-
-These internal metadata gaps must be resolved deliberately. The final notice review must also resolve compound expressions, optional/platform-specific packages, bundled Electron/Chromium/Node material, Squirrel binaries, native modules, assets and any dependency that is present in the distributable but absent from an `npm --omit=dev` view.
+The exact packaged CSV, collected texts, root Electron/Chromium licence hashes and review queue are documented in [the technical audit](third-party-technical-audit.md). Two LGPL-related packages, two external/generated packages with missing metadata, one internal metadata gap and four compound/special expressions require resolution. The final notice review must also cover Electron/Chromium/Node material, Squirrel binaries, native modules, assets, WhatsApp compatibility/cache material, marks, and any file introduced by the final maker/signing pipeline.
 
 ## Release actions
 
-1. Regenerate and reconcile the inventory from the exact installed/package tree, not only root `package.json` or the current 488-record repository view.
+1. Regenerate and reconcile the repeatable inventory from the exact final signed installed/package tree, not only root `package.json` or the prior 488-record repository view.
 2. Resolve missing/ambiguous/deprecated licence expressions and packages with no metadata.
 3. Include full licence and NOTICE text where required, preserving copyright statements.
 4. Confirm Electron/Chromium credits and native binary notices are reachable in the installed product or accompanying distribution.

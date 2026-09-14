@@ -17,6 +17,7 @@ This directory is the controlled documentation set for the PatrolSafe v1.0.0 gen
 - [Support and international availability](support-and-availability.md)
 - [Known issues](known-issues-v1.0.0.md)
 - [Release notes](release-notes-v1.0.0.md)
+- [Website/download page copy](website-download-page-copy.md)
 
 ## Draft legal and privacy documents
 
@@ -27,6 +28,8 @@ Every document below is a draft and requires approval by Vesoft Services Limited
 - [Support data-processing terms](data-processing-terms-draft.md)
 - [Customer privacy deployment checklist](customer-privacy-deployment-checklist-draft.md)
 - [Third-party software notices register](third-party-notices-draft.md)
+- [Controller/processor review matrix](controller-processor-matrix.md)
+- [Legal counsel review pack](legal-review-pack.md)
 
 ## Internal approval evidence
 
@@ -34,6 +37,13 @@ Every document below is a draft and requires approval by Vesoft Services Limited
 - [International operational-time inventory](phase11b-timezone-inventory.md)
 - [Detailed product data-flow inventory](phase11b-data-flow-inventory.md)
 - [Publication approval register](publication-approval-register.md)
+- [Company identity and publication wording](company-identity-and-publication-wording.md)
+- [Third-party package technical audit](third-party-technical-audit.md)
+- [Operator decisions required](operator-decisions-required.md)
+- [Controlled first-customer rollout plan](first-customer-rollout-plan.md)
+- [GA rollback and withdrawal plan](ga-rollback-plan.md)
+- [Generated packaged dependency inventory](generated/third-party-production-dependencies.csv)
+- [Generated collected licence/notice texts](generated/third-party-license-texts.md)
 
 ## Release gate
 
@@ -42,5 +52,7 @@ Every document below is a draft and requires approval by Vesoft Services Limited
 1. legal identity, contact, governing-law, commercial, privacy, retention and support placeholders are approved;
 2. Vesoft's role and any customer data-processing terms are confirmed by counsel;
 3. supported countries/regions and applicable sanctions/export controls are approved;
-4. third-party notices are generated from the exact final shipped dependency tree and reviewed;
+4. third-party LGPL, special/compound and missing-metadata findings are resolved, notices are approved, and the inventory is regenerated from the exact final signed dependency tree;
 5. the approved documents are versioned alongside the exact released signed installer.
+
+The Phase 11C documentation and decision packs are ready for owner/counsel review; that readiness is not GA signing or publication approval.

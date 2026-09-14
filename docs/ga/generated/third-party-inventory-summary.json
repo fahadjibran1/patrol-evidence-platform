@@ -1,0 +1,147 @@
+{
+  "generator": "scripts/generate-ga-third-party-inventory.js",
+  "sourceCommit": "b785ac88f69acb285b616623b78eb152172be634",
+  "sourceTree": "out/PatrolSafe by S4-win32-x64/resources/app",
+  "packageInstances": 405,
+  "uniquePackageVersions": 363,
+  "uniqueCollectedTexts": 238,
+  "licenceCounts": {
+    "MIT": 283,
+    "ISC": 29,
+    "Apache-2.0": 22,
+    "BSD-2-Clause": 9,
+    "BSD-3-Clause": 5,
+    "BlueOak-1.0.0": 4,
+    "[missing]": 3,
+    "Apache-2.0 AND LGPL-3.0-or-later": 1,
+    "Python-2.0": 1,
+    "(MIT OR WTFPL)": 1,
+    "LGPL-3.0-or-later": 1,
+    "Apache 2.0": 1,
+    "(BSD-2-Clause OR MIT OR Apache-2.0)": 1,
+    "(MIT AND BSD-3-Clause)": 1,
+    "0BSD": 1
+  },
+  "reviewCounts": {
+    "COPYLEFT_REVIEW": 2,
+    "INTERNAL_METADATA_REVIEW": 1,
+    "METADATA_RECORDED": 354,
+    "MISSING_METADATA_REVIEW": 2,
+    "MULTI_OR_SPECIAL_LICENCE_REVIEW": 4
+  },
+  "reviewPackages": [
+    {
+      "package": "@img/sharp-win32-x64",
+      "version": "0.35.4",
+      "declaredLicence": "Apache-2.0 AND LGPL-3.0-or-later",
+      "technicalReview": "COPYLEFT_REVIEW",
+      "licenceFiles": [
+        {
+          "name": "LICENSE",
+          "sha256": "DC1F5D2D43C5531DFE0ACAF4E950EA5DBE3E61E1850CF0E983BDA7EFC10D6693"
+        }
+      ]
+    },
+    {
+      "package": "@patrol/license-core",
+      "version": "0.1.0",
+      "declaredLicence": "[missing]",
+      "technicalReview": "INTERNAL_METADATA_REVIEW",
+      "licenceFiles": []
+    },
+    {
+      "package": "argparse",
+      "version": "2.0.1",
+      "declaredLicence": "Python-2.0",
+      "technicalReview": "MULTI_OR_SPECIAL_LICENCE_REVIEW",
+      "licenceFiles": [
+        {
+          "name": "LICENSE",
+          "sha256": "DE4D1F2D2AD5AD0CFD1657A106476B31CB5DB5EF9D1FF842B237C0C81F0C8A23"
+        }
+      ]
+    },
+    {
+      "package": "beep-boop",
+      "version": "1.2.3",
+      "declaredLicence": "[missing]",
+      "technicalReview": "MISSING_METADATA_REVIEW",
+      "licenceFiles": []
+    },
+    {
+      "package": "expand-template",
+      "version": "2.0.3",
+      "declaredLicence": "(MIT OR WTFPL)",
+      "technicalReview": "MULTI_OR_SPECIAL_LICENCE_REVIEW",
+      "licenceFiles": [
+        {
+          "name": "LICENSE",
+          "sha256": "0967624813244BF47DA346449804AF853437433CBDEB8C977F1E0D4BD14E0A3B"
+        }
+      ]
+    },
+    {
+      "package": "node-webpmux",
+      "version": "3.2.1",
+      "declaredLicence": "LGPL-3.0-or-later",
+      "technicalReview": "COPYLEFT_REVIEW",
+      "licenceFiles": [
+        {
+          "name": "COPYING.LESSER",
+          "sha256": "E3A994D82E644B03A792A930F574002658412F62407F5FEE083F2555C5F23118"
+        }
+      ]
+    },
+    {
+      "package": "prisma-client-46c3aef436094650951a17aff6f627bdc8bf143dc53f07f45ae481f51ac5f4fb",
+      "version": "5.22.0",
+      "declaredLicence": "[missing]",
+      "technicalReview": "MISSING_METADATA_REVIEW",
+      "licenceFiles": []
+    },
+    {
+      "package": "rc",
+      "version": "1.2.8",
+      "declaredLicence": "(BSD-2-Clause OR MIT OR Apache-2.0)",
+      "technicalReview": "MULTI_OR_SPECIAL_LICENCE_REVIEW",
+      "licenceFiles": [
+        {
+          "name": "LICENSE.APACHE2",
+          "sha256": "E8734448285A2DD773D40136ED5D5E8163A70701DD540CDC796CFCA232F67D55"
+        },
+        {
+          "name": "LICENSE.BSD",
+          "sha256": "65E7E4D223688C601F42959DEFDE380F8C4AA677FA4706DA3B4A53F129BD78A3"
+        },
+        {
+          "name": "LICENSE.MIT",
+          "sha256": "D72DEA1A8CDF3F4DFA2F594253D0C5B37BAEFC76E806F5ECB0E426393EDCD505"
+        }
+      ]
+    },
+    {
+      "package": "sha.js",
+      "version": "2.4.12",
+      "declaredLicence": "(MIT AND BSD-3-Clause)",
+      "technicalReview": "MULTI_OR_SPECIAL_LICENCE_REVIEW",
+      "licenceFiles": [
+        {
+          "name": "LICENSE",
+          "sha256": "58DCF38BE1438F739412B87EB70D64BF00E9976D529BB119F700D8B3167924F0"
+        }
+      ]
+    }
+  ],
+  "packagingRootLicenceFiles": [
+    {
+      "file": "LICENSE",
+      "size": 1096,
+      "sha256": "5154E165BD6C2CC0CFBCD8916498C7ABAB0497923BAFCD5CB07673FE8480087D"
+    },
+    {
+      "file": "LICENSES.chromium.html",
+      "size": 19472684,
+      "sha256": "C1BC6CFDD6C5844720E5E6332698A6131F5402E77ABF1FDB9646740D38065A65"
+    }
+  ]
+}

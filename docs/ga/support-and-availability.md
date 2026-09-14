@@ -4,9 +4,9 @@ Status: **CUSTOMER DRAFT — CONTACTS AND SERVICE LEVEL REQUIRE APPROVAL**
 
 ## Availability statement
 
-PatrolSafe is intended to be internationally available in supported countries/regions. It is not represented as available, lawful, licensed or technically operable in every country.
+PatrolSafe is available internationally in supported countries and regions, subject to applicable law, sanctions and export restrictions, WhatsApp availability, Microsoft Windows availability, and Vesoft commercial availability. It is not represented as available, lawful, licensed or technically operable in every country.
 
-Availability can depend on applicable law, sanctions/export restrictions, WhatsApp/Meta service and account availability, Microsoft/Edge availability, local network restrictions, and Vesoft's licensing, payment and support capability.
+Availability can also depend on WhatsApp/Meta account eligibility, Microsoft Edge availability, local network restrictions, licensing, payment and support capability.
 
 Approved launch countries/regions: **[TO BE CONFIRMED BY COMMERCIAL AND LEGAL]**.
 
@@ -27,8 +27,8 @@ The application installer is about 202 MB; the installed app binary is about 223
 
 ## Requirements
 
-- Windows administrator permission for install/uninstall.
-- Current Microsoft Edge x64.
+- A Windows account permitted to install/uninstall desktop software. Organisational policy may require administrator approval.
+- Current supported Microsoft Edge for the Windows environment.
 - Defender, SmartScreen and firewall enabled.
 - Reliable outbound HTTPS/WebSocket connectivity required by WhatsApp Web.
 - An eligible, authorised WhatsApp account and linked-device capability.

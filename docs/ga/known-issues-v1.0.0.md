@@ -2,10 +2,6 @@
 
 Status: **GA PREPARATION — UPDATE BEFORE PUBLICATION**
 
-## Resolved global-readiness finding
-
-GA-GLOBAL-01 is technically closed by Phase 11B. New workspaces detect and require review of an IANA workspace timezone; initialized legacy workspaces retain `Europe/London` for compatibility. Operational dates, schedules, filtering, folders and display use the saved workspace timezone.
-
 ## Accepted minor issue
 
 - At 1366×768, the lower Settings/user section requires normal sidebar scrolling.

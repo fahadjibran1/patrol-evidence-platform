@@ -13,6 +13,8 @@ This is an incomplete Article 28/service-provider drafting schedule. It does not
 
 Ordinary local use of PatrolSafe does not automatically transfer the operational database/evidence to Vesoft. These terms would apply only to the support access/disclosure defined in the signed agreement.
 
+**Decision for counsel:** determine whether this schedule is mandatory only when Vesoft processes operational personal data on documented customer instructions, should be incorporated conditionally into every business order, or is unnecessary for customers receiving only local software with no processor service. Do not treat local installation alone as proof that Vesoft is a processor.
+
 ## 2. Processing details
 
 | Required description | Draft scope |

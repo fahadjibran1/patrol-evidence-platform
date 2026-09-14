@@ -8,7 +8,7 @@ Patrol evidence. Automatically organised.
 You need:
 
 - a supported Windows 11 x64 workstation;
-- administrator permission to install the application;
+- a Windows account permitted to install desktop applications; organisational policy may require administrator approval;
 - Microsoft Edge installed and up to date;
 - reliable internet access to WhatsApp Web;
 - an eligible WhatsApp account that your organisation is authorised to use;
@@ -19,13 +19,13 @@ PatrolSafe v1.0 and its documentation are provided in English. The certified v1.
 
 ## 1. Verify and install
 
-1. Obtain `PatrolEvidencePlatformSetup.exe` through the private, approved distribution channel.
-2. Compare its SHA-256 with the value provided for your release. The certified private candidate hash is `7EFC26F22563BD7B71D902D9AFC29BDCE2953060A854547403D2768D4466B338`; the public GA hash must be confirmed at publication time.
+1. Obtain `PatrolEvidencePlatformSetup.exe` through the approved Vesoft distribution channel.
+2. Compare its SHA-256 with the value published for that exact release. **GA publication placeholder:** `[INSERT SHA-256 FROM THE APPROVED SIGNED GA MANIFEST]`.
 3. In Windows, open the file's **Properties → Digital Signatures** and confirm a valid signature from **Vesoft Services Limited**.
 4. Double-click the installer. Do not disable Defender or SmartScreen. If Windows warns about reputation, confirm the publisher and release hash before continuing.
 5. Start **PatrolSafe by S4** from its customer-facing shortcut.
 
-Stop and contact approved support if the hash or publisher differs, the signature is invalid, or the installer came from an unapproved source.
+Stop and contact approved support if the hash or publisher differs, the signature is invalid, or the installer came from an unapproved source. Do not substitute a hash from an earlier private UAT candidate.
 
 ## 2. Create the workspace
 
@@ -58,7 +58,7 @@ Do not post licence request or licence files publicly.
 4. Wait for **WhatsApp: Connected**. Monitoring may correctly remain **Paused**.
 5. Select **Refresh sources** and confirm the required group appears by display name.
 
-PatrolSafe does not require a raw WhatsApp JID in the normal customer workflow. If a QR or reconnect fails, use [WhatsApp troubleshooting](whatsapp-troubleshooting.md); do not delete the session folder manually.
+PatrolSafe lets customers select groups by display name; no technical source identifier is needed in the normal workflow. If a QR or reconnect fails, use [WhatsApp troubleshooting](whatsapp-troubleshooting.md); do not delete the session folder manually.
 
 ## 5. Create sites and map a group
 

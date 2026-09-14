@@ -104,7 +104,7 @@ On termination, live licensed operations may stop while locally retained evidenc
 
 ## 15. International availability and compliance
 
-PatrolSafe is intended to be internationally available in supported countries/regions. Availability may depend on applicable law, sanctions/export controls, WhatsApp/Meta and Microsoft service availability, network restrictions, licensing and payment capability. Vesoft does not represent that PatrolSafe is available or lawful for every country, customer or use.
+PatrolSafe may be licensed for use in supported countries and regions. Availability and permitted use are subject to the applicable order, law, sanctions and export restrictions, WhatsApp availability, Microsoft Windows availability, local network restrictions, and Vesoft commercial availability. Vesoft does not represent that PatrolSafe is available or lawful for every country, customer or use. PatrolSafe v1.0 is currently provided in English.
 
 ## 16. Governing law and disputes
 
