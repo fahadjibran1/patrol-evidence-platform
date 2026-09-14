@@ -1,8 +1,8 @@
 # PatrolSafe v1.0.0 third-party counsel review record
 
-Status: **TECHNICAL FACTS COMPLETE — LEGAL REVIEW REQUIRED**
+Status: **TECHNICALLY INVENTORIED — MANAGEMENT RISK ACCEPTED FOR CONTROLLED PILOT — EXTERNAL LEGAL REVIEW NOT PERFORMED**
 
-Audited unsigned package source: `8613fb9e4641ffe93b8d4631e601413acbdb7e1c`<br>
+Audited unsigned package source HEAD: `2a1cf8621ad4496b3db05cb35719b68adcb2cc3b`<br>
 Packaged dependency inventory SHA-256: `DC45DBF4BC2C5D463597FCC536DACAC6C49A41B74378B2D5436FCB7DB8D2E963`
 
 Package files were compared with the installed npm source tree. Every shipped file for the six review records was byte-identical to its source package counterpart. `rc` and `sha.js` had test/development files omitted by packaging, but no shipped file differed. No PatrolSafe-authored modification to these package files was identified. This does not decide whether bundling, linking or distribution obligations are satisfied.

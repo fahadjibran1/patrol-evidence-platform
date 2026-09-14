@@ -1,6 +1,6 @@
 # PatrolSafe v1.0 — Support and international availability
 
-Status: **CUSTOMER COPY — LEGAL COUNTRY-SCOPE REVIEW REQUIRED**
+Status: **MANAGEMENT APPROVED CUSTOMER COPY FOR CONTROLLED B2B PILOT**
 
 ## Availability statement
 
@@ -8,7 +8,7 @@ PatrolSafe is available internationally in supported countries and regions, subj
 
 Availability can also depend on WhatsApp/Meta account eligibility, Microsoft Edge availability, local network restrictions, licensing, payment and support capability.
 
-Approved launch countries/regions: **[TO BE CONFIRMED BY COMMERCIAL AND LEGAL]**.
+For Stage 1 and Stage 2, Vesoft records and approves each business customer and jurisdiction before supply. This does not create a permanent country allowlist or approve unrestricted worldwide public availability.
 
 ## Certified desktop environment
 

@@ -1,6 +1,6 @@
 # PatrolSafe v1.0.0 — Known issues and limitations
 
-Status: **GA PREPARATION — UPDATE BEFORE PUBLICATION**
+Status: **MANAGEMENT APPROVED FOR CONTROLLED B2B PILOT — NOT UNRESTRICTED PUBLIC GA**
 
 ## Accepted minor issue
 

@@ -3,6 +3,8 @@
 Version 1.0.0
 Audience: security-company office administrators and operations managers
 
+The initial PatrolSafe v1.0 controlled pilot is business/B2B focused and limited to customers and jurisdictions approved by Vesoft before supply.
+
 ## What PatrolSafe does
 
 PatrolSafe receives newly arriving JPEG/PNG patrol images from WhatsApp sources that an administrator maps to sites. It stores the files and searchable metadata locally, calculates patrol status, and provides evidence, operational and recovery views.

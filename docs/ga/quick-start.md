@@ -3,6 +3,8 @@
 Version 1.0.0
 Patrol evidence. Automatically organised.
 
+The initial controlled pilot is for approved business customers. Vesoft records and approves each pilot customer and jurisdiction before supply.
+
 ## Before you start
 
 You need:

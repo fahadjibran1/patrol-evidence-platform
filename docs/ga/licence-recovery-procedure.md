@@ -1,6 +1,6 @@
 # PatrolSafe v1.0.0 licence recovery procedure
 
-Status: **APPROVED MANUAL V1 OPERATING PROCEDURE — CONTRACT TERMS REQUIRE LEGAL REVIEW**
+Status: **MANAGEMENT APPROVED FOR PATROLSAFE v1.0 CONTROLLED PILOT — EXTERNAL LEGAL REVIEW NOT PERFORMED**
 
 Moving PatrolSafe to another workstation may require licence recovery. Contact **support@sfour.co.uk** and provide your Installation ID.
 
@@ -16,6 +16,8 @@ Moving PatrolSafe to another workstation may require licence recovery. Contact *
 
 This is a manual v1 process. PatrolSafe does not offer automatic entitlement transfer, automatic renewal or self-service workstation reassignment.
 
+Licence recovery requests are normally processed within **1–2 business days** during PatrolSafe support hours. This is an operational target, not an SLA or guaranteed response or completion time. Verification questions or suspected misuse may require longer.
+
 ## Safety and fraud controls
 
 - Escalate mismatched company, contact, order, licence or installation details; do not issue while authority is uncertain.
@@ -27,4 +29,4 @@ This is a manual v1 process. PatrolSafe does not offer automatic entitlement tra
 
 ## Operating ownership
 
-Licence-recovery authority is **Vesoft Services Limited**. Release/signing authority remains with **Vesoft Services Limited / company director**. Named staff, internal access controls, retention periods and expected turnaround are internal operating controls and must be assigned before public availability.
+Licence-recovery authority is **Vesoft Services Limited**. Release/signing authority remains with **Vesoft Services Limited / company director**. Internal access controls and retention periods remain controlled operating matters; the approved normal turnaround target is 1–2 business days during support hours and is not an SLA.

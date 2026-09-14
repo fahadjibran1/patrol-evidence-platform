@@ -1,7 +1,9 @@
 # PatrolSafe by S4 v1.0.0 release notes
 
-Status: **CUSTOMER COPY DRAFT — NOT PUBLISHED**
+Status: **MANAGEMENT APPROVED FOR CONTROLLED B2B PILOT — NOT PUBLICLY PUBLISHED**
 Tagline: Patrol evidence. Automatically organised.
+
+Release scope: Vesoft/internal use and one to three approved friendly business pilot customers. This is not unrestricted worldwide public GA.
 
 ## Release verification
 

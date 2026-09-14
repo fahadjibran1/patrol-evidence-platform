@@ -1,11 +1,13 @@
-# DRAFT — REQUIRES LEGAL REVIEW
+# MANAGEMENT APPROVED FOR PATROLSAFE v1.0 CONTROLLED PILOT RELEASE
+
+**External legal review has not been performed.** Vesoft Services Limited management accepted the unresolved enforceability and regional-law risks recorded in `legal-risk-acceptance.md` for controlled B2B pilot use only.
 
 # PatrolSafe by S4 software licence terms
 
 Draft date: 14 September 2026
 Version covered: PatrolSafe 1.0.0
 
-**Do not distribute these terms until Vesoft Services Limited and qualified counsel complete every bracketed field and approve the terms for each launch country/region.**
+Use of these terms is limited to a Vesoft-approved controlled business pilot and an individually recorded customer/jurisdiction. They are not approved for unrestricted public or consumer distribution.
 
 ## 1. Parties and order of precedence
 
@@ -19,9 +21,9 @@ Consumer use is not the intended v1 offering. Nothing in these terms excludes no
 
 Subject to payment where applicable, licence validity and these terms, Vesoft grants Customer a limited, non-exclusive, non-transferable, non-sublicensable right during the licence term to install and use PatrolSafe on the number of authorised workstations for Customer's internal lawful security operations in supported countries/regions.
 
-Trial access is for evaluation for 30 days, limited to the displayed feature set, and may not be used to avoid commercial licensing. The approved v1 commercial baseline is an annual subscription for one Windows workstation per licence, with support-assisted licence recovery for a replacement workstation. Transfer/recovery eligibility and misuse controls remain **REQUIRES LEGAL REVIEW**.
+Trial access is for evaluation for 30 days, limited to the displayed feature set, and may not be used to avoid commercial licensing. The approved v1 commercial baseline is an annual subscription for one Windows workstation per licence, with support-assisted licence recovery for a replacement workstation. Transfer/recovery eligibility and misuse controls have not received external legal review and are management-accepted pilot risks.
 
-Moving PatrolSafe to another workstation may require licence recovery. The customer contacts `support@sfour.co.uk` and provides its Installation ID; Vesoft verifies the request and manually issues any authorised replacement licence. Exact verification, transfer and retirement terms remain **REQUIRES LEGAL REVIEW**.
+Moving PatrolSafe to another workstation may require licence recovery. The customer contacts `support@sfour.co.uk` and provides its Installation ID; Vesoft verifies the request and manually issues any authorised replacement licence. Exact verification, transfer and retirement terms have not received external legal review.
 
 ## 3. Customer responsibilities
 
@@ -78,7 +80,7 @@ Vesoft may provide maintenance/security updates under **[update policy to be con
 
 ## 9. Fees, taxes and payment
 
-The published v1 annual licence price is **£299 plus VAT where applicable per workstation per year**, in GBP. Other-currency arrangements may be quoted manually where commercially supported; no automatic currency conversion is promised. Applicable taxes may be added where required. Renewal is manual and annual for v1; the licence does not automatically renew. The desktop application does not process live payments. Cancellation and refund terms, price-change rules and country-specific tax/consumer requirements remain **REQUIRES LEGAL REVIEW**.
+The published v1 annual licence price is **£299 plus VAT where applicable per workstation per year**, in GBP. Other-currency arrangements may be quoted manually where commercially supported; no automatic currency conversion is promised. Applicable taxes may be added where required. Renewal is manual and annual for v1; the licence does not automatically renew. The desktop application does not process live payments. Cancellation, refund, price-change and country-specific tax/consumer requirements have not received external legal review; controlled-pilot supply requires management approval for the customer/jurisdiction.
 
 ## 10. Confidentiality
 
@@ -100,7 +102,7 @@ Liability cap, excluded losses, carve-outs, data-loss allocation, indemnities an
 
 ## 14. Term, suspension and termination
 
-The commercial licence term and renewal cycle are annual, with manual renewal for v1. Suspension, cancellation, expiry, termination rights and effects remain **REQUIRES LEGAL REVIEW**. Vesoft may need rights to suspend for material breach, security risk, sanctions/export restrictions, non-payment or third-party-service constraints, subject to applicable law and contract.
+The commercial licence term and renewal cycle are annual, with manual renewal for v1. Suspension, cancellation, expiry, termination rights and effects have not received external legal review. Vesoft may need rights to suspend for material breach, security risk, sanctions/export restrictions, non-payment or third-party-service constraints, subject to applicable law and contract.
 
 On termination, live licensed operations may stop while locally retained evidence remains available according to product behavior. Customer must export/retain/delete data according to its obligations and cease unlicensed use. Specify any post-termination support period: **[TO BE CONFIRMED]**.
 
@@ -120,6 +122,6 @@ Assignment, subcontracting, force majeure, waiver, severability, entire agreemen
 
 - Legal notices: **legal@sfour.co.uk**
 - Support: **support@sfour.co.uk**
-- Privacy: **privacy@sfour.co.uk** **[mailbox delivery must be operationally confirmed before publication]**
+- Privacy: **privacy@sfour.co.uk** **[mailbox creation operator-confirmed]**
 - Security reports: **security@sfour.co.uk**
 - General enquiries: **hello@sfour.co.uk**

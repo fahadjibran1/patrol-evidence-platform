@@ -1,8 +1,8 @@
-# DRAFT — REQUIRES LEGAL REVIEW
+# MANAGEMENT RISK ACCEPTED FOR CONTROLLED PILOT — EXTERNAL LEGAL REVIEW NOT PERFORMED
 
 # PatrolSafe v1.0.0 controller/processor review matrix
 
-This matrix converts the engineering data-flow inventory into questions for qualified counsel. “Likely” roles are hypotheses, not legal conclusions. Role analysis may differ by country, contract, purpose and actual support practice.
+This matrix converts the engineering data-flow inventory into unresolved role questions. “Likely” roles are hypotheses, not legal conclusions. Vesoft management accepted this uncertainty for controlled B2B pilots; role analysis may differ by country, contract, purpose and actual support practice.
 
 | Processing activity | Customer likely role | Vesoft likely role | Third party / separate actor | Confidence | Question for legal review |
 |---|---|---|---|---|---|

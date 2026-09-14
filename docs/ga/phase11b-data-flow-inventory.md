@@ -1,6 +1,6 @@
 # PatrolSafe v1.0.0 data-flow inventory
 
-Status: **DRAFT — REQUIRES LEGAL REVIEW**
+Status: **TECHNICALLY COMPLETE — MANAGEMENT RISK ACCEPTED FOR CONTROLLED PILOT — EXTERNAL LEGAL REVIEW NOT PERFORMED**
 Technical audit date: 14 September 2026
 Scope: installed desktop product and customer-controlled backup/support flows
 

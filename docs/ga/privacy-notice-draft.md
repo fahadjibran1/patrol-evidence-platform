@@ -1,4 +1,6 @@
-# DRAFT — REQUIRES LEGAL REVIEW
+# MANAGEMENT APPROVED FOR PATROLSAFE v1.0 CONTROLLED PILOT RELEASE
+
+**External legal review has not been performed.** Vesoft Services Limited management accepted the unresolved privacy-law risks recorded in `legal-risk-acceptance.md` for controlled B2B pilot use only.
 
 # PatrolSafe product and service privacy notice
 
@@ -6,7 +8,7 @@ Draft date: 14 September 2026
 Product: PatrolSafe by S4, version 1.0.0
 Publisher identity: Vesoft Services Limited
 
-**This draft is incomplete and must not be published or presented as legal advice. Bracketed items require approval.** It describes Vesoft's product, licensing and support processing. It does not replace the customer's privacy notice to guards, employees, WhatsApp participants, clients or people shown in evidence.
+This notice is management-approved only for controlled B2B pilots and must not be presented as externally reviewed legal advice or used for unrestricted public GA. Bracketed items identify unresolved risks accepted by management for that limited scope. It describes Vesoft's product, licensing and support processing. It does not replace the customer's privacy notice to guards, employees, WhatsApp participants, clients or people shown in evidence.
 
 ## 1. Who we are
 
@@ -14,7 +16,7 @@ Vesoft Services Limited develops and publishes PatrolSafe by S4.
 
 - Company number: **08707130**
 - Business/publication address: **241 Manningham Lane, Bradford, BD8 7ER, United Kingdom**
-- Privacy contact: **privacy@sfour.co.uk** **[approved address; mailbox delivery not yet operationally confirmed]**
+- Privacy contact: **privacy@sfour.co.uk** **[mailbox creation operator-confirmed]**
 - Security reports: **security@sfour.co.uk**
 - Data protection officer, if appointed: **[TO BE CONFIRMED / NOT APPLICABLE]**
 - EU/other representative, if required: **[TO BE CONFIRMED]**
@@ -38,14 +40,14 @@ Depending on the customer's dealings with Vesoft, we may receive:
 - a customer-exported licence request containing product/version/build, random installation ID, SHA-256 machine fingerprint and request time;
 - licence/entitlement and transaction administration records **[commercial systems and fields to be confirmed]**;
 - support correspondence, screenshots and diagnostics deliberately supplied by the customer;
-- operational data, images, backups or WhatsApp/session material only if the customer deliberately provides or authorises access during support **[support policy and lawful mechanism to be confirmed]**;
+- operational data, images, backups or WhatsApp/session material only if the customer deliberately provides or authorises access during support using the Vesoft-controlled restricted OneDrive/SharePoint workflow **[legal role and transfer treatment not externally reviewed]**;
 - ordinary service/network metadata associated with customer communications to Vesoft **[systems to be confirmed]**.
 
 The machine fingerprint in a licence request is hashed but remains device-specific and should be treated as pseudonymous information, not anonymous information.
 
 ## 4. Purposes and lawful bases
 
-The table below is a drafting framework. Counsel must confirm the applicable basis in each country and context.
+The table below records the current management position. External legal review of the applicable basis in each country and context was not performed.
 
 | Purpose | Proposed data | Proposed lawful basis |
 |---|---|---|
@@ -99,14 +101,14 @@ PatrolSafe v1 does not automatically delete customer evidence or the local works
 
 PatrolSafe uses local access controls, salted password hashes, integrity hashes, signed software and verified backup/restore mechanisms. Customer evidence and SQLite data are not encrypted by PatrolSafe at rest. Customers should use supported Windows security, device/storage encryption, least privilege, protected backups and physical security.
 
-No internet service can be guaranteed completely secure. Product vulnerability reports may be sent to **security@sfour.co.uk**. Incident-notification duties, process and timing remain **REQUIRES LEGAL REVIEW**.
+No internet service can be guaranteed completely secure. Product vulnerability reports may be sent to **security@sfour.co.uk**. Incident-notification duties, process and timing have not received external legal review; management accepted that unresolved risk for controlled pilot use.
 
 ## 10. Rights and complaints
 
 Depending on applicable law and context, individuals may have rights of access, correction, erasure, restriction, objection, portability, withdrawal of consent and complaint to a regulator. The available rights vary with the lawful basis and exemptions.
 
 - Requests about customer-controlled patrol evidence should normally be made to the customer organisation operating PatrolSafe.
-- Requests about Vesoft's licensing/support/business records should be sent to **privacy@sfour.co.uk**. Delivery to this newly approved address must be operationally confirmed before publication.
+- Requests about Vesoft's licensing/support/business records should be sent to **privacy@sfour.co.uk**. Mailbox creation has been operator-confirmed.
 - UK complaints may be made to the Information Commissioner's Office: <https://ico.org.uk/make-a-complaint/>. Add relevant non-UK authorities/representative details for launch regions.
 
 Identity verification and response procedure: **[TO BE CONFIRMED]**.

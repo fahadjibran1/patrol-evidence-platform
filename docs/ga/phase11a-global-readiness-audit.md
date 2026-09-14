@@ -35,7 +35,7 @@ The committed package build ID and certified artifact build ID differ because re
 | GA-GLOBAL-03 | Customer date presentation was inconsistent and sometimes browser-local. | **CLOSED FOR PATROLSAFE DESKTOP** | Customer operational timestamps now use the workspace zone and unambiguous English month-name formatting. Commercial portal locale/pricing policy remains separate. |
 | GA-GLOBAL-04 | The UI and documentation are hard-coded English; no translation framework is evident. | Acceptable for v1 if disclosed | State that v1 UI/support documentation are English-only. |
 | GA-GLOBAL-05 | Desktop runtime shows no GBP, pound symbol, VAT calculation or payment processing. GBP examples exist in internal Stripe/platform documentation. | Acceptable separation | Do not present those examples as PatrolSafe desktop pricing. Define regional sales/tax policy outside the app. |
-| GA-GLOBAL-06 | Historical finding: package/About and Licence used inconsistent legacy support domains. | **CLOSED in Phase 11E** | Customer runtime/docs now use the approved `@sfour.co.uk` role contacts; deterministic tests reject legacy runtime domains. Privacy mailbox delivery still requires operational confirmation. |
+| GA-GLOBAL-06 | Historical finding: package/About and Licence used inconsistent legacy support domains. | **CLOSED in Phase 11E/11G** | Customer runtime/docs use approved `@sfour.co.uk` role contacts; deterministic tests reject legacy runtime domains; all five mailbox creations are operator-confirmed. |
 | GA-GLOBAL-07 | Legacy-compatible AppData and install paths use “Patrol Evidence Platform”. | Acceptable technical compatibility detail | Keep out of ordinary customer flow; explain only in support material. |
 | GA-GLOBAL-08 | Setup defaults include “Tech Guards Security” and “PatrolSafe Workspace”. | Cosmetic/customer-copy issue | Customer replaces values during setup; review before next technical release. |
 | GA-GLOBAL-09 | No definitive supported-country, sanctions, export-control, payment or tax matrix exists. | Legal/commercial blocker | Use “available in supported countries/regions”; legal/commercial approval must define launch scope. |
@@ -107,7 +107,7 @@ This is a factual product assessment, not a final legal determination:
 
 ## Legal/privacy gaps before publication
 
-- Phase 11E operator approval establishes the publication identity as Vesoft Services Limited, company number `08707130`, 241 Manningham Lane, Bradford, BD8 7ER, United Kingdom. Approved role contacts are recorded in the publication register; `privacy@sfour.co.uk` still requires operational mailbox confirmation. Any DPO or non-UK representative requirement remains for legal review.
+- Phase 11E/11G management approval establishes the publication identity as Vesoft Services Limited, company number `08707130`, 241 Manningham Lane, Bradford, BD8 7ER, United Kingdom. Approved role contacts are recorded in the publication register and all five mailbox creations are operator-confirmed. External legal review of any DPO or non-UK representative requirement was not performed.
 - No approved operational-data retention schedule or support-data retention schedule exists.
 - No approved launch-country/sanctions/export screening record exists.
 - No approved controller/processor position or customer data-processing agreement exists.

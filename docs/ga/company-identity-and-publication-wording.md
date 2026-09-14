@@ -23,7 +23,7 @@ Windows Authenticode must continue to identify **Vesoft Services Limited**. The 
 | Product support | `support@sfour.co.uk` | Mailbox created |
 | Security/vulnerability reports | `security@sfour.co.uk` | Mailbox created; no bug-bounty promise |
 | Legal notices | `legal@sfour.co.uk` | Mailbox created; counsel must approve formal-notice effect |
-| Privacy/data protection | `privacy@sfour.co.uk` | Approved address; delivery must be operationally confirmed before publication |
+| Privacy/data protection | `privacy@sfour.co.uk` | Mailbox creation operator-confirmed |
 
 ## International wording
 
@@ -47,7 +47,7 @@ Product support is available Monday–Friday, 09:00–17:00 UK local time, exclu
 
 > We aim to respond within 1–2 business days.
 
-This is a response target, not a service-level agreement. Do not claim guaranteed responses or 24/7 support. The approved corporate owners are Vesoft Services Limited / PatrolSafe support for product support and Vesoft Services Limited for security and privacy. A secure sensitive-file transfer provider remains **BUSINESS DECISION REQUIRED**.
+This is a response target, not a service-level agreement. Do not claim guaranteed responses or 24/7 support. The approved corporate owners are Vesoft Services Limited / PatrolSafe support for product support and Vesoft Services Limited for security and privacy. Sensitive support files use a Vesoft-controlled Microsoft OneDrive/SharePoint restricted workflow; unrestricted public links are prohibited.
 
 ## Commercial baseline
 
@@ -64,7 +64,7 @@ This is a response target, not a service-level agreement. Do not claim guarantee
 | Renewal | Manual annual renewal; not automatic |
 | International tax wording | “Applicable taxes may be added where required.” |
 
-The proposed principle that paid business licence fees are generally non-refundable after activation, except where applicable law requires otherwise, remains **LEGAL REVIEW REQUIRED** and is not final contract language.
+The proposed principle that paid business licence fees are generally non-refundable after activation, except where applicable law requires otherwise, has not received external legal review. Vesoft management accepts that unresolved risk for the controlled B2B pilot only.
 
 Customer recovery copy:
 
@@ -74,4 +74,4 @@ Customer recovery copy:
 
 > PatrolSafe v1.0 does not automatically delete evidence based on a retention period. Customers control evidence retention, evidence deletion, backup retention and their organisational retention policy. Uninstall removes application components but preserves customer data according to the certified product behavior.
 
-This does not claim automatic GDPR or privacy compliance. Vesoft-side licensing, support, security and submitted-data retention periods remain **BUSINESS DECISION REQUIRED** and **LEGAL REVIEW REQUIRED**.
+This does not claim automatic GDPR or privacy compliance. Vesoft-side licensing, support, security and submitted-data retention periods have not received external legal review; Vesoft management accepts that unresolved risk for the controlled B2B pilot and requires each support case to record receipt/access/deletion.

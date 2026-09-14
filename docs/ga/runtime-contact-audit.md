@@ -1,6 +1,6 @@
 # PatrolSafe v1.0.0 runtime contact audit
 
-Status: **TECHNICALLY RECONCILED — PRIVACY MAILBOX OPERATIONAL CONFIRMATION REQUIRED**
+Status: **TECHNICALLY RECONCILED — ALL FIVE MAILBOXES OPERATOR CONFIRMED**
 
 | File / surface | Approved value | Result |
 |---|---|---|
@@ -19,6 +19,6 @@ Approved role addresses:
 - Legal: `legal@sfour.co.uk`
 - Privacy: `privacy@sfour.co.uk`
 
-The operator states the general, support, security and legal mailboxes have been created. The privacy address is approved, but its mailbox/delivery has not been confirmed. No substitute privacy address is used.
+The operator confirms creation of the general, support, security, legal and privacy mailboxes. No substitute privacy address is used.
 
 A deterministic branding/contact contract checks the approved package metadata, asserts the customer runtime contains the canonical support contact, and rejects both legacy support domains. Remaining occurrences of legacy addresses are confined to historical audit evidence, not customer-facing runtime surfaces.

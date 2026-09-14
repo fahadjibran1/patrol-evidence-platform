@@ -1,14 +1,16 @@
-# DRAFT — REQUIRES LEGAL REVIEW
+# FUTURE EXTERNAL LEGAL REVIEW HANDOFF — REVIEW NOT PERFORMED
 
-# PatrolSafe v1.0.0 legal counsel handoff
+# PatrolSafe v1.0.0 legal-review handoff and unresolved-risk record
+
+Vesoft management has approved the frozen legal-document set for controlled B2B pilot use and explicitly accepted the unresolved risks. No solicitor, legal counsel or external reviewer approved this set. This pack remains ready for future external review before broader public/international scaling.
 
 ## Identity and approved business facts
 
 **PatrolSafe by S4**, version 1.0.0, is published by **Vesoft Services Limited**, Company No. **08707130**, 241 Manningham Lane, Bradford, BD8 7ER, United Kingdom.
 
-Approved contacts: `hello@sfour.co.uk`, `support@sfour.co.uk`, `security@sfour.co.uk`, `legal@sfour.co.uk`, and `privacy@sfour.co.uk`. The privacy address is approved but mailbox delivery has not yet been operationally confirmed.
+Approved contacts: `hello@sfour.co.uk`, `support@sfour.co.uk`, `security@sfour.co.uk`, `legal@sfour.co.uk`, and `privacy@sfour.co.uk`. Privacy-mailbox creation is operator-confirmed.
 
-Approved corporate ownership: release authority is Vesoft Services Limited / company director; product support is owned by Vesoft Services Limited / PatrolSafe support; security, privacy and licence recovery are owned by Vesoft Services Limited. A secure support-transfer provider has not yet been selected.
+Approved corporate ownership: release authority is Vesoft Services Limited / company director; product support is owned by Vesoft Services Limited / PatrolSafe support; security, privacy and licence recovery are owned by Vesoft Services Limited. Sensitive support transfers use a Vesoft-controlled Microsoft OneDrive/SharePoint restricted workflow with no unrestricted public links.
 
 Approved commercial baseline: 30-day trial; public catalogue limited to Annual subscription; £299 plus VAT where applicable per Windows workstation per year; one workstation per licence; manual annual renewal; support-assisted replacement recovery; GBP base currency; other-currency arrangements may be quoted manually where supported. Three-year and Lifetime validation remains only for previously issued/legacy compatibility. Refund wording is not approved.
 

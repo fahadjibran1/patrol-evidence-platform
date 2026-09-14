@@ -1,6 +1,6 @@
 # PatrolSafe v1.0.0 GA documentation pack
 
-Status: **GA PREPARATION — NOT APPROVED FOR PUBLICATION**
+Status: **MANAGEMENT APPROVED FOR CONTROLLED B2B PILOT — NOT UNRESTRICTED PUBLIC GA**
 
 Product: **PatrolSafe by S4**
 Publisher: **Vesoft Services Limited**
@@ -19,9 +19,9 @@ This directory is the controlled documentation set for the PatrolSafe v1.0.0 gen
 - [Release notes](release-notes-v1.0.0.md)
 - [Website/download page copy](website-download-page-copy.md)
 
-## Draft legal and privacy documents
+## Management-approved controlled-pilot legal and privacy documents
 
-Every document below is a draft and requires approval by Vesoft Services Limited and qualified legal counsel before use:
+The documents below are management-approved for the controlled B2B pilot, with external legal review explicitly not performed. Their unresolved risks are recorded internally; this is not counsel approval or unrestricted public-GA approval:
 
 - [Product privacy notice](privacy-notice-draft.md)
 - [Software licence terms](software-licence-terms-draft.md)
@@ -32,6 +32,7 @@ Every document below is a draft and requires approval by Vesoft Services Limited
 - [Controller/processor review matrix](controller-processor-matrix.md)
 - [Legal counsel review pack](legal-review-pack.md)
 - [Legal-review decision sheet](legal-review-decision-sheet.md)
+- [Management legal-risk acceptance](legal-risk-acceptance.md)
 
 ## Internal approval evidence
 
@@ -60,10 +61,9 @@ Every document below is a draft and requires approval by Vesoft Services Limited
 
 `GA-GLOBAL-01` is technically closed by Phase 11B: PatrolSafe now stores a validated IANA workspace time zone and uses it for operational dates, schedules, filtering, storage classification and customer display. Public GA nevertheless remains **NO-GO** until:
 
-1. `privacy@sfour.co.uk` is operationally confirmed and a secure support-transfer provider/process is approved;
-2. Vesoft's role, Privacy Notice, EULA, data-processing terms, retention schedule and other mandatory legal questions are approved by counsel;
-3. supported countries/regions and applicable sanctions/export controls are approved;
-4. third-party LGPL and special/compound findings are legally resolved, notices are approved, and the technically reconciled inventory is regenerated from the exact final signed dependency tree;
-5. the approved documents are versioned alongside the exact released signed installer and authorised for publication.
+1. a final signed pilot candidate is generated and verified;
+2. the technically reconciled third-party inventory/notices are regenerated from that exact signed dependency tree;
+3. source, documentation, installer, signature, inventory and approved customer/jurisdiction are bound in the final release association; and
+4. the Vesoft company director separately authorises controlled distribution.
 
-The Phase 11F frozen handoff is ready for external counsel once its hash manifest is generated. That readiness is not GA signing or publication approval.
+External legal review was not performed. Vesoft management accepted the recorded risks for Stage 1 and Stage 2 controlled B2B pilots only. Broader public/international scaling remains unapproved and external legal review is recommended before it.

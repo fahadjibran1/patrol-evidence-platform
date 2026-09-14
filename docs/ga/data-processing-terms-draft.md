@@ -1,8 +1,10 @@
-# DRAFT — REQUIRES LEGAL REVIEW
+# MANAGEMENT APPROVED FOR CONTROLLED PILOT USE WHERE APPLICABLE
+
+**External legal review has not been performed.** Vesoft management accepts the recorded DPA applicability and role risk for controlled B2B pilots; applicability must be considered for each pilot and processing scenario.
 
 # PatrolSafe support data-processing terms — drafting schedule
 
-This is an incomplete Article 28/service-provider drafting schedule. It does not create a data-processing agreement and must not be signed or published without qualified legal review. Its applicability depends on whether Vesoft Services Limited actually processes customer operational personal data on the customer's instructions.
+This schedule records the management-approved pilot position where Vesoft Services Limited processes customer operational personal data on documented customer instructions. It does not assert universal applicability or external legal sufficiency. Any executed pilot terms must identify the applicable processing, instructions, safeguards and parties.
 
 ## 1. Parties and roles
 

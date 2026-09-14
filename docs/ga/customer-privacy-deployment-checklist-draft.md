@@ -1,4 +1,6 @@
-# DRAFT — REQUIRES LEGAL REVIEW
+# MANAGEMENT APPROVED FOR PATROLSAFE v1.0 CONTROLLED PILOT
+
+**External legal review has not been performed.** This operational checklist is not legal advice or a compliance guarantee.
 
 # Customer privacy and responsible deployment checklist
 
@@ -38,7 +40,7 @@ This checklist helps a customer assess a PatrolSafe deployment. It is not legal 
 - [ ] Restrict remote access and never expose the local PatrolSafe API to a public network.
 - [ ] Treat WhatsApp LocalAuth, licence files, diagnostics and backups as sensitive.
 - [ ] Establish incident response, breach assessment and regulator/customer notification procedures.
-- [ ] Record Vesoft's product-security route (`security@sfour.co.uk`) and privacy route (`privacy@sfour.co.uk`); confirm the privacy mailbox is operational before relying on it.
+- [ ] Record Vesoft's product-security route (`security@sfour.co.uk`) and operator-confirmed privacy route (`privacy@sfour.co.uk`).
 - [ ] Use Vesoft's support-data minimisation order and an approved secure transfer method; do not email full backups, databases, WhatsApp profiles or evidence collections by default.
 - [ ] Record who may export support diagnostics and review them for identifiers, filenames and local paths before disclosure.
 

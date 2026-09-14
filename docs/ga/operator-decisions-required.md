@@ -1,6 +1,6 @@
 # PatrolSafe v1.0.0 operator decision record
 
-Status: **OPERATOR AND OPERATIONAL BASELINE APPROVED — REMAINING BUSINESS AND LEGAL ITEMS EXPLICIT**
+Status: **MANAGEMENT APPROVED FOR CONTROLLED B2B PILOT — EXTERNAL LEGAL REVIEW NOT PERFORMED**
 
 The decisions below were supplied by the operator for Phase 11E. `APPROVED` records that business decision only; it does not constitute legal approval or permission to sign or publish.
 
@@ -25,7 +25,7 @@ The decisions below were supplied by the operator for Phase 11E. `APPROVED` reco
 | Product support | `support@sfour.co.uk`; owner Vesoft Services Limited / PatrolSafe support | APPROVED | Follow support minimisation and escalation policy |
 | Security reports | `security@sfour.co.uk`; owner Vesoft Services Limited | APPROVED | Maintain restricted escalation access |
 | Legal notices | `legal@sfour.co.uk`; operator states mailbox created | APPROVED | Counsel confirms whether email is a valid formal-notice method |
-| Privacy contact | `privacy@sfour.co.uk`; owner Vesoft Services Limited | APPROVED ADDRESS — BUSINESS BLOCKER | Confirm mailbox exists and accepts delivery; do not substitute another address |
+| Privacy contact | `privacy@sfour.co.uk`; mailbox creation operator-confirmed; owner Vesoft Services Limited | APPROVED / CONFIRMED | Maintain monitored access; do not substitute another address |
 | Support availability | Monday–Friday, 09:00–17:00 UK local time, excluding UK public holidays | APPROVED | Staff within the approved corporate operating model |
 | Response target | “We aim to respond within 1–2 business days.” Not an SLA | APPROVED | Do not describe as guaranteed or 24/7 |
 | International position | Available internationally in supported countries and regions, subject to applicable law, sanctions/export restrictions, WhatsApp availability, Microsoft Windows availability and Vesoft commercial availability | APPROVED PRINCIPLE | Counsel approves launch-region scope and restrictions |
@@ -36,24 +36,25 @@ The decisions below were supplied by the operator for Phase 11E. `APPROVED` reco
 | Public catalogue | Annual only; Three-year and Lifetime are not offered through the normal customer request flow | APPROVED | Preserve validation of previously issued legacy licence types |
 | Public annual price | £299 plus VAT where applicable per workstation per year | APPROVED | Applicable taxes may be added where required |
 | Device allowance | One Windows workstation per licence | APPROVED | Transfer/recovery legal terms remain review |
-| Replacement workstation | Support-assisted licence recovery; authority Vesoft Services Limited | APPROVED | Follow `licence-recovery-procedure.md`; internal turnaround remains to be set |
+| Replacement workstation | Manual support-assisted licence recovery; authority Vesoft Services Limited; normally 1–2 business days during support hours, not an SLA | APPROVED | Follow `licence-recovery-procedure.md` |
 | Base currency | GBP | APPROVED | No automatic conversion claim |
 | Other currencies | May initially be quoted manually where commercially supported | APPROVED | Record quote/order currency |
 | Renewal | Manual annual renewal for v1; no automatic renewal | APPROVED | Contract notice/expiry effects remain legal review |
-| Refund principle | Generally non-refundable after activation except where required by applicable law | PROPOSED — LEGAL REVIEW REQUIRED | Counsel finalises or replaces wording |
+| Refund principle | Generally non-refundable after activation except where required by applicable law | MANAGEMENT RISK ACCEPTED FOR CONTROLLED PILOT | External legal review not performed; do not describe as legally resolved |
 | Customer evidence retention | No automatic retention deletion; customer controls evidence deletion, backup retention and organisational policy; uninstall preserves customer data | APPROVED PRODUCT POLICY | Legal/privacy wording remains review |
 | Rollout | Stage 1 internal; Stage 2 one to three friendly pilots; Stage 3 controlled public availability in approved markets; Stage 4 broader international rollout | APPROVED | Release authority is Vesoft Services Limited / company director |
 | Support-data minimisation | Description/screenshots, customer-safe diagnostics, support bundle, narrow files, exceptional full data | APPROVED | Follow `secure-support-data-transfer.md` |
-| Secure support-transfer provider | No provider approved | BUSINESS DECISION REQUIRED | Approve provider, contractual/privacy assessment, configuration and custodian before sensitive transfers |
+| Secure support-transfer method | Vesoft-controlled Microsoft OneDrive/SharePoint restricted workflow; no unrestricted public links | APPROVED | Follow `secure-support-data-transfer.md`; record recipients, access and deletion |
+| External legal review | Not performed | MANAGEMENT RISK ACCEPTED FOR CONTROLLED PILOT | Do not describe as counsel/solicitor/external approval |
+| Legal-document set | Current frozen Privacy Notice, EULA, DPA/role materials, privacy checklist and notices | MANAGEMENT APPROVED FOR CONTROLLED PILOT | Unresolved legal interpretations remain in `legal-risk-acceptance.md` |
+| Third-party licence interpretation | Technically inventoried; external legal review not performed | MANAGEMENT RISK ACCEPTED FOR CONTROLLED PILOT | Preserve all collected notices/texts; do not claim counsel approval |
 
-## Remaining non-legal operational decisions
+## Remaining release actions
 
-- Confirm that `privacy@sfour.co.uk` exists and accepts inbound mail.
-- Approve the secure file-transfer method for sensitive support material.
-- Set the internal licence-recovery turnaround and Vesoft-side support/licensing retention schedule.
-- Approve exact launch countries/regions after legal screening; pilots record each customer jurisdiction before sale.
-- Approve the final signed artifact association and publication action in a later phase.
+- Record and management-approve each pilot customer and jurisdiction before supply.
+- Complete the final signed pilot artifact, signature verification, dependency inventory reconciliation and immutable release association in a later phase.
+- Authorise each controlled distribution action; this decision does not authorise unrestricted public publication.
 
 ## Legal decisions not approved here
 
-Privacy Notice, EULA, DPA applicability, controller/processor roles, international transfers, sanctions/export controls, cancellation/refund terms, governing law, jurisdiction, liability, warranties, termination, retention duties, regional business/consumer law and third-party licence obligations remain **LEGAL REVIEW REQUIRED**.
+External legal review was not performed. Privacy Notice interpretation, EULA enforceability, DPA applicability, controller/processor roles, international transfers, sanctions/export controls, cancellation/refund terms, governing law, jurisdiction, liability, warranties, termination, retention duties, regional business/consumer law and third-party licence obligations remain unresolved legal-risk categories. Vesoft management accepts those risks only for the controlled B2B pilot described in `legal-risk-acceptance.md`.

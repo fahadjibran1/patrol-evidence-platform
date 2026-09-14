@@ -1,10 +1,10 @@
 # PatrolSafe v1.0.0 frozen legal-review snapshot
 
-Status: **FROZEN CANDIDATE SET — REQUIRES QUALIFIED LEGAL REVIEW**
+Status: **MANAGEMENT APPROVED FOR CONTROLLED PILOT — EXTERNAL LEGAL REVIEW NOT PERFORMED**
 
-Runtime/source basis: `8613fb9e4641ffe93b8d4631e601413acbdb7e1c`. This commit includes the reconciled role contacts and the Annual-only public customer catalogue while retaining legacy licence validation. No signed GA installer exists.
+Runtime code basis: `8613fb9e4641ffe93b8d4631e601413acbdb7e1c`. Unsigned package/inventory source HEAD: `2a1cf8621ad4496b3db05cb35719b68adcb2cc3b`. The later commits through the package source HEAD are documentation-only. The runtime basis includes the reconciled role contacts and Annual-only public customer catalogue while retaining legacy licence validation. No signed GA installer exists.
 
-This folder references, rather than duplicates, the controlled documents in `docs/ga`. Counsel must identify reviewed versions using [review-files.sha256](review-files.sha256). Any edit changes the hash and requires a new snapshot. The manifest is regenerated only after the complete Phase 11F handoff is frozen.
+This folder references, rather than duplicates, the controlled documents in `docs/ga`. Vesoft management accepts exactly the versions identified by [review-files.sha256](review-files.sha256) for controlled B2B pilot use. Any edit changes the hash and requires a new management decision. A future external reviewer must identify reviewed versions using the same hashes.
 
 ## Review set
 

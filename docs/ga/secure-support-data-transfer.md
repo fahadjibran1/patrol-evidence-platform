@@ -1,6 +1,6 @@
 # PatrolSafe v1.0.0 secure support-data transfer policy
 
-Status: **APPROVED DATA-MINIMISATION POLICY — SECURE TRANSFER PROVIDER BUSINESS DECISION REQUIRED**
+Status: **APPROVED FOR PATROLSAFE v1.0 CONTROLLED PILOT OPERATIONS**
 
 Normal support must diagnose issues with the least customer data reasonably necessary. A full database, WhatsApp profile, complete backup or patrol-image collection must not be routinely requested.
 
@@ -20,14 +20,15 @@ Where files are genuinely required, Vesoft must:
 
 - tell the customer exactly what is requested and why;
 - collect only the minimum necessary information;
-- use a Vesoft-approved secure transfer method rather than ordinary email attachments for full backups or other sensitive bundles;
+- use a Vesoft-controlled Microsoft OneDrive/SharePoint restricted transfer workflow rather than ordinary email attachments for full backups or other sensitive bundles;
+- grant access only to the intended customer contact and assigned Vesoft personnel; never use unrestricted public sharing links;
 - restrict access to assigned support/security personnel;
 - record receipt, case, purpose, custodian and deletion due date;
 - protect data in transit and at rest;
 - delete the support copy according to the approved support-retention procedure and record deletion; and
 - use the incident route if data is received unexpectedly, excessively or insecurely.
 
-No cloud-transfer provider is approved by this document. Provider selection, contractual/data-processing assessment, transfer location, access controls, retention/deletion configuration and operating owner remain **BUSINESS DECISION REQUIRED** and, where personal data is involved, **LEGAL REVIEW REQUIRED**.
+The approved v1 operational method is a Vesoft-controlled Microsoft OneDrive/SharePoint restricted transfer workflow. The case owner must verify recipients, restrict access, set an appropriate expiry where available, prevent unrestricted public sharing, record the transfer and remove the support copy when the approved case-retention period ends. External legal review of provider terms, international transfers, retention and processor/controller implications has not been performed; Vesoft management has accepted that risk only for the controlled B2B pilot.
 
 ## Routing
 

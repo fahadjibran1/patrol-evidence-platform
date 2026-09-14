@@ -1,8 +1,8 @@
 # PatrolSafe v1.0.0 legal-review decision sheet
 
-Status: **DRAFT — REQUIRES QUALIFIED LEGAL REVIEW**
+Status: **EXTERNAL LEGAL REVIEW NOT PERFORMED — AVAILABLE FOR FUTURE REVIEW**
 
-Counsel should complete the final two columns and identify every reviewed file by the SHA-256 values in `legal-review/review-files.sha256`.
+The final two columns remain blank because external legal review was not performed. A future reviewer should complete them and identify every reviewed file by the SHA-256 values in `legal-review/review-files.sha256`. Vesoft management risk acceptance is recorded separately and is not a legal answer to these questions.
 
 | # | QUESTION | WHY REQUIRED | CURRENT PROPOSED WORDING / POSITION | COUNSEL DECISION | CHANGES REQUIRED |
 |---:|---|---|---|---|---|

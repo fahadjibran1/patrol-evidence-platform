@@ -6,7 +6,7 @@ PatrolSafe v1.0 has no certified remote kill-switch and no assumed automatic-upd
 
 ## Authority and trigger
 
-The named release owner **[TO BE CONFIRMED]** may pause distribution immediately for a suspected Blocker, signature/supply-chain issue, serious privacy/security incident, unlawful-region distribution or material third-party licence issue. Legal, security and customer-communication owners must be identified in the operator decision record.
+The Vesoft Services Limited company director acting as release authority may pause distribution immediately for a suspected Blocker, signature/supply-chain issue, serious privacy/security incident, unlawful-region distribution or material third-party licence issue. The acting authorised person must be recorded for each pilot release.
 
 ## Immediate containment
 
@@ -35,12 +35,12 @@ Identify affected customers from lawful distribution/licensing/support records. 
 - approved support/security contact and next update time;
 - replacement or recovery steps once certified.
 
-Notification templates, jurisdictions and deadlines are **REQUIRES LEGAL REVIEW**.
+Notification templates, jurisdictions and deadlines have not received external legal review. Vesoft management accepts that unresolved risk for controlled B2B pilots and must assess each incident/customer jurisdiction before communication.
 
 ## Licence and support continuity
 
 - Preserve valid customer entitlement records and do not require a new purchase because a Vesoft release was withdrawn.
-- Define how trial expiry and licence recovery will be handled during an extended pause **[BUSINESS DECISION REQUIRED]**.
+- Handle trial expiry and licence recovery through the approved manual `licence-recovery-procedure.md`; exceptional decisions remain with Vesoft release authority.
 - Maintain a staffed support route for affected customers.
 - Accept diagnostics/evidence only through the approved minimum-data and secure-transfer process.
 - Record replacement licence files/installation identities without exposing them publicly.

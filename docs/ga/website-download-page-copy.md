@@ -1,8 +1,10 @@
 # PatrolSafe v1.0.0 website/download page copy
 
-Status: **PUBLICATION-READY COPY STRUCTURE — BUSINESS AND LEGAL APPROVAL REQUIRED**
+Status: **MANAGEMENT APPROVED FOR CONTROLLED B2B PILOT — PUBLIC DOWNLOAD DISABLED**
 
 This is copy only. It does not authorise a website, public download or release.
+
+The approved initial scope is a controlled B2B pilot for customers and jurisdictions individually approved by Vesoft. The download remains disabled for unrestricted public access.
 
 ## Hero
 
@@ -118,7 +120,7 @@ Support hours are Monday–Friday, 09:00–17:00 UK local time, excluding UK pub
 - [Known Issues](known-issues-v1.0.0.md)
 - `[LINK: Approved Third-Party Notices]`
 
-Privacy enquiries: **privacy@sfour.co.uk** **[mailbox delivery must be operationally confirmed before publication]**<br>
+Privacy enquiries: **privacy@sfour.co.uk**<br>
 Security reports: **security@sfour.co.uk**<br>
 Legal notices: **legal@sfour.co.uk**
 

@@ -1,6 +1,6 @@
 # PatrolSafe v1.0.0 controlled first-customer rollout plan
 
-Status: **GA PREPARATION — REQUIRES BUSINESS, SUPPORT, SECURITY AND LEGAL APPROVAL**
+Status: **MANAGEMENT APPROVED FOR STAGE 1 AND STAGE 2 CONTROLLED B2B PILOT**
 
 This plan assumes one immutable, verified installer per approved release and no unimplemented auto-update or remote kill-switch capability.
 
@@ -13,7 +13,7 @@ This plan assumes one immutable, verified installer per approved release and no 
 | Customer support owner | Vesoft Services Limited / PatrolSafe support | APPROVED |
 | Security incident owner | Vesoft Services Limited | APPROVED |
 | Commercial approval authority | Vesoft Services Limited / company director | APPROVED |
-| Legal/privacy approval owner | `[blank]` | LEGAL REVIEW REQUIRED |
+| Legal/privacy risk authority | Vesoft Services Limited / company director | MANAGEMENT RISK ACCEPTED FOR CONTROLLED PILOT; external legal review not performed |
 
 Stage progression, download withdrawal and customer notification require the approved corporate release authority. The acting authorised person must be recorded in each release/stage record; no individual is invented from repository authorship.
 
