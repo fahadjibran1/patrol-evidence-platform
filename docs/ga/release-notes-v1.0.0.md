@@ -30,8 +30,12 @@ Verify the published SHA-256 and a valid Windows digital signature from Vesoft S
 
 PatrolSafe v1.0 is designed for international operation in supported countries and regions. The v1.0 interface and support documentation are currently provided in English.
 
+An eligible installation can use a 30-day trial. The published annual licence is £299 plus VAT where applicable for one Windows workstation, with manual annual renewal and support-assisted replacement-workstation recovery. Other-currency arrangements may be quoted manually where commercially supported; no automatic currency conversion is claimed.
+
 ## Requirements and limitations
 
 Live collection requires Microsoft Edge, an authorised eligible WhatsApp account and reliable internet access to WhatsApp Web. Each v1 workspace uses one customer-selected time zone for all sites. See [Known issues](known-issues-v1.0.0.md), [Quick Start](quick-start.md) and [Support and international availability](support-and-availability.md).
 
 These release notes do not authorise a download. Publish them only with the exact approved signed installer, hash, legal documents, support route and supported-country/region scope.
+
+Product support: **support@sfour.co.uk**. General enquiries: **hello@sfour.co.uk**.

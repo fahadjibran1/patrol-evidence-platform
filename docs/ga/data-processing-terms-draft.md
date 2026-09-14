@@ -7,7 +7,7 @@ This is an incomplete Article 28/service-provider drafting schedule. It does not
 ## 1. Parties and roles
 
 - Customer/controller: **[legal name, address and registration]**
-- Vesoft/processor: Vesoft Services Limited, company 08707130, 241 Manningham Lane, Office 1a, Bradford, England, BD8 7ER **[confirm]**
+- Vesoft/proposed processor where applicable: Vesoft Services Limited, company 08707130, 241 Manningham Lane, Bradford, BD8 7ER, United Kingdom; privacy contact `privacy@sfour.co.uk`
 - Services: **[precise support/remote-access services]**
 - Effective date and duration: **[TO BE COMPLETED]**
 
@@ -52,7 +52,7 @@ The signed terms must address:
 - Separate case workspace; no production/development reuse or training use.
 - Malware scanning and integrity checks appropriate to submitted files.
 - Defined deletion deadline and customer confirmation.
-- Incident escalation to **[security contact]** within **[contractually approved period]**.
+- Incident escalation to **security@sfour.co.uk** within **[contractually approved period]**.
 - Subprocessors and storage countries: **[LIST REQUIRED]**.
 - Technical and organisational measures: **[ANNEX REQUIRED]**.
 

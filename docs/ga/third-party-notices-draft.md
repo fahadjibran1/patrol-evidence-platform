@@ -11,7 +11,7 @@ This register explains the technical evidence behind the generated customer noti
 - notice bundle: **241 unique texts** (238 direct packaged-dependency texts plus three supplemental Electron/Squirrel texts);
 - shipped packages with missing licence metadata: **0**;
 - exact inventory SHA-256: `DC45DBF4BC2C5D463597FCC536DACAC6C49A41B74378B2D5436FCB7DB8D2E963`;
-- draft notice bundle SHA-256: `B7FDD1EF9C8543B326681FC99B7C102C3665F2ECEC1B32CD3828418D5A4B0C17`.
+- draft notice bundle SHA-256: `ED480D05C3164C8D41F28207443DBC96FF79A7E0105709AECAA73442D4B0F371`.
 
 The distributable draft is [THIRD_PARTY_NOTICES_DRAFT.txt](THIRD_PARTY_NOTICES_DRAFT.txt). The [technical audit](third-party-technical-audit.md), exact [packaged inventory](generated/third-party-production-dependencies.csv), [repository inventory](generated/repository-production-dependencies.csv), and [reconciliation](generated/third-party-reconciliation.csv) provide traceability.
 

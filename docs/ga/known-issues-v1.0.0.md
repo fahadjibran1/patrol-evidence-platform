@@ -27,4 +27,4 @@ Some compatibility filenames and AppData/install paths retain “Patrol Evidence
 
 ## Reporting an issue
 
-Approved support contact and secure disclosure method: **[TO BE CONFIRMED BEFORE PUBLICATION]**.
+Product support: **support@sfour.co.uk**. Security or vulnerability reports: **security@sfour.co.uk**. Contact support before sending diagnostics; do not email evidence, backups, databases, passwords or WhatsApp session material.

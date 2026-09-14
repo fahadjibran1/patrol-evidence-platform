@@ -1,6 +1,6 @@
 # PatrolSafe v1.0 — Support and international availability
 
-Status: **CUSTOMER DRAFT — CONTACTS AND SERVICE LEVEL REQUIRE APPROVAL**
+Status: **CUSTOMER COPY — LEGAL COUNTRY-SCOPE REVIEW REQUIRED**
 
 ## Availability statement
 
@@ -43,9 +43,17 @@ The application installer is about 202 MB; the installed app binary is about 223
 3. If requested, deliberately open **Advanced diagnostics** and disclose only the minimum required information.
 4. Use the approved secure support channel.
 
-Approved support email/channel: **[TO BE CONFIRMED]**. The code currently contains both `support@techguardsecurity.com` and `support@techguards.co.uk`; neither is approved by this document.
+Product support: **support@sfour.co.uk**<br>
+General enquiries: **hello@sfour.co.uk**<br>
+Security or vulnerability reports: **security@sfour.co.uk**<br>
+Privacy and data-protection enquiries: **privacy@sfour.co.uk**<br>
+Legal notices: **legal@sfour.co.uk**
 
-Support hours, languages, response targets, supported-version period, update entitlement, severity definitions and escalation route: **[TO BE CONFIRMED]**. No SLA is promised by this draft.
+Support is available Monday–Friday, 09:00–17:00 UK local time, excluding UK public holidays. We aim to respond within 1–2 business days. This response target is not a service-level agreement and is not guaranteed. PatrolSafe v1.0 support is currently provided in English.
+
+Do not send evidence, databases, backups, passwords or WhatsApp session material by ordinary email. Contact support first and use only a secure transfer method specifically approved for the case.
+
+Responsible security reports should describe the affected version, observed behavior, reproduction conditions and potential impact without accessing customer data or disrupting service. Vesoft does not currently offer a bug bounty or promise payment for reports.
 
 ## Service dependencies
 

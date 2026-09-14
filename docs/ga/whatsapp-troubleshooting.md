@@ -62,4 +62,4 @@ Normal production monitoring processes new mapped arrivals. Do not enable histor
 
 Record the local time, action taken, customer-visible state, whether QR/phone interaction occurred, and whether Monitoring was Active or Paused. From **Settings → Support**, copy only the requested diagnostics. Review them for account/source IDs, phone numbers, filenames and local paths before sending.
 
-Approved Vesoft support contact and secure transfer channel: **[TO BE CONFIRMED BEFORE PUBLICATION]**.
+Contact **support@sfour.co.uk**. Do not attach evidence, databases, backups, passwords or WhatsApp session material to ordinary email. Vesoft will provide a case-specific secure route if such material is strictly necessary.

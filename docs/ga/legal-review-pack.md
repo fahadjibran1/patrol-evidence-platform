@@ -1,89 +1,46 @@
 # DRAFT — REQUIRES LEGAL REVIEW
 
-# PatrolSafe v1.0.0 legal counsel review pack
+# PatrolSafe v1.0.0 legal counsel handoff
 
-This index presents only publication decisions requiring qualified legal review. Product history and internal remediation detail are intentionally excluded.
+## Identity and approved business facts
 
-## Product facts counsel may rely on provisionally
+**PatrolSafe by S4**, version 1.0.0, is published by **Vesoft Services Limited**, Company No. **08707130**, 241 Manningham Lane, Bradford, BD8 7ER, United Kingdom.
 
-- Product: PatrolSafe by S4, version 1.0.0; publisher: Vesoft Services Limited.
-- Windows 11 x64 local-first desktop application; Microsoft Edge and WhatsApp Web are operational dependencies.
-- Customer configures a local workspace, administrator, time zone, sites, WhatsApp group mappings, monitoring, evidence storage and backups.
-- The audited app does not automatically upload the local operational database/evidence to Vesoft, and no Vesoft telemetry/cloud-backup client was found.
-- WhatsApp/Meta and Microsoft have independent service/runtime data flows.
-- Vesoft may receive deliberately submitted licensing, commercial or support data; operational data may be received during authorised support.
-- The product has no automatic evidence-retention/whole-workspace deletion workflow; uninstall preserves customer data.
-- A 30-day technical trial and workstation-bound offline licence request/import exist. Commercial offer terms are not yet approved.
-- International operational time is supported through a saved IANA workspace time zone. v1 is currently provided in English.
+Approved contacts: `hello@sfour.co.uk`, `support@sfour.co.uk`, `security@sfour.co.uk`, `legal@sfour.co.uk`, and `privacy@sfour.co.uk`. The privacy address is approved but mailbox delivery has not yet been operationally confirmed.
 
-These are engineering findings, not assurances of legal compliance or contractual commitments.
+Approved commercial baseline: 30-day trial; public catalogue limited to Annual subscription; £299 plus VAT where applicable per Windows workstation per year; one workstation per licence; manual annual renewal; support-assisted replacement recovery; GBP base currency; other-currency arrangements may be quoted manually where supported. Three-year and Lifetime validation remains only for previously issued/legacy compatibility. Refund wording is not approved.
 
-## Documents for approval
+PatrolSafe is a local-first Windows 11 x64 product. The operational database/evidence is not automatically uploaded to Vesoft. WhatsApp/Meta and Microsoft remain independent dependencies. Vesoft may receive licensing, commercial, support or deliberately submitted operational data. v1 is English-only and supports an explicit workspace time zone.
 
-1. [Privacy Notice draft](privacy-notice-draft.md)
-2. [Software Licence Terms draft](software-licence-terms-draft.md)
-3. [Support Data-Processing Terms draft](data-processing-terms-draft.md)
-4. [Phase 11B data-flow inventory](phase11b-data-flow-inventory.md)
-5. [Controller/processor matrix](controller-processor-matrix.md)
-6. [International availability, identity and retention wording](company-identity-and-publication-wording.md)
-7. [Third-party notices draft](third-party-notices-draft.md)
-8. [Third-party technical audit](third-party-technical-audit.md)
-9. [Customer privacy deployment checklist](customer-privacy-deployment-checklist-draft.md)
-10. [Support and availability draft](support-and-availability.md)
-11. [Website/download copy](website-download-page-copy.md)
-12. [Publication approval register](publication-approval-register.md)
+## Decisions requested from counsel
 
-## Questions requiring counsel's written decision
+1. **Privacy Notice:** approve/redline the factual draft, lawful bases, transparency duties, rights, complaint routes and regional supplements.
+2. **Controller/processor roles:** decide Vesoft/customer/Meta/Microsoft roles for licensing, support and operational-data scenarios.
+3. **DPA applicability:** decide whether the DPA is conditional, universal, or required only when Vesoft processes operational personal data on customer instructions.
+4. **UK GDPR and international positioning:** approve UK GDPR/DPA 2018 treatment and any non-UK privacy qualification without claiming global compliance.
+5. **International transfers:** identify actual restricted-transfer scenarios, suppliers, safeguards, subprocessors and customer disclosures.
+6. **Sanctions/export wording:** approve supported-country decision process, screening responsibility and contract/public wording.
+7. **EULA:** approve/redline licence grant, trial, device limit, manual renewal, support-assisted recovery, data ownership, third-party dependencies and order precedence.
+8. **Governing law/jurisdiction:** supply governing law, courts/arbitration, notice method, language priority and regional overrides.
+9. **Liability/warranties:** supply warranty, remedy, disclaimer, cap, carve-outs, indemnities and non-excludable-rights language.
+10. **Refund/cancellation:** approve or replace the proposed generally-non-refundable-after-activation principle and define cancellation/expiry effects.
+11. **LGPL/third-party obligations:** decide the two LGPL and four special/compound records, notice/source/relinking obligations and distribution location.
+12. **Regional business/consumer law:** determine launch scope, whether business-only restrictions are effective, and required mandatory local terms.
+13. **Retention/deletion:** approve customer wording and define Vesoft retention/deletion periods for enquiries, licensing, orders, support, security and submitted data.
 
-### Identity, territory and contracting
+## Review documents
 
-- Verify company number, registered office, legal-notice method and any trading/support address.
-- Approve business-only customer scope, contract formation/acceptance, order of precedence and electronic contracting.
-- Approve launch countries/regions after sanctions, export-control, service availability and local-law review.
-- Approve the international-availability wording and any regional limitations or supplements.
-- Decide governing law, courts/arbitration, notices, mandatory local provisions and language priority.
+- [Privacy Notice draft](privacy-notice-draft.md)
+- [Software Licence Terms draft](software-licence-terms-draft.md)
+- [Support Data-Processing Terms draft](data-processing-terms-draft.md)
+- [Controller/processor matrix](controller-processor-matrix.md)
+- [Data-flow inventory](phase11b-data-flow-inventory.md)
+- [Customer privacy deployment checklist](customer-privacy-deployment-checklist-draft.md)
+- [Company, availability, commercial and retention wording](company-identity-and-publication-wording.md)
+- [Third-party counsel record](third-party-legal-review-record.md)
+- [Generated third-party notices draft](THIRD_PARTY_NOTICES_DRAFT.txt)
+- [Publication approval register](publication-approval-register.md)
 
-### Privacy and data protection
+## Required return
 
-- Confirm Vesoft/customer/Meta/Microsoft roles by processing activity and contract.
-- Approve lawful bases, legitimate-interest assessments, DPIA requirements, employment monitoring, communications secrecy, special-category/criminal data and local surveillance rules.
-- Approve privacy, legal, security and rights-request contacts and regulator/representative information.
-- Identify actual Vesoft/licensing/support/payment/website providers, subprocessors, purposes, countries, transfers and safeguards.
-- Approve Vesoft retention periods and the process for customer-submitted operational data, support records and security records.
-- Confirm breach/security notification duties, timelines and customer/regulator coordination.
-- Confirm website privacy/cookie/e-commerce work separately once the public stack is selected.
-
-### DPA applicability
-
-Ordinary local operation does not automatically give Vesoft access to operational data. Determine whether the DPA should:
-
-- apply only where Vesoft receives/accesses operational personal data on documented customer instructions;
-- be a conditional schedule incorporated into every business contract but activated only for processor services; or
-- use another approved structure.
-
-Define controller versus processor purposes within a support case, subprocessors, transfer modules, security annex, audit/assistance, deletion/return and incident duties. Do not assume one UK/EU form is globally sufficient.
-
-### Licence/commercial terms
-
-- Approve licence grant, plans/terms, trial restrictions, workstation/device limits, transfer/recovery, support/update entitlement and termination effects.
-- Approve fees/taxes/payment/cancellation/renewal/refund framework and non-excludable regional customer rights.
-- Draft warranties, disclaimers, remedies, liability cap/carve-outs, indemnities, confidentiality and IP/feedback terms.
-- Verify WhatsApp/Meta and Microsoft dependency, affiliation and trademark wording.
-- Ensure locally retained customer data and post-termination access wording match product behavior.
-
-### Third-party software
-
-- Resolve LGPL findings for `node-webpmux` and Sharp/libvips and four compound/special licence expressions. Release engineering has removed the prior false/generated payloads and resolved the private internal-package metadata gap; the exact final signed package must still be reconciled.
-- Approve the exact notices, attributions, source/relinking offers or other obligations and their delivery location.
-- Review Electron/Chromium/Node, Squirrel/Forge, native libraries, assets, icon, cached WhatsApp compatibility material and marks.
-- Require final reconciliation against the exact signed GA installer and hash.
-
-### Customer deployment and claims
-
-- Approve the privacy deployment checklist and whether acknowledgement is contractually required.
-- Validate claims that PatrolSafe is not an emergency/alarm service and does not guarantee patrol completion, legal admissibility, compliance or uninterrupted third-party availability.
-- Approve retention, backup, secure-erasure, replacement-machine relink/licence recovery and customer-responsibility wording.
-
-## Required counsel output
-
-Return redlined/final documents, an approved company/contact block, approved country/region scope, approved provider/subprocessor/transfer information, a third-party-notices determination, any required regional schedules, and a signed/dated legal approval record tied to the document revision. Unanswered brackets remain publication blockers.
+Return redlined/final documents, answers to the thirteen questions, approved country/region scope, approved provider/subprocessor/transfer details, approved third-party treatment, and a dated approval tied to the exact reviewed-document hashes. This handoff does not authorise signing or publication.

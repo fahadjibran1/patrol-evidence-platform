@@ -1,59 +1,58 @@
-# PatrolSafe v1.0.0 operator decisions required
+# PatrolSafe v1.0.0 operator decision record
 
-Status: **ACTION REQUIRED — COMPLETE AND APPROVE BEFORE GA SIGNING OR PUBLICATION**
+Status: **OPERATOR BASELINE APPROVED — REMAINING BUSINESS OPERATIONS AND LEGAL ITEMS EXPLICIT**
 
-Recommendations are not approvals. Record the final value, approver and date in the approval column. Legal-review items require qualified counsel and cannot be approved through this operator register alone.
+The decisions below were supplied by the operator for Phase 11E. `APPROVED` records that business decision only; it does not constitute legal approval or permission to sign or publish.
 
-## Canonical company identity block
-
-Use this block only after every bracketed value is explicitly approved:
+## Canonical publication identity
 
 > **PatrolSafe by S4**<br>
-> Published by **Vesoft Services Limited**, a company established in the United Kingdom.<br>
-> Company number: **[COMPANY_NUMBER — candidate 08707130; not approved]**<br>
-> Registered office: **[REGISTERED_OFFICE — not approved]**<br>
-> Trading/support address: **[TRADING_SUPPORT_ADDRESS or “not published” — not approved]**<br>
-> Support: **[SUPPORT_EMAIL]**<br>
-> Privacy: **[PRIVACY_EMAIL]**<br>
-> Security reports: **[SECURITY_EMAIL]**<br>
-> Legal notices: **[LEGAL_EMAIL]**
+> Patrol evidence. Automatically organised.<br>
+> Published by **Vesoft Services Limited**<br>
+> Company No. **08707130**<br>
+> 241 Manningham Lane<br>
+> Bradford<br>
+> BD8 7ER<br>
+> United Kingdom
 
-No address or mailbox is approved by this template.
+## Decisions
 
-## Actionable decision table
-
-| QUESTION | CURRENT STATE | RECOMMENDED DEFAULT | OPERATOR APPROVAL REQUIRED |
+| QUESTION | APPROVED VALUE / CURRENT STATE | STATUS | REMAINING ACTION |
 |---|---|---|---|
-| Confirm company number | Candidate `08707130`; not approved | Verify against the current official company record immediately before approval | Final number, approver, date: **[blank]** |
-| Confirm registered office | A previously researched address exists in drafts but is not approved | Company secretary/legal supplies the exact publishable address | Final address, approver, date: **[blank]** |
-| Publish a trading/support address? | None approved | Publish none unless Vesoft has a monitored service address | Final value, approver, date: **[blank]** |
-| Approve customer support email | Runtime currently contains two inconsistent legacy addresses | One monitored Vesoft-controlled mailbox: `SUPPORT_EMAIL` | Address, owner, approver, date: **[blank]** |
-| Approve privacy contact | No approved value | Dedicated monitored route: `PRIVACY_EMAIL` | Address, owner, approver, date: **[blank]** |
-| Approve vulnerability contact | No approved value | Monitored route plus a secure method for sensitive files: `SECURITY_EMAIL` | Address/secure route, owner, approver, date: **[blank]** |
-| Approve legal-notices contact | No approved value | Counsel-approved formal-notice route: `LEGAL_EMAIL` | Address/method, approver, date: **[blank]** |
-| Approve support days and hours | No published policy | Monday–Friday, 09:00–17:00 Europe/London (UK local time), excluding UK public holidays | Final schedule, approver, date: **[blank]** |
-| Approve support response target | No SLA or target approved | “We aim to respond within 1–2 business days.” Treat as a target, not an SLA | Wording, owner, approver, date: **[blank]** |
-| Approve support escalation and vulnerability route | No named operational owners | Name primary/deputy support, release and security owners; define emergency escalation | Owners/routes, approver, date: **[blank]** |
-| Approve international launch wording | Draft is technically accurate; country scope and legal review remain open | “PatrolSafe is available internationally in supported countries and regions, subject to applicable law, sanctions/export restrictions, WhatsApp availability, Microsoft Windows availability, and Vesoft commercial availability.” | Wording/scope, approver, date: **[blank]** |
-| Approve v1 language scope | Product and docs are English-only | “PatrolSafe v1.0 is currently provided in English.” | Approver, date: **[blank]** |
-| Approve initial certified platform | Windows 11 Pro 25H2 x64 passed UAT; other platforms are not certified | Windows 11 x64 initial certified platform; Microsoft Edge and reliable internet required | Approver, date: **[blank]** |
-| Approve trial offer | Runtime provides an eligible 30-day trial | 30-day evaluation trial, subject to approved terms | Eligibility/terms, approver, date: **[blank]** |
-| Approve licence model | Runtime supports signed workstation-bound entitlements; catalogue not approved | Annual subscription | Final model, approver, date: **[blank]** |
-| Approve device allowance | Entitlement binds to an installation identity; commercial allowance undefined | One Windows workstation per licence | Allowance, approver, date: **[blank]** |
-| Approve replacement-device recovery | Support-assisted technical recovery is required | Support-assisted verification and licence recovery for a replacement workstation | Process/limits/owner, approver, date: **[blank]** |
-| Approve renewal and automatic renewal | No complete billing/renewal policy or live desktop payment flow | Annual renewal; **no automatic renewal unless the actual billing system supports and discloses it** | Final policy, approver, date: **[blank]** |
-| Set annual price | No price approved or displayed by the desktop | **[No recommendation; finance/commercial decision]** | Annual price: **[blank]** |
-| Approve base and other currencies | Desktop has no currency or payment flow | GBP for initial launch; other currencies quoted manually or introduced through future regional pricing | Base/accepted currencies, approver, date: **[blank]** |
-| Approve tax wording | Desktop does not calculate tax | “Applicable taxes may be added where required.” Do not present UK VAT as a worldwide rule | Seller of record/tax process, approver, date: **[blank]** |
-| Approve cancellation notice | No policy approved | Counsel drafts a clear B2B notice period preserving mandatory local rights | Notice period: **[blank]** — **LEGAL REVIEW REQUIRED** |
-| Approve refund policy | No policy approved | Business software licence fees generally non-refundable after activation, except where required by applicable law | Final policy: **[blank]** — **LEGAL REVIEW REQUIRED** |
-| Confirm customer evidence-retention policy | Product has no automatic retention deletion | Confirm that customers control evidence deletion, retention and backup retention and must apply their own workplace/privacy policy | Confirm/exception, approver, date: **[blank]** |
-| Approve Vesoft-side retention | Licensing, sales, support and submitted-diagnostic periods are undefined | Purpose-based periods; minimise operational data and delete case-specific copies promptly | Schedule/owner, approver, date: **[blank]** — **LEGAL REVIEW REQUIRED** |
-| Approve staged rollout | Rollout plan drafted; no owner/cohort authorised | Stage 1 Vesoft-controlled deployment; Stage 2 one to three friendly pilots; Stage 3 controlled public availability; Stage 4 broader international rollout | Cohort/caps/owner/deputy, approver, date: **[blank]** |
-| Approve rollback authority | Plan exists; no named authority | Name primary/deputy able to stop downloads, notify customers and commission a replacement signed build | Owners, approver, date: **[blank]** |
-| Approve third-party notice placement | Exact unsigned-package inventory and draft bundle are technically complete | Counsel approves obligations and location; release engineering reruns against exact signed GA package | Legal decision/placement, approver, date: **[blank]** |
-| Approve final immutable release association | No final signed GA installer exists | One approval record binding source commit, docs commit, build ID, installer hash, signature and inventory hash | Final release officer/date: **[blank]** |
+| Product and publisher | PatrolSafe by S4 v1.0.0; Vesoft Services Limited; approved tagline and identity block above | APPROVED | Preserve exact wording |
+| General enquiries | `hello@sfour.co.uk`; operator states mailbox created | APPROVED | Verify monitored owner before publication |
+| Product support | `support@sfour.co.uk`; operator states mailbox created | APPROVED | Verify monitored owner before publication |
+| Security reports | `security@sfour.co.uk`; operator states mailbox created | APPROVED | Verify monitored owner and secure escalation process |
+| Legal notices | `legal@sfour.co.uk`; operator states mailbox created | APPROVED | Counsel confirms whether email is a valid formal-notice method |
+| Privacy contact | `privacy@sfour.co.uk` | APPROVED ADDRESS — OPERATIONAL CONFIRMATION REQUIRED | Confirm mailbox exists and accepts delivery; do not substitute another address |
+| Support availability | Monday–Friday, 09:00–17:00 UK local time, excluding UK public holidays | APPROVED | Assign staff/owner |
+| Response target | “We aim to respond within 1–2 business days.” Not an SLA | APPROVED | Do not describe as guaranteed or 24/7 |
+| International position | Available internationally in supported countries and regions, subject to applicable law, sanctions/export restrictions, WhatsApp availability, Microsoft Windows availability and Vesoft commercial availability | APPROVED PRINCIPLE | Counsel approves launch-region scope and restrictions |
+| Language | English-only v1.0 | APPROVED | Do not claim translations |
+| Initial platform | Windows 11 x64 | APPROVED | Do not claim uncertified platforms |
+| Trial | 30 days | APPROVED | Trial contract terms remain legal review |
+| Licence model | Annual subscription | APPROVED | Legal terms/order wording remain review |
+| Public catalogue | Annual only; Three-year and Lifetime are not offered through the normal customer request flow | APPROVED | Preserve validation of previously issued legacy licence types |
+| Public annual price | £299 plus VAT where applicable per workstation per year | APPROVED | Applicable taxes may be added where required |
+| Device allowance | One Windows workstation per licence | APPROVED | Transfer/recovery legal terms remain review |
+| Replacement workstation | Support-assisted licence recovery | APPROVED | Define operational verification procedure |
+| Base currency | GBP | APPROVED | No automatic conversion claim |
+| Other currencies | May initially be quoted manually where commercially supported | APPROVED | Record quote/order currency |
+| Renewal | Manual annual renewal for v1; no automatic renewal | APPROVED | Contract notice/expiry effects remain legal review |
+| Refund principle | Generally non-refundable after activation except where required by applicable law | PROPOSED — LEGAL REVIEW REQUIRED | Counsel finalises or replaces wording |
+| Customer evidence retention | No automatic retention deletion; customer controls evidence deletion, backup retention and organisational policy; uninstall preserves customer data | APPROVED PRODUCT POLICY | Legal/privacy wording remains review |
+| Rollout | Stage 1 internal; Stage 2 one to three friendly pilots; Stage 3 controlled public availability; Stage 4 broader international rollout | APPROVED | Name rollout/support owners and cohort caps |
 
-## Legal decisions that remain outside operator-only approval
+## Remaining non-legal operational decisions
 
-Privacy Notice, EULA, DPA applicability, controller/processor roles, international transfers, sanctions/export controls, refund/cancellation legal terms, third-party licence interpretation, governing law, liability and mandatory regional rights remain **LEGAL REVIEW REQUIRED**.
+- Confirm that `privacy@sfour.co.uk` exists and accepts inbound mail.
+- Name the rollout/release owner and deputy withdrawal authority.
+- Name support and security escalation owners and confirm staffing.
+- Approve the secure file-transfer method for sensitive support material.
+- Define support-assisted licence-recovery verification and turnaround.
+- Approve exact launch countries/regions after legal screening.
+- Approve the final signed artifact association and publication action in a later phase.
+
+## Legal decisions not approved here
+
+Privacy Notice, EULA, DPA applicability, controller/processor roles, international transfers, sanctions/export controls, cancellation/refund terms, governing law, jurisdiction, liability, warranties, termination, retention duties, regional business/consumer law and third-party licence obligations remain **LEGAL REVIEW REQUIRED**.

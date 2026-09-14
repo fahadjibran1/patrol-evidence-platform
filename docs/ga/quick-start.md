@@ -27,6 +27,8 @@ PatrolSafe v1.0 and its documentation are provided in English. The certified v1.
 
 Stop and contact approved support if the hash or publisher differs, the signature is invalid, or the installer came from an unapproved source. Do not substitute a hash from an earlier private UAT candidate.
 
+Product support: **support@sfour.co.uk**. Support hours are Monday–Friday, 09:00–17:00 UK local time, excluding UK public holidays. Vesoft aims to respond within 1–2 business days; this target is not an SLA.
+
 ## 2. Create the workspace
 
 Follow the guided setup:
@@ -45,10 +47,13 @@ The administrator password cannot be recovered from the database. Store it using
 Open **Settings → Licence**.
 
 - A new eligible installation normally shows a 30-day free trial and its expiry date.
-- To obtain a commercial licence, create a licence request file and send it only through the supplier's approved channel. It contains company, product, installation and hashed machine-identity information, but no password.
+- The public v1 licence is an annual subscription for one Windows workstation at £299 plus VAT where applicable per year, renewed manually.
+- To obtain a commercial licence, create the Annual licence request file and send it only through the supplier's approved channel. It contains company, product, installation and hashed machine-identity information, but no password.
 - Import the `.tglic` file supplied for this workstation.
 
 Do not post licence request or licence files publicly.
+
+Previously issued Three-year or Lifetime licence files remain supported for compatibility, but those terms are not offered in the normal v1 customer request flow.
 
 ## 4. Connect WhatsApp
 

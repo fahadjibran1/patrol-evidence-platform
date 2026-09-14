@@ -4,7 +4,7 @@
 
 Draft date: 14 September 2026
 Product: PatrolSafe by S4, version 1.0.0
-Proposed publisher/controller identity: Vesoft Services Limited
+Publisher identity: Vesoft Services Limited
 
 **This draft is incomplete and must not be published or presented as legal advice. Bracketed items require approval.** It describes Vesoft's product, licensing and support processing. It does not replace the customer's privacy notice to guards, employees, WhatsApp participants, clients or people shown in evidence.
 
@@ -12,9 +12,10 @@ Proposed publisher/controller identity: Vesoft Services Limited
 
 Vesoft Services Limited develops and publishes PatrolSafe by S4.
 
-- Registered company number: **08707130** **[official Companies House record checked 14 September 2026; confirm before publication]**
-- Registered office: **241 Manningham Lane, Office 1a, Bradford, England, BD8 7ER** **[official Companies House record checked 14 September 2026; confirm before publication]**
-- Privacy contact: **[TO BE CONFIRMED]**
+- Company number: **08707130**
+- Business/publication address: **241 Manningham Lane, Bradford, BD8 7ER, United Kingdom**
+- Privacy contact: **privacy@sfour.co.uk** **[approved address; mailbox delivery not yet operationally confirmed]**
+- Security reports: **security@sfour.co.uk**
 - Data protection officer, if appointed: **[TO BE CONFIRMED / NOT APPLICABLE]**
 - EU/other representative, if required: **[TO BE CONFIRMED]**
 
@@ -98,14 +99,14 @@ PatrolSafe v1 does not automatically delete customer evidence or the local works
 
 PatrolSafe uses local access controls, salted password hashes, integrity hashes, signed software and verified backup/restore mechanisms. Customer evidence and SQLite data are not encrypted by PatrolSafe at rest. Customers should use supported Windows security, device/storage encryption, least privilege, protected backups and physical security.
 
-No internet service can be guaranteed completely secure. Security incident contact and notification procedure: **[TO BE CONFIRMED]**.
+No internet service can be guaranteed completely secure. Product vulnerability reports may be sent to **security@sfour.co.uk**. Incident-notification duties, process and timing remain **REQUIRES LEGAL REVIEW**.
 
 ## 10. Rights and complaints
 
 Depending on applicable law and context, individuals may have rights of access, correction, erasure, restriction, objection, portability, withdrawal of consent and complaint to a regulator. The available rights vary with the lawful basis and exemptions.
 
 - Requests about customer-controlled patrol evidence should normally be made to the customer organisation operating PatrolSafe.
-- Requests about Vesoft's licensing/support/business records should be sent to **[privacy contact]**.
+- Requests about Vesoft's licensing/support/business records should be sent to **privacy@sfour.co.uk**. Delivery to this newly approved address must be operationally confirmed before publication.
 - UK complaints may be made to the Information Commissioner's Office: <https://ico.org.uk/make-a-complaint/>. Add relevant non-UK authorities/representative details for launch regions.
 
 Identity verification and response procedure: **[TO BE CONFIRMED]**.

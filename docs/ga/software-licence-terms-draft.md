@@ -9,7 +9,7 @@ Version covered: PatrolSafe 1.0.0
 
 ## 1. Parties and order of precedence
 
-These terms are proposed between Vesoft Services Limited, company number **08707130**, registered office **241 Manningham Lane, Office 1a, Bradford, England, BD8 7ER** (Vesoft), and the business identified in the applicable order/licence record (Customer). **[Companies House record checked 14 September 2026; company secretary/legal to confirm before publication.]**
+These terms are proposed between Vesoft Services Limited, company number **08707130**, of **241 Manningham Lane, Bradford, BD8 7ER, United Kingdom** (Vesoft), and the business identified in the applicable order/licence record (Customer).
 
 The agreement consists of **[order form/commercial terms]**, these software licence terms, the approved privacy notice, any applicable data-processing terms and incorporated policies. The order of precedence is **[TO BE CONFIRMED]**.
 
@@ -19,7 +19,7 @@ Consumer use is not the intended v1 offering. Nothing in these terms excludes no
 
 Subject to payment where applicable, licence validity and these terms, Vesoft grants Customer a limited, non-exclusive, non-transferable, non-sublicensable right during the licence term to install and use PatrolSafe on the number of authorised workstations for Customer's internal lawful security operations in supported countries/regions.
 
-Trial access is for evaluation, limited to the displayed trial period and feature set, and may not be used to avoid commercial licensing. Licence terms, device limits, territory, support and fees are those in the approved order/licence record. **[Transfer/reassignment rules to be confirmed.]**
+Trial access is for evaluation for 30 days, limited to the displayed feature set, and may not be used to avoid commercial licensing. The approved v1 commercial baseline is an annual subscription for one Windows workstation per licence, with support-assisted licence recovery for a replacement workstation. Transfer/recovery eligibility and misuse controls remain **REQUIRES LEGAL REVIEW**.
 
 ## 3. Customer responsibilities
 
@@ -76,7 +76,7 @@ Vesoft may provide maintenance/security updates under **[update policy to be con
 
 ## 9. Fees, taxes and payment
 
-Fees, currency, taxes, renewal, refunds, payment method and price changes are governed by the order/commercial terms for the customer's region. The v1 desktop application does not process live payments. **[Complete country-specific tax and consumer requirements.]**
+The published v1 annual licence price is **£299 plus VAT where applicable per workstation per year**, in GBP. Other-currency arrangements may be quoted manually where commercially supported; no automatic currency conversion is promised. Applicable taxes may be added where required. Renewal is manual and annual for v1; the licence does not automatically renew. The desktop application does not process live payments. Cancellation and refund terms, price-change rules and country-specific tax/consumer requirements remain **REQUIRES LEGAL REVIEW**.
 
 ## 10. Confidentiality
 
@@ -98,7 +98,7 @@ Liability cap, excluded losses, carve-outs, data-loss allocation, indemnities an
 
 ## 14. Term, suspension and termination
 
-Licence term, renewal and termination rights: **[TO BE CONFIRMED]**. Vesoft may need rights to suspend for material breach, security risk, sanctions/export restrictions, non-payment or third-party-service constraints, subject to applicable law and contract.
+The commercial licence term and renewal cycle are annual, with manual renewal for v1. Suspension, cancellation, expiry, termination rights and effects remain **REQUIRES LEGAL REVIEW**. Vesoft may need rights to suspend for material breach, security risk, sanctions/export restrictions, non-payment or third-party-service constraints, subject to applicable law and contract.
 
 On termination, live licensed operations may stop while locally retained evidence remains available according to product behavior. Customer must export/retain/delete data according to its obligations and cease unlicensed use. Specify any post-termination support period: **[TO BE CONFIRMED]**.
 
@@ -116,6 +116,8 @@ Assignment, subcontracting, force majeure, waiver, severability, entire agreemen
 
 ## 18. Contact
 
-- Legal notices: **[TO BE CONFIRMED]**
-- Support: **[TO BE CONFIRMED]**
-- Privacy/security: **[TO BE CONFIRMED]**
+- Legal notices: **legal@sfour.co.uk**
+- Support: **support@sfour.co.uk**
+- Privacy: **privacy@sfour.co.uk** **[mailbox delivery must be operationally confirmed before publication]**
+- Security reports: **security@sfour.co.uk**
+- General enquiries: **hello@sfour.co.uk**

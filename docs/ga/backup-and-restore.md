@@ -65,3 +65,5 @@ PatrolSafe v1 does not automate whole-workspace erasure, retention schedules or 
 - Test recovery using synthetic or appropriately controlled data.
 - Record backup owner, destination, creation time, verification result and disposal date.
 - Consider geographic/data-transfer restrictions before using cloud or cross-border storage.
+
+For recovery assistance, contact **support@sfour.co.uk** before sending any backup or diagnostic material. Do not attach backups to ordinary email.

@@ -14,6 +14,12 @@ PatrolSafe helps security-company operations teams collect newly received patrol
 
 Publisher: **Vesoft Services Limited**
 
+Company No. **08707130**<br>
+241 Manningham Lane<br>
+Bradford<br>
+BD8 7ER<br>
+United Kingdom
+
 `[DOWNLOAD PATROLSAFE FOR WINDOWS — DISABLED UNTIL GA APPROVAL]`
 
 ## Built for patrol operations
@@ -69,11 +75,12 @@ WhatsApp/Meta and Microsoft process information required by their services. Veso
 
 ## Trial and licence
 
-An eligible new installation can provide a 30-day local trial. Commercial licences use an offline request/import process and are bound to an installation identity. The desktop application does not process live payments.
+An eligible new installation can provide a 30-day local trial. A PatrolSafe v1 annual licence is **£299 plus VAT where applicable per Windows workstation per year**. Each licence permits one Windows workstation. Renewal is manual and annual; it does not renew automatically. Replacement-workstation licence recovery is support-assisted.
 
-`[INSERT APPROVED PLAN, PRICE, CURRENCY, TAX, TERM, DEVICE, RENEWAL, CANCELLATION AND REFUND WORDING]`
+GBP is the base currency. Other-currency arrangements may be quoted manually where commercially supported; automatic currency conversion is not provided. Applicable taxes may be added where required. Cancellation and refund terms remain subject to the approved order and final legal terms.
 
-`[CONTACT SALES / REQUEST A LICENCE — INSERT APPROVED ROUTE]`
+General/licensing enquiries: **hello@sfour.co.uk**<br>
+Product support: **support@sfour.co.uk**
 
 ## International availability
 
@@ -95,6 +102,8 @@ Before installation, verify the published SHA-256 and a valid Windows digital si
 
 ## Help and legal links
 
+Support hours are Monday–Friday, 09:00–17:00 UK local time, excluding UK public holidays. We aim to respond within 1–2 business days. This target is not a service-level agreement.
+
 - `[LINK: Download — disabled until approval]`
 - [Quick Start](quick-start.md)
 - [User Guide](user-guide.md)
@@ -106,5 +115,9 @@ Before installation, verify the published SHA-256 and a valid Windows digital si
 - [Release Notes](release-notes-v1.0.0.md)
 - [Known Issues](known-issues-v1.0.0.md)
 - `[LINK: Approved Third-Party Notices]`
+
+Privacy enquiries: **privacy@sfour.co.uk** **[mailbox delivery must be operationally confirmed before publication]**<br>
+Security reports: **security@sfour.co.uk**<br>
+Legal notices: **legal@sfour.co.uk**
 
 No download button or legal link may be enabled until the publication register records the corresponding approval and the exact signed artefact/hash association.

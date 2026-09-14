@@ -86,7 +86,9 @@ If automatic recovery stops, choose **Try again** after confirming internet acce
 
 ## Trial and licence
 
-The Licence screen presents the current plan/status, remaining trial days or expiry, and actions. A trial or commercial licence applies to one installation identity. The request/import path is offline and customer-controlled; there is no live payment inside the v1 desktop app.
+The Licence screen presents the current plan/status, remaining trial days or expiry, and actions. The public v1 customer catalogue offers an Annual subscription only: £299 plus VAT where applicable for one Windows workstation per year, with manual annual renewal. A trial or commercial licence applies to one installation identity. The request/import path is offline and customer-controlled; there is no live payment inside the v1 desktop app.
+
+PatrolSafe continues to validate previously issued compatible Three-year and Lifetime licence records, but those legacy types cannot be selected in the normal customer licence-request flow.
 
 If live entitlement expires, existing evidence remains available, but live licensed operations may be blocked. A machine replacement requires supplier-assisted licence recovery or a licence for the new installation.
 
@@ -105,3 +107,5 @@ Images may contain faces, vehicle registrations, locations, access controls or o
 ## Support information
 
 Use **Settings → Support** first. Advanced diagnostics may contain identifiers and local paths; disclose only the minimum requested through an approved channel. Never send a full database, evidence folder, backup or WhatsApp session unless specifically authorised by your organisation and covered by suitable support/data-processing arrangements.
+
+Product support: **support@sfour.co.uk**. Security or vulnerability reports: **security@sfour.co.uk**. Privacy enquiries: **privacy@sfour.co.uk**. Do not attach sensitive operational data to ordinary email.
