@@ -57,7 +57,7 @@ const PRODUCT_METADATA = {
   copyright:
     packageMetadata.copyright || '© 2026 Vesoft Services Limited. All rights reserved.',
   companyName: packageMetadata.companyName || 'Vesoft Services Limited',
-  supportEmail: packageMetadata.supportEmail || 'support@techguardsecurity.com',
+  supportEmail: packageMetadata.supportEmail || 'support@sfour.co.uk',
 };
 
 const DEFAULT_WEB_URL = 'http://localhost:5173';

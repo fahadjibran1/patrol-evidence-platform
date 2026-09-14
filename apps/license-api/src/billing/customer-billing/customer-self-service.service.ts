@@ -89,7 +89,7 @@ export class CustomerSelfServiceService {
         invoiceRecipients: this.parseRecipients(organisation.invoiceRecipients),
         allowFinancePurchases: organisation.allowFinancePurchases,
         taxId: organisation.taxId,
-        supportContact: process.env.SUPPORT_EMAIL ?? 'support@techguardsecurity.com',
+        supportContact: process.env.SUPPORT_EMAIL ?? 'support@sfour.co.uk',
       },
       subscription: subscription
         ? {

@@ -8,7 +8,7 @@ import type { LicenseStatusResponse } from '../types';
 import { Card, PageHeader, StatusBadge } from '../components/ui';
 import { formatPatrolDate } from '../lib/patrol-time';
 
-const SUPPLIER_CONTACT = 'mailto:support@techguards.co.uk?subject=PatrolSafe%20by%20S4%20Licence';
+const SUPPLIER_CONTACT = 'mailto:support@sfour.co.uk?subject=PatrolSafe%20by%20S4%20Licence';
 
 export function LicensePage(): JSX.Element {
   const navigate = useNavigate();

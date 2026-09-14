@@ -21,6 +21,25 @@ describe('PatrolSafe release branding contract', () => {
     expect(read('web/src/lib/product-info.ts')).toContain("productName: 'PatrolSafe by S4'");
   });
 
+  it('uses the approved purpose-specific customer contacts and excludes legacy support domains', () => {
+    const packageMetadata = JSON.parse(read('package.json')) as Record<string, string>;
+    const customerRuntime = [
+      read('desktop/main.js'),
+      read('web/src/lib/product-info.ts'),
+      read('web/src/pages/license-page.tsx'),
+      read('apps/license-api/src/billing/customer-billing/customer-self-service.service.ts'),
+      read('apps/license-api/src/licences/licences.service.ts'),
+    ].join('\n');
+
+    expect(packageMetadata.generalEmail).toBe('hello@sfour.co.uk');
+    expect(packageMetadata.supportEmail).toBe('support@sfour.co.uk');
+    expect(packageMetadata.securityEmail).toBe('security@sfour.co.uk');
+    expect(packageMetadata.legalEmail).toBe('legal@sfour.co.uk');
+    expect(packageMetadata.privacyEmail).toBe('privacy@sfour.co.uk');
+    expect(customerRuntime).toContain('support@sfour.co.uk');
+    expect(customerRuntime).not.toMatch(/support@techguardsecurity\.com|support@techguards\.co\.uk/i);
+  });
+
   it('uses the display brand for Electron and Windows release metadata', () => {
     const forgeConfig = read('forge.config.js');
     const desktopMain = read('desktop/main.js');

@@ -1434,7 +1434,7 @@ export class LicencesService {
       const attachmentContent = `${fullLicenseKey.trim()}\n`;
       const smtpStatus = this.emailProvider.getSafeStatus();
       const fromName = smtpStatus.fromName || 'Patrol Licence Portal';
-      const supportEmail = smtpStatus.fromEmail || 'support@techguards.co.uk';
+      const supportEmail = smtpStatus.fromEmail || 'support@sfour.co.uk';
       const features = Array.isArray(licence.features)
         ? (licence.features as unknown as string[])
         : normalizeLicenceFeatures(licence.features as unknown as string[] | undefined);
@@ -1607,7 +1607,7 @@ export class LicencesService {
       const attachmentContent = `${options.fullLicenseKey.trim()}\n`;
       const smtpStatus = this.emailProvider.getSafeStatus();
       const fromName = smtpStatus.fromName || 'Patrol Licence Portal';
-      const supportEmail = smtpStatus.fromEmail || 'support@techguards.co.uk';
+      const supportEmail = smtpStatus.fromEmail || 'support@sfour.co.uk';
       const features = Array.isArray(licence.features)
         ? (licence.features as unknown as string[])
         : normalizeLicenceFeatures(licence.features as unknown as string[] | undefined);

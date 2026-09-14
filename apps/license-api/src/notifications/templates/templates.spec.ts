@@ -36,7 +36,7 @@ describe('notification templates', () => {
       maxDevices: 2,
       featuresDisplay: 'Evidence Collector',
       activationInstructions: '1. Open PatrolSafe.\n2. Activate licence.',
-      supportEmail: 'support@techguards.co.uk',
+      supportEmail: 'support@sfour.co.uk',
       fromName: 'Patrol Licence Portal',
       attachmentFilename: 'PEL-2026-000001.lic',
       adminNote: 'Please activate today.',

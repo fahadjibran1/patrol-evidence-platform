@@ -42,7 +42,7 @@ describe('LicencesService rules', () => {
         port: 587,
         secure: false,
         fromName: 'Patrol Licence Portal',
-        fromEmail: 'support@techguards.co.uk',
+        fromEmail: 'support@sfour.co.uk',
       }),
     };
 
@@ -208,7 +208,7 @@ describe('LicencesService reveal and download-event', () => {
         port: 587,
         secure: false,
         fromName: 'Patrol Licence Portal',
-        fromEmail: 'support@techguards.co.uk',
+        fromEmail: 'support@sfour.co.uk',
       }),
     };
     const service = new LicencesService(
@@ -546,7 +546,7 @@ describe('LicencesService lifecycle', () => {
         port: 587,
         secure: false,
         fromName: 'Patrol Licence Portal',
-        fromEmail: 'support@techguards.co.uk',
+        fromEmail: 'support@sfour.co.uk',
       }),
     };
 

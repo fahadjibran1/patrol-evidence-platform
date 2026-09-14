@@ -7,7 +7,11 @@ export const PRODUCT_INFO = {
   buildId: '2026.07.20.1',
   copyright: '© 2026 Vesoft Services Limited. All rights reserved.',
   companyName: 'Vesoft Services Limited',
-  supportEmail: 'support@techguardsecurity.com',
+  generalEmail: 'hello@sfour.co.uk',
+  supportEmail: 'support@sfour.co.uk',
+  securityEmail: 'security@sfour.co.uk',
+  legalEmail: 'legal@sfour.co.uk',
+  privacyEmail: 'privacy@sfour.co.uk',
 } as const;
 
 export function getAppVersionLabel(): string {
