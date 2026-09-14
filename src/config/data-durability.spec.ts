@@ -48,6 +48,10 @@ describe('PatrolSafe SQLite migration and backup recovery', () => {
     expect(result.sameMachineLicenceState).toBe(true);
     expect(result.monitoringPreferencePreserved).toBe(true);
   });
+  it('preserves the workspace timezone on same- and replacement-machine restores', () => {
+    expect(result.workspaceTimeZonePreserved).toBe(true);
+    expect(result.replacementMachine).toBe(true);
+  });
   it('restores decodable evidence with its original size and SHA-256', () => {
     expect(result.restoredEvidenceIntegrity).toBe(true);
   });

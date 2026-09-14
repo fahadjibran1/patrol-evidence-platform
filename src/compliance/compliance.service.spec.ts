@@ -67,6 +67,42 @@ describe('ComplianceService', () => {
     expect(result).toEqual({ slotsCreated: 2, sitesProcessed: 1 });
   });
 
+  it('interprets overnight schedules in workspace time across the calendar boundary', async () => {
+    process.env.BUSINESS_TIMEZONE = 'Europe/London';
+    mockActiveSites([{ id: 'site-1', active: true }]);
+    schedulesRepo.find.mockResolvedValue([{
+      siteId: 'site-1', active: true, activeDays: [1], startHour: 22, endHour: 2,
+      frequencyMinutes: 60, graceMinutes: 15, is24Hours: false,
+    }]);
+    patrolSlotsService.findBySiteAndDate.mockResolvedValue([]);
+
+    await service.generateSlotsForDate('2026-09-14');
+
+    const slots = patrolSlotsService.createMany.mock.calls[0][0] as Array<Partial<PatrolSlot>>;
+    expect(slots.map((slot) => slot.expectedAt?.toISOString())).toEqual([
+      '2026-09-14T21:00:00.000Z',
+      '2026-09-14T22:00:00.000Z',
+      '2026-09-14T23:00:00.000Z',
+      '2026-09-15T00:00:00.000Z',
+    ]);
+  });
+
+  it('handles a spring DST gap deterministically without duplicate slots', async () => {
+    process.env.BUSINESS_TIMEZONE = 'Europe/London';
+    mockActiveSites([{ id: 'site-1', active: true }]);
+    schedulesRepo.find.mockResolvedValue([{
+      siteId: 'site-1', active: true, activeDays: [0], startHour: 1, endHour: 3,
+      frequencyMinutes: 60, graceMinutes: 15, is24Hours: false,
+    }]);
+    patrolSlotsService.findBySiteAndDate.mockResolvedValue([]);
+
+    await service.generateSlotsForDate('2026-03-29');
+
+    const slots = patrolSlotsService.createMany.mock.calls[0][0] as Array<Partial<PatrolSlot>>;
+    expect(slots).toHaveLength(1);
+    expect(slots[0].expectedAt?.toISOString()).toBe('2026-03-29T01:00:00.000Z');
+  });
+
   it('updateSlotStatusFromImage marks ON_TIME, LATE, and accepts extra same-slot evidence', async () => {
     const baseSlot = {
       id: 'slot-1',

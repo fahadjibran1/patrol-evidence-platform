@@ -1,6 +1,11 @@
 import { existsSync, mkdirSync, renameSync, rmSync, writeFileSync, readFileSync } from 'fs';
 import * as path from 'path';
 import { dirname } from 'path';
+import {
+  DEFAULT_BUSINESS_TIMEZONE,
+  assertIanaTimeZone,
+  normalizeIanaTimeZone,
+} from '@/common/utils/patrol-time.util';
 
 export interface DesktopWorkspaceConfig {
   setupCompleted?: boolean;
@@ -114,14 +119,32 @@ export function loadDesktopWorkspaceConfig(configPath?: string): DesktopWorkspac
 
     const parsed = JSON.parse(raw) as DesktopWorkspaceConfig;
     const setupCompleted = normalizeSetupCompleted(parsed.setupCompleted);
+    const appTimeZone = parsed.appTimeZone === undefined
+      ? undefined
+      : normalizeIanaTimeZone(parsed.appTimeZone) ?? String(parsed.appTimeZone);
     return {
       ...parsed,
+      appTimeZone,
       setupCompleted,
       setupStage: setupCompleted ? 'complete' : normalizeDesktopSetupStage(parsed.setupStage),
     };
   } catch {
     return {};
   }
+}
+
+export function resolveWorkspaceTimeZone(config: DesktopWorkspaceConfig): string {
+  if (config.appTimeZone !== undefined) {
+    return assertIanaTimeZone(config.appTimeZone);
+  }
+
+  // v1 installations created before explicit timezone support operated as
+  // Europe/London. Preserve that meaning instead of reinterpreting history.
+  if (normalizeSetupCompleted(config.setupCompleted)) {
+    return DEFAULT_BUSINESS_TIMEZONE;
+  }
+
+  throw new Error('Choose a valid time zone from the list.');
 }
 
 export function getDesktopConfigPath(): string | undefined {

@@ -71,4 +71,13 @@ describe('desktop localhost request authorization', () => {
     expect(() => recovery.consume(token)).not.toThrow();
     expect(() => recovery.consume(token)).toThrow(UnauthorizedException);
   });
+
+  it('allows only normalized IANA workspace timezones through trusted desktop configuration', () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { sanitizeDesktopConfigPatch } = require('../../desktop/security-policy') as {
+      sanitizeDesktopConfigPatch(value: unknown): Record<string, unknown>;
+    };
+    expect(sanitizeDesktopConfigPatch({ appTimeZone: 'Asia/Dubai' })).toEqual({ appTimeZone: 'Asia/Dubai' });
+    expect(() => sanitizeDesktopConfigPatch({ appTimeZone: 'UTC+4' })).toThrow('Choose a valid time zone');
+  });
 });

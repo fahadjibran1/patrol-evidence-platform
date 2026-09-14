@@ -1,5 +1,5 @@
 import { scheduleCoversHour } from './patrol-schedule';
-import { getPatrolTimeParts } from './patrol-time';
+import { formatPatrolDateTime, getPatrolTimeParts } from './patrol-time';
 import type { DashboardHourlySafetyCell, DashboardSiteRow, PatrolGroup, PatrolSchedule } from '../types';
 
 export type OpsTone = 'green' | 'amber' | 'red';
@@ -41,13 +41,7 @@ export function formatOperatorDateTime(value: string | null): string {
     return '—';
   }
 
-  return new Intl.DateTimeFormat('en-GB', {
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(new Date(value));
+  return formatPatrolDateTime(value);
 }
 
 export function patrolCompliancePercent(row: DashboardSiteRow): number {

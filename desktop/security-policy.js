@@ -13,6 +13,7 @@ const ALLOWED_SECURE_STORE_KEYS = new Set(['desktop-auth-session']);
 const ALLOWED_CONFIG_KEYS = new Set([
   'workspaceName', 'companyName', 'localAdminEmail', 'localAdminFirstName', 'localAdminLastName',
   'storageRootPath', 'autoLaunchApp', 'autoStartCollector', 'whatsappAllowFromMe', 'setupCompleted', 'setupStage',
+  'appTimeZone',
   'dbType', 'sqliteDbPath', 'dbHost', 'dbPort', 'dbUser', 'dbPassword', 'dbName',
 ]);
 const ALLOWED_POSTGRES_KEYS = new Set(['dbHost', 'dbPort', 'dbUser', 'dbPassword', 'dbName']);
@@ -89,7 +90,27 @@ function sanitizeObject(value, allowedKeys, label) {
   return result;
 }
 
-const sanitizeDesktopConfigPatch = (value) => sanitizeObject(value, ALLOWED_CONFIG_KEYS, 'Desktop configuration');
+function normalizeIanaTimeZone(value) {
+  if (typeof value !== 'string' || !value.trim() || value.trim().length > 128) {
+    return null;
+  }
+  try {
+    new Intl.DateTimeFormat('en', { timeZone: value.trim() }).format(0);
+    return value.trim();
+  } catch {
+    return null;
+  }
+}
+
+const sanitizeDesktopConfigPatch = (value) => {
+  const result = sanitizeObject(value, ALLOWED_CONFIG_KEYS, 'Desktop configuration');
+  if (Object.prototype.hasOwnProperty.call(result, 'appTimeZone')) {
+    const normalized = normalizeIanaTimeZone(result.appTimeZone);
+    if (!normalized) throw new Error('Choose a valid time zone from the list.');
+    result.appTimeZone = normalized;
+  }
+  return result;
+};
 const sanitizePostgresConfig = (value) => sanitizeObject(value, ALLOWED_POSTGRES_KEYS, 'Database configuration');
 
 function validateSecureStoreKey(value) {
@@ -110,6 +131,7 @@ module.exports = {
   assertTrustedIpcSender,
   productionDevToolsAllowed,
   isTrustedRendererNavigation,
+  normalizeIanaTimeZone,
   sanitizeDesktopConfigPatch,
   sanitizePostgresConfig,
   validateExternalUrl,

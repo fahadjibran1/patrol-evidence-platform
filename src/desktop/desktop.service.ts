@@ -19,8 +19,10 @@ import {
   normalizeDesktopSetupStage,
   normalizeSetupCompleted,
   readDesktopWorkspaceConfig,
+  resolveWorkspaceTimeZone,
   writeDesktopWorkspaceConfigFile,
 } from './desktop-config.util';
+import { assertIanaTimeZone } from '@/common/utils/patrol-time.util';
 import {
   applyStorageRootPath,
   resolveConfiguredStorageRootPath,
@@ -66,6 +68,7 @@ export interface DesktopBootstrapStatus {
   autoStartCollector: boolean;
   whatsappAllowFromMe: boolean;
   linkedWhatsAppAccountId: string | null;
+  appTimeZone: string | null;
   settingsApplied: boolean;
   license: LicenseSnapshot;
 }
@@ -151,6 +154,7 @@ export class DesktopService {
       autoStartCollector: resolveDesktopWhatsAppAutoStart(workspace),
       whatsappAllowFromMe: workspace.whatsappAllowFromMe === true,
       linkedWhatsAppAccountId: workspace.linkedWhatsAppAccountId?.trim() || null,
+      appTimeZone: workspace.appTimeZone ? assertIanaTimeZone(workspace.appTimeZone) : null,
       settingsApplied,
       license,
     };
@@ -158,6 +162,12 @@ export class DesktopService {
 
   async initializeWorkspace(dto: InitializeDesktopWorkspaceDto): Promise<DesktopBootstrapStatus> {
     const workspace = readDesktopWorkspaceConfig();
+    let appTimeZone: string;
+    try {
+      appTimeZone = assertIanaTimeZone(dto.appTimeZone);
+    } catch {
+      throw new BadRequestException('Choose a valid time zone from the list.');
+    }
     const companyName = dto.companyName.trim();
     const email = dto.adminEmail.trim().toLowerCase();
     const storageRootPath = dto.storageRootPath?.trim()
@@ -203,6 +213,7 @@ export class DesktopService {
       setupCompleted: dto.markSetupComplete === true ? true : normalizeSetupCompleted(workspace.setupCompleted),
       setupStage: dto.markSetupComplete === true ? 'complete' : 'storage',
       workspaceName: dto.workspaceName?.trim() || companyName,
+      appTimeZone,
       companyName,
       licenseKey: activation?.configPatch.licenseKey ?? dto.licenseKey?.trim() ?? workspace.licenseKey,
       licenseType: activation?.configPatch.licenseType ?? workspace.licenseType,
@@ -242,6 +253,11 @@ export class DesktopService {
     }
 
     const workspace = readDesktopWorkspaceConfig();
+    try {
+      resolveWorkspaceTimeZone(workspace);
+    } catch {
+      throw new BadRequestException('Choose a valid workspace time zone before completing setup.');
+    }
     const adminEmail = workspace.localAdminEmail?.trim().toLowerCase();
     if (adminEmail) {
       const adminUser = await this.usersRepo.findOne({ where: { email: adminEmail } });

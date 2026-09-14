@@ -19,13 +19,14 @@ import { useAuth } from '../state/auth';
 import { useMonitoring } from '../state/monitoring';
 import type { DashboardOverview, DesktopBootstrapStatus, DesktopState, WhatsAppCollectorStatus } from '../types';
 import { Card, EmptyState, PageHeader, StatusBadge } from '../components/ui';
+import { formatPatrolDateTime, getPatrolToday } from '../lib/patrol-time';
 
 function formatDateTime(value: string | null): string {
   if (!value) {
     return 'Not yet';
   }
 
-  return new Date(value).toLocaleString();
+  return formatPatrolDateTime(value);
 }
 
 export function CollectorDiagnosticsPage(): JSX.Element {
@@ -53,7 +54,7 @@ export function CollectorDiagnosticsPage(): JSX.Element {
   const [qrRenderedAt, setQrRenderedAt] = useState<string | null>(null);
   const [dataProtectionMessage, setDataProtectionMessage] = useState<string | null>(null);
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getPatrolToday();
 
   useEffect(() => {
     void apiRequest<DashboardOverview>(`/dashboard/overview?date=${today}`, {}, token ?? undefined)

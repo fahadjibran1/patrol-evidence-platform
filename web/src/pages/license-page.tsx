@@ -6,6 +6,7 @@ import { LICENCE_IMPORT_ACCEPT, readLocalLicenceFile } from '../lib/licence-file
 import { useAuth } from '../state/auth';
 import type { LicenseStatusResponse } from '../types';
 import { Card, PageHeader, StatusBadge } from '../components/ui';
+import { formatPatrolDate } from '../lib/patrol-time';
 
 const SUPPLIER_CONTACT = 'mailto:support@techguards.co.uk?subject=PatrolSafe%20by%20S4%20Licence';
 
@@ -138,7 +139,7 @@ export function LicensePage(): JSX.Element {
   const isExpired = status?.uiState === 'Expired' || status?.status === 'EXPIRED';
   const stateLabel = isTrial ? 'Free trial' : isLicensed ? 'Licensed' : isExpired ? 'Trial expired' : 'Activation needed';
   const expiryLabel = status?.expiresAt
-    ? new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(status.expiresAt))
+    ? formatPatrolDate(status.expiresAt)
     : isLicensed ? 'No expiry' : 'Not available';
 
   return (
@@ -211,7 +212,7 @@ export function LicensePage(): JSX.Element {
             <div><dt>Installation ID</dt><dd className="breakable-value">{status?.installationId ?? 'Preparing…'}</dd></div>
             <div><dt>Licence ID</dt><dd>{status?.licenseId ?? 'Not activated'}</dd></div>
             <div><dt>Version</dt><dd>{status?.appVersion ?? '—'}{status?.buildId ? ` · build ${status.buildId}` : ''}</dd></div>
-            <div><dt>Activated</dt><dd>{status?.activatedAt ? new Date(status.activatedAt).toLocaleDateString('en-GB') : 'Not yet'}</dd></div>
+            <div><dt>Activated</dt><dd>{status?.activatedAt ? formatPatrolDate(status.activatedAt) : 'Not yet'}</dd></div>
           </dl>
           <div className="button-row">
             <button type="button" className="secondary-button" onClick={() => void handleCopyInstallationId()}>Copy installation ID</button>

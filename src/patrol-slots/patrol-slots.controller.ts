@@ -7,6 +7,7 @@ import { Roles } from '@/auth/decorators/roles.decorator';
 import { UserRole } from '@/common/enums/user-role.enum';
 import { CurrentUser } from '@/auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '@/auth/interfaces/authenticated-request.interface';
+import { getOperationalDateUtcBounds } from '@/common/utils/patrol-time.util';
 
 @Controller('patrol-slots')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -24,9 +25,13 @@ export class PatrolSlotsController {
       throw new BadRequestException('siteCode and date query params are required');
     }
 
-    const dayStart = new Date(`${date}T00:00:00.000Z`);
-    const dayEnd = new Date(`${date}T23:59:59.999Z`);
-    if (Number.isNaN(dayStart.getTime()) || Number.isNaN(dayEnd.getTime())) {
+    let dayStart: Date;
+    let dayEnd: Date;
+    try {
+      const bounds = getOperationalDateUtcBounds(date);
+      dayStart = bounds.startInclusive;
+      dayEnd = new Date(bounds.endExclusive.getTime() - 1);
+    } catch {
       throw new BadRequestException('date must use YYYY-MM-DD format');
     }
 

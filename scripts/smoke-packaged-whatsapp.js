@@ -167,6 +167,7 @@ async function initializeAndStartCollector(apiBaseUrl, configRoot) {
     headers: { 'x-patrolsafe-desktop-token': desktopApiToken },
     body: JSON.stringify({
       companyName: 'PatrolSafe Fresh Link Smoke',
+      appTimeZone: 'Europe/London',
       workspaceName: 'Fresh Link Smoke',
       adminFirstName: 'Fresh',
       adminLastName: 'Link',

@@ -4,6 +4,7 @@ import {
   loadDesktopWorkspaceConfig,
   normalizeDesktopSetupStage,
   normalizeSetupCompleted,
+  resolveWorkspaceTimeZone,
   writeDesktopWorkspaceConfigFile,
   writeDesktopWorkspaceConfigPatch,
 } from './desktop-config.util';
@@ -19,6 +20,20 @@ describe('desktop-config.util', () => {
     const desktopMain = readFileSync(join(process.cwd(), 'desktop', 'main.js'), 'utf8');
     expect(desktopMain).toContain("whatsappBrowser: 'auto'");
     expect(desktopMain).toMatch(/restartKeys\s*=\s*\[[\s\S]*'whatsappBrowser'/);
+    expect(desktopMain).toMatch(/restartKeys\s*=\s*\[[\s\S]*'appTimeZone'/);
+    expect(desktopMain).toContain("writeWorkspaceConfig({ appTimeZone: 'Europe/London' })");
+  });
+
+  it('uses Europe/London only as the compatibility timezone for initialized legacy workspaces', () => {
+    expect(resolveWorkspaceTimeZone({ setupCompleted: true })).toBe('Europe/London');
+    expect(() => resolveWorkspaceTimeZone({ setupCompleted: false })).toThrow('Choose a valid time zone');
+  });
+
+  it('normalizes valid IANA timezones and rejects invalid persisted values', () => {
+    expect(resolveWorkspaceTimeZone({ setupCompleted: true, appTimeZone: 'Asia/Kolkata' })).toBe('Asia/Kolkata');
+    expect(() => resolveWorkspaceTimeZone({ setupCompleted: true, appTimeZone: 'UTC+5' })).toThrow(
+      'Choose a valid time zone',
+    );
   });
 
   it('normalizes setupCompleted from boolean and string values', () => {

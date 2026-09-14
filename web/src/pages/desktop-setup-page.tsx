@@ -25,6 +25,13 @@ import type {
   WhatsAppCollectorStatus,
 } from '../types';
 import { Card, EmptyState, PageHeader, StatusBadge } from '../components/ui';
+import {
+  detectWorkstationTimeZone,
+  formatPatrolDateTime,
+  formatTimeZoneLabel,
+  listSupportedTimeZones,
+  setWorkspaceTimeZone,
+} from '../lib/patrol-time';
 
 type WizardStep = 'company' | 'storage' | 'whatsapp' | 'site-setup';
 
@@ -84,7 +91,7 @@ function formatDateTime(value: string | null): string {
     return 'Not yet';
   }
 
-  return new Date(value).toLocaleString();
+  return formatPatrolDateTime(value);
 }
 
 function collectorStateLabel(state: WhatsAppCollectorStatus['state']): string {
@@ -155,6 +162,7 @@ export function DesktopSetupPage(): JSX.Element {
   const [setupForm, setSetupForm] = useState({
     workspaceName: 'PatrolSafe Workspace',
     companyName: 'Tech Guards Security',
+    appTimeZone: detectWorkstationTimeZone(),
     storageRootPath: '',
     adminFirstName: 'Local',
     adminLastName: 'Admin',
@@ -195,6 +203,10 @@ export function DesktopSetupPage(): JSX.Element {
   const [duplicateSourceWarning, setDuplicateSourceWarning] = useState<string | null>(null);
 
   const isDesktop = useMemo(() => isDesktopApp(), []);
+  const supportedTimeZones = useMemo(() => listSupportedTimeZones(), []);
+  const timeZoneOptions = supportedTimeZones.includes(setupForm.appTimeZone)
+    ? supportedTimeZones
+    : [setupForm.appTimeZone, ...supportedTimeZones];
   const activeLinkedAccountId =
     bootstrapStatus?.linkedWhatsAppAccountId?.trim() || collectorStatus?.connectedAccount?.trim() || null;
   const currentAccountMappings = useMemo(
@@ -318,6 +330,7 @@ export function DesktopSetupPage(): JSX.Element {
         ...current,
         workspaceName: nextDesktopState.config.workspaceName ?? current.workspaceName,
         companyName: nextDesktopState.config.companyName ?? current.companyName,
+        appTimeZone: nextDesktopState.config.appTimeZone ?? current.appTimeZone,
         storageRootPath: nextDesktopState.config.storageRootPath ?? current.storageRootPath,
         adminFirstName: nextDesktopState.config.localAdminFirstName ?? current.adminFirstName,
         adminLastName: nextDesktopState.config.localAdminLastName ?? current.adminLastName,
@@ -574,6 +587,7 @@ export function DesktopSetupPage(): JSX.Element {
             body: JSON.stringify({
               workspaceName: setupForm.workspaceName,
               companyName: setupForm.companyName,
+              appTimeZone: setupForm.appTimeZone,
               storageRootPath: selectedPath,
               adminFirstName: setupForm.adminFirstName,
               adminLastName: setupForm.adminLastName,
@@ -626,6 +640,7 @@ export function DesktopSetupPage(): JSX.Element {
         body: JSON.stringify({
           workspaceName: setupForm.workspaceName,
           companyName: setupForm.companyName,
+          appTimeZone: setupForm.appTimeZone,
           adminFirstName: setupForm.adminFirstName,
           adminLastName: setupForm.adminLastName,
           adminEmail: setupForm.adminEmail,
@@ -637,6 +652,7 @@ export function DesktopSetupPage(): JSX.Element {
         }),
       });
       setBootstrapStatus(initializedStatus);
+      setWorkspaceTimeZone(setupForm.appTimeZone);
 
       // This updates the Windows login-item setting without restarting the backend.
       const syncedState = await saveDesktopConfig({ autoLaunchApp: setupForm.autoLaunchApp });
@@ -1084,6 +1100,21 @@ export function DesktopSetupPage(): JSX.Element {
                 />
               </label>
             </div>
+            <label>
+              Time zone
+              <select
+                value={setupForm.appTimeZone}
+                onChange={(event) => setSetupForm((current) => ({ ...current, appTimeZone: event.target.value }))}
+                required
+              >
+                {timeZoneOptions.map((timeZone) => (
+                  <option key={timeZone} value={timeZone}>{formatTimeZoneLabel(timeZone)}</option>
+                ))}
+              </select>
+              <span className="help-text">
+                PatrolSafe uses this time zone for patrol schedules, evidence dates and daily reporting.
+              </span>
+            </label>
             <p className="muted-text">
               WhatsApp linking starts only when an administrator selects Link WhatsApp from Monitoring.
             </p>

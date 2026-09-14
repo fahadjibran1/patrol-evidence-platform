@@ -34,25 +34,9 @@ export function normalizeActiveDays(activeDays: unknown): number[] {
   return [0, 1, 2, 3, 4, 5, 6];
 }
 
-const WEEKDAY_TO_INDEX: Record<string, number> = {
-  Sun: 0,
-  Mon: 1,
-  Tue: 2,
-  Wed: 3,
-  Thu: 4,
-  Fri: 5,
-  Sat: 6,
-};
-
-export function businessDayOfWeek(businessDate: string, timeZone = patrolTimeZone()): number {
+export function businessDayOfWeek(businessDate: string, _timeZone = patrolTimeZone()): number {
   const [year, month, day] = businessDate.split('-').map((value) => Number(value));
-  const probe = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
-  const weekday = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    weekday: 'short',
-  }).format(probe);
-
-  return WEEKDAY_TO_INDEX[weekday] ?? 0;
+  return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
 }
 
 /** True when `hour` falls in [startHour, endHour) in local patrol time. Supports overnight windows (e.g. 18→6). */

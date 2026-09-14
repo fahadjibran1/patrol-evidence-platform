@@ -851,7 +851,7 @@ export function SetupPage(): JSX.Element {
             ) : (
               <EmptyState
                 title="No schedule yet"
-                description="Set any monitoring window for this site (for example 09:00–17:00 or overnight 18:00–06:00). Start is inclusive and end is exclusive. Europe/London is the default business timezone."
+                description="Set any monitoring window for this site (for example 09:00–17:00 or overnight 18:00–06:00). Start is inclusive and end is exclusive. Times use the workspace time zone in Company Settings."
               />
             )}
 

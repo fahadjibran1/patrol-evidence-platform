@@ -60,4 +60,22 @@ describe('patrol-image-query.util', () => {
     expect(sentAt.getTime()).toBeGreaterThanOrEqual(startInclusive.getTime());
     expect(sentAt.getTime()).toBeLessThan(endExclusive.getTime());
   });
+
+  it.each([
+    ['America/New_York', '2026-09-14T04:00:00.000Z', '2026-09-15T04:00:00.000Z'],
+    ['Asia/Dubai', '2026-09-13T20:00:00.000Z', '2026-09-14T20:00:00.000Z'],
+    ['Pacific/Auckland', '2026-09-13T12:00:00.000Z', '2026-09-14T12:00:00.000Z'],
+  ])('builds %s date-filter bounds in workspace civil time', (timeZone, start, end) => {
+    const bounds = getPatrolDateUtcBounds('2026-09-14', timeZone);
+    expect(bounds.startInclusive.toISOString()).toBe(start);
+    expect(bounds.endExclusive.toISOString()).toBe(end);
+  });
+
+  it('keeps a canonical instant unchanged when display timezone changes', () => {
+    const instant = new Date('2026-09-14T00:30:00.000Z');
+    const original = instant.toISOString();
+    expect(imageSentOnPatrolDate(instant, '2026-09-13', 'America/New_York')).toBe(true);
+    expect(imageSentOnPatrolDate(instant, '2026-09-14', 'Asia/Dubai')).toBe(true);
+    expect(instant.toISOString()).toBe(original);
+  });
 });

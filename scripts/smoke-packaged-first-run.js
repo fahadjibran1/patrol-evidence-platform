@@ -9,6 +9,13 @@ const { getBackendEntryCandidates, getPackagedAppRoot } = require('../desktop/pa
 const PORT = 3998;
 const API = `http://127.0.0.1:${PORT}`;
 const projectRoot = path.resolve(__dirname, '..');
+const smokeTimeZone = process.env.PATROLSAFE_SMOKE_TIMEZONE || 'Europe/London';
+
+try {
+  new Intl.DateTimeFormat('en', { timeZone: smokeTimeZone }).format(new Date());
+} catch {
+  throw new Error(`PATROLSAFE_SMOKE_TIMEZONE is not a valid IANA time zone: ${smokeTimeZone}`);
+}
 
 function packagedPaths() {
   const outRoot = path.join(projectRoot, 'out');
@@ -166,6 +173,7 @@ async function main() {
       body: {
         workspaceName: 'PatrolSafe UAT Workspace',
         companyName: 'PatrolSafe UAT Ltd',
+        appTimeZone: smokeTimeZone,
         adminFirstName: 'UAT',
         adminLastName: 'Administrator',
         adminEmail: 'uat-admin@example.test',
@@ -203,6 +211,7 @@ async function main() {
     await waitForHealth();
     const secondRestart = await request('/desktop/bootstrap/status', { desktopToken });
     expect(secondRestart.body.setupCompleted === true && secondRestart.body.hasCompanyAdmin === true, 'second restart remains initialized');
+    expect(secondRestart.body.appTimeZone === smokeTimeZone, `workspace time zone ${smokeTimeZone} survives restart`);
     expect(secondRestart.body.configPath === fixture.configPath, 'every backend generation reads the same config root');
     expect(secondRestart.body.databasePath === fixture.databasePath, 'every backend generation reads the same database path');
     const licenceAfter = await request('/license/status', { desktopToken });
@@ -217,6 +226,7 @@ async function main() {
 
     const config = JSON.parse(fs.readFileSync(fixture.configPath, 'utf8'));
     expect(config.setupCompleted === true && config.setupStage === 'complete', 'atomic workspace config contains completed state');
+    expect(config.appTimeZone === smokeTimeZone, `workspace config persists ${smokeTimeZone}`);
     expect(readSchemaVersionWithPackagedRuntime(paths, fixture) === 2, 'schema version 2 remains intact');
     expect(!fs.readdirSync(root).some((name) => name.includes('.tmp-')), 'no partial workspace config artifact remains');
     console.log(`FIRST-RUN SMOKE RESULT: PASS root=${root}`);

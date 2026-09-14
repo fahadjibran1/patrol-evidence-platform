@@ -197,6 +197,7 @@ async function bootstrapWorkspace(apiBaseUrl) {
     method: 'POST',
     body: JSON.stringify({
       companyName: 'Tech Guards Security',
+      appTimeZone: 'Europe/London',
       adminFirstName: SMOKE_ADMIN.firstName,
       adminLastName: SMOKE_ADMIN.lastName,
       adminEmail: SMOKE_ADMIN.email,

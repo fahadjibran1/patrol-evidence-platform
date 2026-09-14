@@ -10,7 +10,12 @@ import { PatrolSlot } from '@/patrol-slots/entities/patrol-slot.entity';
 import { PatrolAlertsService } from '@/patrol-alerts/patrol-alerts.service';
 import { PatrolImage } from '@/patrol-images/entities/patrol-image.entity';
 import { enumerateScheduleHours, scheduleIsActiveOnDate } from '@/common/utils/patrol-schedule.util';
-import { getPatrolTimeParts } from '@/common/utils/patrol-time.util';
+import {
+  addOperationalCalendarDays,
+  getOperationalDateUtcBounds,
+  getPatrolTimeParts,
+  operationalDateTimeToUtc,
+} from '@/common/utils/patrol-time.util';
 import { AuthenticatedUser } from '@/auth/interfaces/authenticated-request.interface';
 import { UserRole } from '@/common/enums/user-role.enum';
 
@@ -34,10 +39,14 @@ export class ComplianceService {
 
   async generateSlotsForDate(date: string, user?: AuthenticatedUser): Promise<GenerateSlotsResult> {
     const normalizedDate = date?.trim();
-    const dayStart = new Date(`${normalizedDate}T00:00:00.000Z`);
-    const dayEnd = new Date(`${normalizedDate}T23:59:59.999Z`);
-
-    if (!normalizedDate || Number.isNaN(dayStart.getTime()) || Number.isNaN(dayEnd.getTime())) {
+    let dayStart: Date;
+    let nextDayStart: Date;
+    try {
+      if (!normalizedDate) throw new Error('missing');
+      const bounds = getOperationalDateUtcBounds(normalizedDate);
+      dayStart = bounds.startInclusive;
+      nextDayStart = bounds.endExclusive;
+    } catch {
       throw new BadRequestException('date must use YYYY-MM-DD format');
     }
 
@@ -68,7 +77,17 @@ export class ComplianceService {
 
       sitesProcessed += 1;
 
-      const existing = await this.patrolSlotsService.findBySiteAndDate(site.id, dayStart, dayEnd);
+      const hasOvernightSchedule = activeSchedules.some(
+        (schedule) => !schedule.is24Hours && schedule.startHour > schedule.endHour,
+      );
+      const existingEndExclusive = hasOvernightSchedule
+        ? getOperationalDateUtcBounds(addOperationalCalendarDays(normalizedDate, 1)).endExclusive
+        : nextDayStart;
+      const existing = await this.patrolSlotsService.findBySiteAndDate(
+        site.id,
+        dayStart,
+        new Date(existingEndExclusive.getTime() - 1),
+      );
       const existingExpectedTimes = new Set(existing.map((slot) => slot.expectedAt.toISOString()));
       const slots: Partial<PatrolSlot>[] = [];
 
@@ -76,17 +95,14 @@ export class ComplianceService {
         const frequency = schedule.frequencyMinutes;
 
         for (const hour of enumerateScheduleHours(schedule.startHour, schedule.endHour, Boolean(schedule.is24Hours))) {
-          const slotStart = new Date(
-            Date.UTC(dayStart.getUTCFullYear(), dayStart.getUTCMonth(), dayStart.getUTCDate(), hour, 0, 0),
-          );
+          const slotDate =
+            !schedule.is24Hours && schedule.startHour > schedule.endHour && hour < schedule.endHour
+              ? addOperationalCalendarDays(normalizedDate, 1)
+              : normalizedDate;
 
           for (let minute = 0; minute < 60; minute += frequency) {
-            const expectedAt = new Date(slotStart.getTime() + minute * 60 * 1000);
+            const expectedAt = operationalDateTimeToUtc({ date: slotDate, hour, minute });
             const slotEnd = new Date(expectedAt.getTime() + frequency * 60 * 1000);
-
-            if (expectedAt > dayEnd) {
-              continue;
-            }
 
             if (existingExpectedTimes.has(expectedAt.toISOString())) {
               continue;
@@ -114,7 +130,7 @@ export class ComplianceService {
   }
 
   async generateToday(user?: AuthenticatedUser): Promise<GenerateSlotsResult> {
-    const date = new Date().toISOString().slice(0, 10);
+    const date = getPatrolTimeParts(new Date()).date;
     return this.generateSlotsForDate(date, user);
   }
 

@@ -4,6 +4,7 @@ import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '@/auth/guards/roles.guard';
 import { Roles } from '@/auth/decorators/roles.decorator';
 import { UserRole } from '@/common/enums/user-role.enum';
+import { getPatrolTimeParts, patrolTimeZone } from '@/common/utils/patrol-time.util';
 
 @Controller('ops')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -11,10 +12,10 @@ import { UserRole } from '@/common/enums/user-role.enum';
 export class OpsController {
   @Get()
   renderDashboard(@Res() response: Response): void {
-    response.type('html').send(this.buildHtml());
+    response.type('html').send(this.buildHtml(getPatrolTimeParts(new Date()).date, patrolTimeZone()));
   }
 
-  private buildHtml(): string {
+  private buildHtml(operationalToday: string, workspaceTimeZone: string): string {
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -362,7 +363,7 @@ export class OpsController {
       groups: [],
       patrolGroups: [],
       sites: [],
-      date: new Date().toISOString().slice(0, 10),
+      date: ${JSON.stringify(operationalToday)},
     };
 
     const dateInput = document.getElementById('dateInput');
@@ -416,7 +417,11 @@ export class OpsController {
 
     function formatTime(value) {
       if (!value) return '-';
-      return new Date(value).toLocaleString();
+      return new Intl.DateTimeFormat('en', {
+        timeZone: ${JSON.stringify(workspaceTimeZone)},
+        day: '2-digit', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+      }).format(new Date(value));
     }
 
     function escapeHtml(value) {

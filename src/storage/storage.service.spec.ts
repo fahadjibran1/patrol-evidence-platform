@@ -89,8 +89,27 @@ describe('StorageService', () => {
 
     expect(overlaySvg).toContain('Tech Guards Security');
     expect(overlaySvg).toContain('Site: SWI01 - Corner Copse, Swindon');
-    expect(overlaySvg).toContain('Date/Time: 04/04/2026, 17:03:22');
+    expect(overlaySvg).toContain('Date/Time: 4 Apr 2026, 17:03:22');
     expect(overlaySvg).toContain('Sender: MJ');
+  });
+
+  it('classifies storage folders using the configured international workspace timezone', async () => {
+    const dubaiService = new StorageService({
+      getOrThrow: jest.fn(() => rootPath),
+      get: jest.fn((key: string) => key === 'businessTimeZone' ? 'Asia/Dubai' : 'PatrolSafe UAT Ltd'),
+    } as never);
+    const image = await sharp({ create: { width: 20, height: 20, channels: 3, background: '#225577' } })
+      .jpeg()
+      .toBuffer();
+
+    const stored = await dubaiService.savePatrolEvidence({
+      siteCode: 'DXB01',
+      timestamp: new Date('2026-09-13T21:30:00.000Z'),
+      buffer: image,
+      mimeType: 'image/jpeg',
+    });
+
+    expect(stored.filePath).toContain(path.join('DXB01', '2026-09-14', '0100'));
   });
 
   it('rejects corrupt image bytes instead of saving them as evidence', async () => {

@@ -4,17 +4,30 @@ import { beginDesktopAdminRecovery, getDesktopState, saveDesktopConfig } from '.
 import { useAuth } from '../state/auth';
 import type { DesktopBootstrapStatus } from '../types';
 import { Card, PageHeader } from '../components/ui';
+import {
+  formatTimeZoneLabel,
+  getWorkspaceTimeZone,
+  listSupportedTimeZones,
+  setWorkspaceTimeZone,
+} from '../lib/patrol-time';
+
+const SUPPORTED_TIME_ZONES = listSupportedTimeZones();
 
 export function CompanySettingsPage(): JSX.Element {
   const { token, user } = useAuth();
   const [status, setStatus] = useState<DesktopBootstrapStatus | null>(null);
   const [workspaceName, setWorkspaceName] = useState('');
   const [autoLaunchApp, setAutoLaunchApp] = useState(false);
+  const [appTimeZone, setAppTimeZone] = useState(getWorkspaceTimeZone());
+  const [savedTimeZone, setSavedTimeZone] = useState(getWorkspaceTimeZone());
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const timeZoneOptions = SUPPORTED_TIME_ZONES.includes(appTimeZone)
+    ? SUPPORTED_TIME_ZONES
+    : [appTimeZone, ...SUPPORTED_TIME_ZONES];
 
   useEffect(() => {
     if (!token) return;
@@ -27,6 +40,11 @@ export function CompanySettingsPage(): JSX.Element {
         setStatus(nextStatus);
         setWorkspaceName(desktopState?.config.workspaceName ?? nextStatus.workspaceName ?? '');
         setAutoLaunchApp(desktopState?.config.autoLaunchApp === true);
+        const nextTimeZone = desktopState?.config.appTimeZone ?? nextStatus.appTimeZone;
+        if (nextTimeZone) {
+          setAppTimeZone(nextTimeZone);
+          setSavedTimeZone(nextTimeZone);
+        }
       })
       .catch(() => setError('Company settings could not be loaded. Try again.'));
   }, [token]);
@@ -37,7 +55,18 @@ export function CompanySettingsPage(): JSX.Element {
     setError(null);
     setMessage(null);
     try {
-      await saveDesktopConfig({ workspaceName: workspaceName.trim(), autoLaunchApp });
+      if (
+        appTimeZone !== savedTimeZone &&
+        !window.confirm(
+          'Change the workspace time zone? Historical evidence timestamps stay unchanged, but date grouping and patrol schedule interpretation may change.',
+        )
+      ) {
+        setIsSaving(false);
+        return;
+      }
+      await saveDesktopConfig({ workspaceName: workspaceName.trim(), autoLaunchApp, appTimeZone });
+      setWorkspaceTimeZone(appTimeZone);
+      setSavedTimeZone(appTimeZone);
       setMessage('Company settings saved.');
     } catch {
       setError('Company settings could not be saved. Your existing settings are unchanged.');
@@ -125,6 +154,17 @@ export function CompanySettingsPage(): JSX.Element {
                 onChange={(event) => setAutoLaunchApp(event.target.checked)}
               />
               Open PatrolSafe when I sign in to Windows
+            </label>
+            <label>
+              Time zone
+              <select value={appTimeZone} onChange={(event) => setAppTimeZone(event.target.value)} required>
+                {timeZoneOptions.map((timeZone) => (
+                  <option key={timeZone} value={timeZone}>{formatTimeZoneLabel(timeZone)}</option>
+                ))}
+              </select>
+              <span className="help-text">
+                PatrolSafe uses this time zone for patrol schedules, evidence dates and daily reporting.
+              </span>
             </label>
             <button type="submit" className="primary-button" disabled={isSaving}>
               {isSaving ? 'Saving…' : 'Save settings'}

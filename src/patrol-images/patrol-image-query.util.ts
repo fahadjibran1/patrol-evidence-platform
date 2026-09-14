@@ -1,6 +1,10 @@
 import { Logger } from '@nestjs/common';
 import { PatrolSlotStatus } from '@/common/enums/patrol-slot-status.enum';
-import { getPatrolTimeParts, patrolTimeZone } from '@/common/utils/patrol-time.util';
+import {
+  getOperationalDateUtcBounds,
+  getPatrolTimeParts,
+  patrolTimeZone,
+} from '@/common/utils/patrol-time.util';
 import { PatrolImage } from './entities/patrol-image.entity';
 
 export type PatrolImageAggregationLogLabel =
@@ -62,47 +66,7 @@ export function getPatrolDateUtcBounds(
   patrolDate: string,
   timeZone = patrolTimeZone(),
 ): { startInclusive: Date; endExclusive: Date } {
-  const startInclusive = resolvePatrolDateMidnightUtc(patrolDate, timeZone);
-  const endExclusive = resolvePatrolDateMidnightUtc(addCalendarDays(patrolDate, 1), timeZone);
-  return { startInclusive, endExclusive };
-}
-
-function addCalendarDays(date: string, days: number): string {
-  const [year, month, day] = date.split('-').map(Number);
-  const shifted = new Date(Date.UTC(year, month - 1, day + days));
-  const nextYear = shifted.getUTCFullYear();
-  const nextMonth = String(shifted.getUTCMonth() + 1).padStart(2, '0');
-  const nextDay = String(shifted.getUTCDate()).padStart(2, '0');
-  return `${nextYear}-${nextMonth}-${nextDay}`;
-}
-
-function resolvePatrolDateMidnightUtc(patrolDate: string, timeZone: string): Date {
-  const [year, month, day] = patrolDate.split('-').map(Number);
-  const anchor = Date.UTC(year, month - 1, day, 12, 0, 0);
-
-  for (let offsetHours = -14; offsetHours <= 14; offsetHours += 1) {
-    const candidate = new Date(anchor + offsetHours * 3_600_000);
-    const parts = getPatrolTimeParts(candidate, timeZone);
-    if (parts.date !== patrolDate || parts.hour !== 0) {
-      continue;
-    }
-
-    let start = candidate.getTime();
-    let end = start + 3_600_000;
-    while (end - start > 1_000) {
-      const mid = new Date(Math.floor((start + end) / 2));
-      const midParts = getPatrolTimeParts(mid, timeZone);
-      if (midParts.date === patrolDate && midParts.hour === 0) {
-        end = mid.getTime();
-      } else {
-        start = mid.getTime();
-      }
-    }
-
-    return new Date(end);
-  }
-
-  throw new Error(`Unable to resolve patrol date midnight for ${patrolDate} (${timeZone})`);
+  return getOperationalDateUtcBounds(patrolDate, timeZone);
 }
 
 export function logPatrolImagesForAggregation(

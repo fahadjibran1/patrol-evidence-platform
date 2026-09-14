@@ -13,6 +13,7 @@ import { UserRole } from '@/common/enums/user-role.enum';
 import { CurrentUser } from '@/auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '@/auth/interfaces/authenticated-request.interface';
 import { Response } from 'express';
+import { getPatrolTimeParts } from '@/common/utils/patrol-time.util';
 
 import { LicenceFeatureGuard, RequireLicenceFeature } from '@/licensing/licence-feature.guard';
 
@@ -27,7 +28,7 @@ export class DashboardController {
     return this.withDateValidation(
       () => this.dashboardService.getOverview(user, date),
       {
-        date: date?.trim() || new Date().toISOString().slice(0, 10),
+        date: date?.trim() || getPatrolTimeParts(new Date()).date,
         siteTotals: { active: 0, withScheduledSlots: 0 },
         slotTotals: { total: 0, Safe: 0, Missing: 0, Pending: 0 },
         imageTotals: { received: 0 },
@@ -58,7 +59,7 @@ export class DashboardController {
     @Res() response: Response,
   ): Promise<void> {
     await this.withDateValidation(async () => {
-      const selectedDate = date?.trim() || new Date().toISOString().slice(0, 10);
+      const selectedDate = date?.trim() || getPatrolTimeParts(new Date()).date;
       const csv = await this.dashboardService.exportHourlySafetyCsv(user, date);
 
       response.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -103,7 +104,7 @@ export class DashboardController {
     @Res() response: Response,
   ): Promise<void> {
     await this.withDateValidation(async () => {
-      const selectedDate = date?.trim() || new Date().toISOString().slice(0, 10);
+      const selectedDate = date?.trim() || getPatrolTimeParts(new Date()).date;
       const csv = await this.dashboardService.exportHourlyGuardStatusCsv(
         user,
         date,

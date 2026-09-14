@@ -5,6 +5,7 @@ import { customerErrorMessage } from '../lib/customer-errors';
 import { useAuth } from '../state/auth';
 import type { PatrolAlert, Site } from '../types';
 import { Card, PageHeader, StatusBadge } from '../components/ui';
+import { formatPatrolDateTime } from '../lib/patrol-time';
 
 export function AlertsPage(): JSX.Element {
   const navigate = useNavigate();
@@ -125,7 +126,7 @@ export function AlertsPage(): JSX.Element {
                   <div className="incident-header">
                     <div>
                       <strong>{alert.site?.siteCode ?? alert.siteId}</strong>
-                      <p>{new Date(alert.alertTime).toLocaleString()}</p>
+                      <p>{formatPatrolDateTime(alert.alertTime)}</p>
                     </div>
                     <div className="badge-row">
                       <StatusBadge value={alert.alertType} />

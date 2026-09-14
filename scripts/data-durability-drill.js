@@ -108,7 +108,7 @@ function createFixture(root) {
       .run(`evidence-${index}`, siteId, groupId, `message-${index}`, '2026-09-11T12:00:00.000Z', '2026-09-11T12:00:01.000Z', path.basename(filePath), filePath, bytes.length, sha256(bytes));
   }
   database.close();
-  fs.writeFileSync(configPath, JSON.stringify({ setupCompleted: true, autoStartCollector: true, linkedWhatsAppAccountId: 'account-synthetic', storageRootPath: evidenceRoot, sqliteDbPath: databasePath }));
+  fs.writeFileSync(configPath, JSON.stringify({ setupCompleted: true, appTimeZone: 'Asia/Dubai', autoStartCollector: true, linkedWhatsAppAccountId: 'account-synthetic', storageRootPath: evidenceRoot, sqliteDbPath: databasePath }));
   fs.mkdirSync(path.join(userDataRoot, 'data', 'whatsapp-session'), { recursive: true });
   fs.writeFileSync(path.join(userDataRoot, 'data', 'whatsapp-session', 'session.marker'), 'same-machine-session');
   fs.mkdirSync(path.join(userDataRoot, 'secure-session'), { recursive: true });
@@ -234,6 +234,7 @@ async function run() {
     const restoredConfig = JSON.parse(fs.readFileSync(fixture.configPath, 'utf8'));
     results.sameMachineRestore = restored.sameMachine && !restored.requiresWhatsAppRelink && databaseCount(fixture.databasePath, 'patrol_images') === 3 && restoredConfig.autoStartCollector === true;
     results.monitoringPreferencePreserved = restoredConfig.autoStartCollector === true;
+    results.workspaceTimeZonePreserved = restoredConfig.appTimeZone === 'Asia/Dubai';
     results.sameMachineLocalAuth = fs.readFileSync(path.join(fixture.userDataRoot, 'data', 'whatsapp-session', 'session.marker'), 'utf8') === 'same-machine-session';
     results.sameMachineLicenceState = fs.readFileSync(path.join(fixture.userDataRoot, 'license-store.json'), 'utf8') === '{"synthetic":true}';
     results.mappingEvidencePreserved = databaseCount(fixture.databasePath, 'sites') === 2 && databaseCount(fixture.databasePath, 'patrol_groups') === 2 && databaseCount(fixture.databasePath, 'patrol_images') === 3;
@@ -304,7 +305,7 @@ async function run() {
     fs.mkdirSync(replacement.userDataRoot, { recursive: true });
     const replacementResult = await durability.restorePatrolSafeBackup({ ...replacement, backupRoot: backup.backupPath, machineBindingHash: 'machine-b' });
     const replacementConfig = JSON.parse(fs.readFileSync(replacement.configPath, 'utf8'));
-    results.replacementMachine = replacementResult.requiresWhatsAppRelink && replacementConfig.autoStartCollector === false && !fs.existsSync(path.join(replacement.userDataRoot, 'data', 'whatsapp-session')) && databaseCount(replacement.databasePath, 'patrol_images') === 3;
+    results.replacementMachine = replacementResult.requiresWhatsAppRelink && replacementConfig.autoStartCollector === false && replacementConfig.appTimeZone === 'Asia/Dubai' && !fs.existsSync(path.join(replacement.userDataRoot, 'data', 'whatsapp-session')) && databaseCount(replacement.databasePath, 'patrol_images') === 3;
 
     if (process.env.PATROLSAFE_ADOPTION_SOURCE) {
       const adoptionCopy = path.join(root, 'preserved-certified-copy.db');

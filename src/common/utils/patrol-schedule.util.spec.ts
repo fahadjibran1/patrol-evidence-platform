@@ -148,6 +148,11 @@ describe('patrol-schedule.util', () => {
     expect(businessDayOfWeek('2026-03-30', 'Europe/London')).toBe(1);
   });
 
+  it('uses the workspace civil date for weekday even across the international date line', () => {
+    expect(businessDayOfWeek('2026-09-14', 'Pacific/Auckland')).toBe(1);
+    expect(businessDayOfWeek('2026-09-14', 'America/Los_Angeles')).toBe(1);
+  });
+
   it('normalizes active day arrays', () => {
     expect(normalizeActiveDays([1, 2, 9, 'x'])).toEqual([1, 2]);
   });

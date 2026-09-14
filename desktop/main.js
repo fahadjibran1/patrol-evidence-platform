@@ -18,6 +18,7 @@ const { Client } = require('pg');
 const {
   assertTrustedIpcSender,
   isTrustedRendererNavigation,
+  normalizeIanaTimeZone,
   productionDevToolsAllowed,
   sanitizeDesktopConfigPatch,
   sanitizePostgresConfig,
@@ -661,6 +662,7 @@ function configChangeRequiresBackendRestart(partialConfig, currentConfig = readW
     'whatsappChromePath',
     'whatsappBrowser',
     'whatsappHeadless',
+    'appTimeZone',
   ];
 
   return restartKeys.some((key) => {
@@ -721,6 +723,27 @@ function writeWorkspaceConfigAtomic(configPath, config) {
     fs.rmSync(temporaryPath, { force: true });
     throw error;
   }
+}
+
+function migrateLegacyWorkspaceTimeZone() {
+  const configPath = getConfigPath();
+  if (!fs.existsSync(configPath)) return false;
+  const config = readWorkspaceConfig();
+  if (config.appTimeZone !== undefined) {
+    const normalized = normalizeIanaTimeZone(config.appTimeZone);
+    if (!normalized) {
+      throw new Error('Workspace configuration contains an invalid time zone. Contact PatrolSafe support.');
+    }
+    if (normalized !== config.appTimeZone) {
+      writeWorkspaceConfig({ appTimeZone: normalized });
+    }
+    return false;
+  }
+  if (config.setupCompleted !== true) return false;
+
+  writeWorkspaceConfig({ appTimeZone: 'Europe/London' });
+  appendDesktopLog('WORKSPACE_TIMEZONE_MIGRATED', 'Europe/London source=legacy-v1-compatibility');
+  return true;
 }
 
 function getBackendPort() {
@@ -2890,6 +2913,7 @@ if (handleSquirrelEvent()) {
         'Electron app ready',
         `packaged=${app.isPackaged} appPath=${app.getAppPath()} resourcesPath=${process.resourcesPath}`,
       );
+      migrateLegacyWorkspaceTimeZone();
       const startupConfig = readWorkspaceConfig();
       appendDesktopLog('SETUP_COMPLETED_LOADED', startupConfig.setupCompleted === true ? 'true' : 'false');
       updateLoginItemSettings();

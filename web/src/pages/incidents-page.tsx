@@ -5,6 +5,7 @@ import { customerErrorMessage } from '../lib/customer-errors';
 import { useAuth } from '../state/auth';
 import type { Incident, Site } from '../types';
 import { Card, PageHeader, StatusBadge } from '../components/ui';
+import { formatPatrolDateTime } from '../lib/patrol-time';
 
 export function IncidentsPage(): JSX.Element {
   const navigate = useNavigate();
@@ -128,7 +129,7 @@ export function IncidentsPage(): JSX.Element {
                   <div className="incident-header">
                     <div>
                       <strong>{incident.site?.siteCode ?? incident.siteId}</strong>
-                      <p>{new Date(incident.createdAt).toLocaleString()}</p>
+                      <p>{formatPatrolDateTime(incident.createdAt)}</p>
                     </div>
                     <div className="badge-row">
                       <StatusBadge value={incident.severity} />

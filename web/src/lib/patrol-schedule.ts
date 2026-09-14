@@ -1,25 +1,9 @@
 import type { PatrolSchedule } from '../types';
-import { BUSINESS_TIMEZONE } from './patrol-time';
-
-const WEEKDAY_TO_INDEX: Record<string, number> = {
-  Sun: 0,
-  Mon: 1,
-  Tue: 2,
-  Wed: 3,
-  Thu: 4,
-  Fri: 5,
-  Sat: 6,
-};
+import { getWorkspaceTimeZone } from './patrol-time';
 
 function businessDayOfWeek(businessDate: string): number {
   const [year, month, day] = businessDate.split('-').map((value) => Number(value));
-  const probe = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
-  const weekday = new Intl.DateTimeFormat('en-US', {
-    timeZone: BUSINESS_TIMEZONE,
-    weekday: 'short',
-  }).format(probe);
-
-  return WEEKDAY_TO_INDEX[weekday] ?? 0;
+  return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
 }
 
 export function scheduleCoversHour(
@@ -107,7 +91,7 @@ export function describeEffectiveSchedule(
   if (siteSchedules.length > 0 && activeToday.length === 0) {
     return {
       configured: siteSchedules[0] ?? null,
-      timezone: BUSINESS_TIMEZONE,
+      timezone: getWorkspaceTimeZone(),
       source: 'disabled',
       crossesMidnight: false,
       windowLabel: 'Disabled today',
@@ -117,7 +101,7 @@ export function describeEffectiveSchedule(
   if (activeToday.length === 0) {
     return {
       configured: null,
-      timezone: BUSINESS_TIMEZONE,
+      timezone: getWorkspaceTimeZone(),
       source: 'fallback',
       crossesMidnight: false,
       windowLabel: '06:00–22:00 (fallback)',
@@ -129,7 +113,7 @@ export function describeEffectiveSchedule(
 
   return {
     configured: primary,
-    timezone: BUSINESS_TIMEZONE,
+    timezone: getWorkspaceTimeZone(),
     source: 'configured',
     crossesMidnight,
     windowLabel: formatScheduleWindow(primary.startHour, primary.endHour, Boolean(primary.is24Hours)),

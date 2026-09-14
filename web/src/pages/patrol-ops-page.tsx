@@ -5,20 +5,22 @@ import { customerErrorMessage } from '../lib/customer-errors';
 import { useAuth } from '../state/auth';
 import type { PatrolSlot, Site } from '../types';
 import { Card, PageHeader, StatusBadge } from '../components/ui';
-
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
-}
+import {
+  formatPatrolDateTime,
+  formatWorkspaceDateTimeInput,
+  getPatrolToday,
+  workspaceDateTimeInputToUtc,
+} from '../lib/patrol-time';
 
 export function PatrolOpsPage(): JSX.Element {
   const navigate = useNavigate();
   const { token, user } = useAuth();
   const [sites, setSites] = useState<Site[]>([]);
   const [selectedSiteCode, setSelectedSiteCode] = useState('');
-  const [selectedDate, setSelectedDate] = useState(today());
+  const [selectedDate, setSelectedDate] = useState(getPatrolToday());
   const [slots, setSlots] = useState<PatrolSlot[]>([]);
   const [senderName, setSenderName] = useState(user ? `${user.firstName} ${user.lastName}` : '');
-  const [timestamp, setTimestamp] = useState(new Date().toISOString().slice(0, 16));
+  const [timestamp, setTimestamp] = useState(formatWorkspaceDateTimeInput());
   const [file, setFile] = useState<File | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -100,7 +102,7 @@ export function PatrolOpsPage(): JSX.Element {
 
     const formData = new FormData();
     formData.append('siteCode', selectedSiteCode);
-    formData.append('timestamp', new Date(timestamp).toISOString());
+    formData.append('timestamp', workspaceDateTimeInputToUtc(timestamp).toISOString());
     if (senderName.trim()) {
       formData.append('senderName', senderName.trim());
     }
@@ -222,9 +224,9 @@ export function PatrolOpsPage(): JSX.Element {
               <tbody>
                 {slots.map((slot) => (
                   <tr key={slot.id}>
-                    <td>{new Date(slot.expectedAt).toLocaleString()}</td>
-                    <td>{new Date(slot.slotStart).toLocaleString()}</td>
-                    <td>{new Date(slot.slotEnd).toLocaleString()}</td>
+                    <td>{formatPatrolDateTime(slot.expectedAt)}</td>
+                    <td>{formatPatrolDateTime(slot.slotStart)}</td>
+                    <td>{formatPatrolDateTime(slot.slotEnd)}</td>
                     <td><StatusBadge value={slot.status} /></td>
                     <td>{slot.imageId ? 'Yes' : 'No'}</td>
                   </tr>

@@ -462,6 +462,7 @@ export interface DesktopBootstrapStatus {
   autoStartCollector: boolean;
   whatsappAllowFromMe: boolean;
   linkedWhatsAppAccountId: string | null;
+  appTimeZone: string | null;
   settingsApplied: boolean;
   license: LicenseSnapshot;
 }

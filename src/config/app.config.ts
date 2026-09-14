@@ -11,6 +11,7 @@ import {
   resolveConfiguredStorageRootPath,
   resolveDesktopWhatsAppAutoStart,
 } from '@/desktop/desktop-storage.util';
+import { assertIanaTimeZone, DEFAULT_BUSINESS_TIMEZONE } from '@/common/utils/patrol-time.util';
 
 function resolveDesktopWhatsAppSessionPath(): string | null {
   const dataDirectory = getDefaultDesktopDataDirectory();
@@ -27,26 +28,24 @@ export const appConfig = () => {
   const workspace = readDesktopWorkspaceConfig();
   const storageRootPath = resolveConfiguredStorageRootPath(workspace);
   const whatsappAutoStart = resolveDesktopWhatsAppAutoStart(workspace);
+  const workspaceTimeZone = assertIanaTimeZone(
+    process.env.BUSINESS_TIMEZONE?.trim() ||
+      workspace.appTimeZone ||
+      process.env.APP_TIMEZONE?.trim() ||
+      DEFAULT_BUSINESS_TIMEZONE,
+  );
 
   return {
     nodeEnv: process.env.NODE_ENV ?? 'development',
     port: Number(process.env.PORT ?? 3000),
-    businessTimeZone:
-      process.env.BUSINESS_TIMEZONE?.trim() ||
-      getDesktopConfigValue('appTimeZone') ||
-      process.env.APP_TIMEZONE?.trim() ||
-      'Europe/London',
+    businessTimeZone: workspaceTimeZone,
     securityCompanyName: process.env.SECURITY_COMPANY_NAME?.trim() || 'Tech Guards Security',
     trialDays: Number(process.env.TRIAL_DAYS ?? 30),
     licenseSigningSecret: process.env.LICENSE_SIGNING_SECRET?.trim() || 'patrol-evidence-platform-license-secret',
     licenseClockToleranceHours: Number(process.env.LICENSE_CLOCK_TOLERANCE_HOURS ?? 48),
     databaseType: resolveDatabaseType(),
     databasePath: resolveDatabaseType() === 'sqlite' ? resolveSqliteDatabasePath() : null,
-    appTimeZone:
-      process.env.BUSINESS_TIMEZONE?.trim() ||
-      getDesktopConfigValue('appTimeZone') ||
-      process.env.APP_TIMEZONE?.trim() ||
-      'Europe/London',
+    appTimeZone: workspaceTimeZone,
     storageRootPath,
     whatsappEnabled: isDesktopWorkspace || process.env.WHATSAPP_ENABLED === 'true',
     whatsappAutoStart,

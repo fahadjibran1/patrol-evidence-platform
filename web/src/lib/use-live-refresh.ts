@@ -1,17 +1,13 @@
 import { useCallback, useRef, useState } from 'react';
 import { useVisibilityPolling } from './use-visibility-polling';
+import { formatPatrolTime } from './patrol-time';
 
 export function formatLastUpdated(value: Date | null): string {
   if (!value) {
     return 'Not updated yet';
   }
 
-  return new Intl.DateTimeFormat('en-GB', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  }).format(value);
+  return formatPatrolTime(value);
 }
 
 export function useLiveRefresh(

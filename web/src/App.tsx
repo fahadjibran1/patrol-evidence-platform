@@ -23,6 +23,7 @@ import { LicenseRouteGate } from './components/license-route-gate';
 import { apiRequest } from './lib/api';
 import { getDesktopApiBaseUrl, isDesktopApp } from './lib/desktop';
 import type { DesktopBootstrapStatus, DesktopState } from './types';
+import { setWorkspaceTimeZone } from './lib/patrol-time';
 
 const DESKTOP_BOOTSTRAP_RETRY_WINDOW_MS = 15_000;
 const DESKTOP_BOOTSTRAP_RETRY_INTERVAL_MS = 1_000;
@@ -106,6 +107,9 @@ export function App(): JSX.Element {
     }
 
     return window.desktopBridge.onBackendStatus((nextDesktopState) => {
+      if (nextDesktopState.config.appTimeZone) {
+        setWorkspaceTimeZone(nextDesktopState.config.appTimeZone);
+      }
       setDesktopState(nextDesktopState);
       console.info(`[frontend-backend-status] ${nextDesktopState.backend.status}`);
     });
@@ -135,6 +139,8 @@ export function App(): JSX.Element {
             return;
           }
 
+          const configuredTimeZone = nextDesktopState?.config.appTimeZone ?? status.appTimeZone;
+          if (configuredTimeZone) setWorkspaceTimeZone(configuredTimeZone);
           setBootstrapStatus(status);
           setDesktopState(nextDesktopState);
           setBootstrapError(null);
@@ -201,6 +207,8 @@ export function App(): JSX.Element {
           return;
         }
 
+        const configuredTimeZone = nextDesktopState?.config.appTimeZone ?? status.appTimeZone;
+        if (configuredTimeZone) setWorkspaceTimeZone(configuredTimeZone);
         setBootstrapStatus(status);
         setDesktopState(nextDesktopState);
         setBootstrapError(null);

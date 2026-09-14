@@ -5,6 +5,7 @@ import { customerErrorMessage } from '../lib/customer-errors';
 import { useAuth } from '../state/auth';
 import type { Site } from '../types';
 import { Card, EmptyState, PageHeader, StatusBadge } from '../components/ui';
+import { formatPatrolDateTime } from '../lib/patrol-time';
 
 interface ArchivePreview {
   siteId: string;
@@ -284,7 +285,7 @@ export function SitesPage(): JSX.Element {
                   <div>
                     <strong>{site.siteCode}</strong>
                     <p>{site.siteName}</p>
-                    <p className="muted-text">Archived {site.archivedAt ? new Date(site.archivedAt).toLocaleString() : ''}</p>
+                    <p className="muted-text">Archived {site.archivedAt ? formatPatrolDateTime(site.archivedAt) : ''}</p>
                   </div>
                   <div className="button-row">
                     <button type="button" className="secondary-button" disabled={isSaving} onClick={() => void restoreSite(site)}>

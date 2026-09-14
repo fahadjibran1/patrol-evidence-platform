@@ -2,6 +2,10 @@ import { IsBoolean, IsEmail, IsOptional, IsString, MaxLength, MinLength } from '
 
 export class InitializeDesktopWorkspaceDto {
   @IsString()
+  @MaxLength(128)
+  appTimeZone!: string;
+
+  @IsString()
   @MinLength(2)
   @MaxLength(160)
   companyName!: string;
