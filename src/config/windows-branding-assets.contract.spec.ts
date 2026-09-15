@@ -107,9 +107,13 @@ describe('PatrolSafe Windows branding assets', () => {
     expect(hook).toContain("const TIMESTAMP_URL = 'http://timestamp.acs.microsoft.com/'");
     expect(hook).not.toMatch(/AccessToken|clientSecret|password/i);
     expect(signedRelease).toContain("PATROLSAFE_WINDOWS_RELEASE: 'rc'");
+    expect(signedRelease).toContain('patrolsafe-${releaseVersion}-private-rc-');
+    expect(signedRelease).toContain("'-ExpectedReleaseVersion'");
     expect(signedRelease).toContain("['-IBm', 'azure.cli', 'account', 'show'");
     expect(signedRelease).toContain('verify-windows-signatures.ps1');
     expect(verification).toContain("$ExpectedPublisher = 'Vesoft Services Limited'");
+    expect(verification).toContain('releaseVersion = $ExpectedReleaseVersion');
+    expect(verification).not.toContain("releaseVersion = '1.0.0'");
     expect(verification).toContain('SIGNATURE_TIMESTAMP_MISSING');
     expect(read('docs/release/azure-signing.md')).toContain('Vesoft Services Limited');
   });

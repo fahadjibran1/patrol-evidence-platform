@@ -7,6 +7,8 @@ param(
   [Parameter()]
   [string]$ExpectedProductName = 'PatrolSafe by S4',
   [Parameter()]
+  [string]$ExpectedReleaseVersion,
+  [Parameter()]
   [string]$ManifestPath,
   [Parameter()]
   [switch]$RequireInstaller,
@@ -23,6 +25,14 @@ if (-not $OutRoot) {
 }
 if (-not $ManifestPath) {
   $ManifestPath = Join-Path $OutRoot 'private-rc-verification-manifest.json'
+}
+if (-not $ExpectedReleaseVersion) {
+  $packageMetadata = Get-Content -LiteralPath (Join-Path (Split-Path -Parent $scriptRoot) 'package.json') -Raw |
+    ConvertFrom-Json
+  $ExpectedReleaseVersion = [string]$packageMetadata.version
+}
+if ($ExpectedReleaseVersion -notmatch '^\d+\.\d+\.\d+$') {
+  throw "SIGNATURE_VERIFY_INVALID_RELEASE_VERSION version=$ExpectedReleaseVersion"
 }
 
 function Get-PatrolSafeRelativePath {
@@ -238,7 +248,7 @@ try {
     formatVersion = 1
     productName = $ExpectedProductName
     publisher = $ExpectedPublisher
-    releaseVersion = '1.0.0'
+    releaseVersion = $ExpectedReleaseVersion
     generatedAt = (Get-Date).ToUniversalTime().ToString('o')
     signedReleaseCandidate = $true
     published = $false

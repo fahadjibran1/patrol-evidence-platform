@@ -13,6 +13,9 @@ const defaultAppRoot = path.join(
 );
 const appRoot = path.resolve(process.argv[2] || defaultAppRoot);
 const outputRoot = path.join(repositoryRoot, 'docs', 'ga', 'generated');
+const releasePackageJson = JSON.parse(
+  fs.readFileSync(path.join(repositoryRoot, 'package.json'), 'utf8'),
+);
 const sourceCommit = childProcess
   .execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repositoryRoot, encoding: 'utf8' })
   .trim();
@@ -357,7 +360,7 @@ fs.writeFileSync(
 );
 
 const noticeLines = [
-  'PATROLSAFE BY S4 VERSION 1.0.0',
+  `PATROLSAFE BY S4 VERSION ${releasePackageJson.version}`,
   'THIRD-PARTY NOTICES DRAFT',
   'REQUIRES LEGAL REVIEW',
   '',

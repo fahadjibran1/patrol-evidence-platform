@@ -1,4 +1,5 @@
 const { spawnSync } = require('child_process');
+const fs = require('fs');
 const path = require('path');
 
 const projectRoot = path.resolve(__dirname, '..');
@@ -34,6 +35,14 @@ function main() {
     throw new Error('SIGNED_WINDOWS_RC_REQUIRES_WINDOWS');
   }
 
+  const packageMetadata = JSON.parse(
+    fs.readFileSync(path.join(projectRoot, 'package.json'), 'utf8'),
+  );
+  const releaseVersion = packageMetadata.version;
+  if (typeof releaseVersion !== 'string' || !/^\d+\.\d+\.\d+$/.test(releaseVersion)) {
+    throw new Error('SIGNED_WINDOWS_RC_INVALID_PACKAGE_VERSION');
+  }
+
   const env = {
     ...process.env,
     PATH: `${azureCliDir};${process.env.PATH || ''}`,
@@ -41,7 +50,7 @@ function main() {
     PATROLSAFE_WINDOWS_SIGN_HOOK: hookPath,
     PATROLSAFE_ARTIFACT_SIGNING_CORRELATION_ID:
       process.env.PATROLSAFE_ARTIFACT_SIGNING_CORRELATION_ID ||
-      `patrolsafe-1.0.0-private-rc-${new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14)}`,
+      `patrolsafe-${releaseVersion}-private-rc-${new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14)}`,
   };
 
   console.log('SIGNED RC: verifying the authorized Azure CLI identity');
@@ -65,6 +74,8 @@ function main() {
       path.join(projectRoot, 'out'),
       '-ManifestPath',
       manifestPath,
+      '-ExpectedReleaseVersion',
+      releaseVersion,
       '-RequireInstaller',
     ],
     env,
