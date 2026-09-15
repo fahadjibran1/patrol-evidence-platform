@@ -1,12 +1,18 @@
 # PatrolSafe v1.0.1 active trial expiry certification record
 
-Status: **TECHNICAL CANDIDATE — PUBLIC DOWNLOAD NOT AUTHORIZED**
+Status: **SIGNED TECHNICAL CANDIDATE CERTIFIED — PUBLIC DOWNLOAD NOT AUTHORIZED**
 
 Assessment date: 15 September 2026
 
 ## Release identity and immutable predecessor
 
-PatrolSafe v1.0.1 is a separately versioned remediation candidate. It does not modify, replace, or reuse the identity of the certified v1.0.0 controlled-pilot installer (`F9E6EA6765000BECAD8495A96D3C00C63010B28A01D1D1F639CB4D66CE84924B`). The final v1.0.1 source commit, build ID, installer hash and signed manifest are populated only after their respective gates pass.
+PatrolSafe v1.0.1 is a separately versioned remediation candidate. It does not modify, replace, or reuse the identity of the certified v1.0.0 controlled-pilot installer (`F9E6EA6765000BECAD8495A96D3C00C63010B28A01D1D1F639CB4D66CE84924B`). The single signed candidate is associated as follows:
+
+- binary source commit: `0186389dca09b22a7049ab7094f49988c9746dd0`;
+- customer-document commit: `c0ae483c4be0898dd8ab20f07ccb59ec6cc440a8`;
+- build ID: `2026.09.15.13.59.32`;
+- installer SHA-256: `A4841D8966C479EFFFCE69BB5935BDD109C01152D100FE81049210303B177C3A`; and
+- release association: `final-release-association-v1.0.1.md`.
 
 ## Entitlement authority
 
@@ -55,4 +61,4 @@ An eligible clean installation receives a 30-day free trial. At expiry, monitori
 
 ## Legal and authorization impact
 
-The frozen controlled-pilot legal snapshot is not altered or recharacterized. External legal review has not been performed. Public-trial website copy and the v1.0.1 factual release note are draft publication materials. Wider public acquisition still requires a separate management authorization, supported-market decision, stable legal/privacy URLs, immutable production hosting and final signed v1.0.1 release association.
+The frozen controlled-pilot legal snapshot is not altered or recharacterized. External legal review has not been performed. Public-trial website copy and the v1.0.1 factual release note are draft publication materials. The immutable signed v1.0.1 association is complete. Wider public acquisition still requires separate management authorization, a supported-market decision, stable legal/privacy URLs and immutable production hosting.

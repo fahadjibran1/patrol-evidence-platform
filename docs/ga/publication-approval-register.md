@@ -42,9 +42,10 @@ Canonical publisher: **Vesoft Services Limited**, Company No. **08707130**, 241 
 | Legal risk acceptance | Vesoft management | MANAGEMENT APPROVED FOR CONTROLLED PILOT | `legal-risk-acceptance.md` binds scope, unresolved risks and frozen hash set |
 | Runtime contact reconciliation | Engineering | TECHNICALLY CERTIFIED | Approved role addresses applied; deterministic legacy-domain test added |
 | Customer-document consistency | Product/release engineering | TECHNICALLY CERTIFIED | Phase 11G controlled-pilot status/contact/commercial consistency audit |
-| Final signed package inventory association | Release engineering | BLOCKED | Must rerun against the future exact signed pilot artifact |
-| Final installer/hash/signature association | Release engineering | BLOCKED | No final signed pilot candidate exists; complete `final-release-association-template.md` later |
-| Controlled pilot distribution authorisation | Vesoft company director | BLOCKED | Requires the future signed candidate/manifest and separate release action; this phase does not sign or publish |
+| Final signed package inventory association | Release engineering | TECHNICALLY CERTIFIED | v1.0.1 signed tree reconciled: 403 instances / 361 unique versions / 241 texts; inventory SHA-256 `DC45DBF4BC2C5D463597FCC536DACAC6C49A41B74378B2D5436FCB7DB8D2E963` |
+| Final installer/hash/signature association | Release engineering | TECHNICALLY CERTIFIED | v1.0.1 candidate association in `final-release-association-v1.0.1.md`; public download not authorized |
+| Controlled pilot distribution authorisation | Vesoft company director | APPROVED | Exact immutable v1.0.0 candidate authorized for Stage 1 and up to 13 individually approved Stage 2 B2B businesses |
+| Public 30-day trial download | Vesoft company director | BLOCKED | Signed v1.0.1 candidate is technically certified; explicit public-download authorization is still required |
 | Unrestricted worldwide public GA | Vesoft management | BLOCKED | Not approved by this controlled-pilot risk acceptance |
 
 ## Approved contacts
