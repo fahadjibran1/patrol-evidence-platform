@@ -46,6 +46,7 @@ The documents below are management-approved for the controlled B2B pilot, with e
 - [Runtime contact audit](runtime-contact-audit.md)
 - [Operator decisions required](operator-decisions-required.md)
 - [Final release association template](final-release-association-template.md)
+- [v1.0.1 public-trial candidate association](final-release-association-v1.0.1.md)
 - [GA manifest schema](ga-manifest.schema.json)
 - [Controlled first-customer rollout plan](first-customer-rollout-plan.md)
 - [GA rollback and withdrawal plan](ga-rollback-plan.md)
