@@ -1,8 +1,8 @@
-PATROLSAFE BY S4 VERSION 1.0.0
+PATROLSAFE BY S4 VERSION 1.0.1
 THIRD-PARTY NOTICES DRAFT
 REQUIRES LEGAL REVIEW
 
-Source commit: 2a1cf8621ad4496b3db05cb35719b68adcb2cc3b
+Source commit: 1a362c2abb3d69f392b35d871f9d36f88430c121
 Packaged application records: 361 unique package/version records
 
 This technical draft collects licence and notice texts found in the packaged
