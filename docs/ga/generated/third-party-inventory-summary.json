@@ -1,6 +1,6 @@
 {
   "generator": "scripts/generate-ga-third-party-inventory.js",
-  "sourceCommit": "1a362c2abb3d69f392b35d871f9d36f88430c121",
+  "sourceCommit": "0186389dca09b22a7049ab7094f49988c9746dd0",
   "sourceTree": "out/PatrolSafe by S4-win32-x64/resources/app",
   "repositoryProductionUniquePackageVersions": 488,
   "packageInstances": 403,
@@ -126,6 +126,6 @@
     "repositoryProductionDependenciesCsv": "8883922A3DFC0D1A7880DEAC2C978DF8E6A9F51D857200E283A9DDA90AC365C9",
     "packagedProductionDependenciesCsv": "DC45DBF4BC2C5D463597FCC536DACAC6C49A41B74378B2D5436FCB7DB8D2E963",
     "reconciliationCsv": "FE622533147FDE5F4059200492924866BAA95DC2F7868ECD1070DD9F68A58D2E",
-    "thirdPartyNoticesDraft": "E58FEF8AD86D5F93827438505ED59E5EB929147713806DA14D459C817684A7BB"
+    "thirdPartyNoticesDraft": "577029656F5B7F386C1F730E2D5218B235406F9DD2DDD9432AE813A562B21880"
   }
 }
