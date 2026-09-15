@@ -38,9 +38,9 @@ Exit criteria:
 - installer/hash tracking and withdrawal procedure exercised;
 - operational owner signs the stage record.
 
-## Stage 2 — one to three friendly pilot customers
+## Stage 2 — up to 13 friendly business pilot customers
 
-Use written pilot terms and select one to three friendly customers in individually reviewed countries/regions with suitable Windows/WhatsApp environments. Record each customer and jurisdiction before sale. Provide direct onboarding, but require operators to complete the normal customer UI rather than engineering shortcuts. Supporting additional countries must be a commercial/legal release decision, not a desktop runtime change; no hard-coded country allowlist or geoblocking is planned.
+Use written pilot terms and select no more than 13 friendly business customers in individually reviewed countries/regions with suitable Windows/WhatsApp environments. Record and approve each customer and jurisdiction before supply. Provide direct onboarding, but require operators to complete the normal customer UI rather than engineering shortcuts. Supporting additional countries must be a commercial/legal release decision, not a desktop runtime change; no hard-coded country allowlist or geoblocking is planned.
 
 Track per customer:
 

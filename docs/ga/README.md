@@ -6,7 +6,7 @@ Product: **PatrolSafe by S4**
 Publisher: **Vesoft Services Limited**
 Tagline: **Patrol evidence. Automatically organised.**
 
-This directory is the controlled documentation set for the PatrolSafe v1.0.0 general-availability review. Technical UAT passed against the private signed release candidate identified in [release-notes-v1.0.0.md](release-notes-v1.0.0.md). No document in this directory authorises publication, sale in a particular country, or a v1.0.0 tag.
+This directory is the controlled documentation set for PatrolSafe v1.0.0. Technical UAT passed and the exact signed candidate is authorized for controlled Stage 1/Stage 2 B2B pilot distribution under [pilot-distribution-authorization.md](pilot-distribution-authorization.md). Public publication, an unrecorded customer/jurisdiction and a v1.0.0 tag remain unauthorized.
 
 ## Customer documents
 
@@ -51,6 +51,9 @@ The documents below are management-approved for the controlled B2B pilot, with e
 - [GA rollback and withdrawal plan](ga-rollback-plan.md)
 - [Manual licence recovery procedure](licence-recovery-procedure.md)
 - [Secure support-data transfer policy](secure-support-data-transfer.md)
+- [Controlled-pilot distribution authorization](pilot-distribution-authorization.md)
+- [Pilot customer register](pilot-customer-register.md)
+- [Per-customer release checklist](pilot-release-checklist.md)
 - [Frozen legal-review snapshot](legal-review/README.md)
 - [Generated packaged dependency inventory](generated/third-party-production-dependencies.csv)
 - [Generated repository production inventory](generated/repository-production-dependencies.csv)
@@ -59,11 +62,6 @@ The documents below are management-approved for the controlled B2B pilot, with e
 
 ## Release gate
 
-`GA-GLOBAL-01` is technically closed by Phase 11B: PatrolSafe now stores a validated IANA workspace time zone and uses it for operational dates, schedules, filtering, storage classification and customer display. Public GA nevertheless remains **NO-GO** until:
+`GA-GLOBAL-01` is technically closed. The final signed candidate, signed-package inventory, immutable release association and director authorization are complete for Stage 1 and a maximum of 13 individually approved Stage 2 B2B customers. Every external business and jurisdiction must still be recorded and approved before its delivery.
 
-1. a final signed pilot candidate is generated and verified;
-2. the technically reconciled third-party inventory/notices are regenerated from that exact signed dependency tree;
-3. source, documentation, installer, signature, inventory and approved customer/jurisdiction are bound in the final release association; and
-4. the Vesoft company director separately authorises controlled distribution.
-
-External legal review was not performed. Vesoft management accepted the recorded risks for Stage 1 and Stage 2 controlled B2B pilots only. Broader public/international scaling remains unapproved and external legal review is recommended before it.
+External legal review was not performed. Vesoft management accepted the recorded risks for this controlled B2B pilot only. Public download, unrestricted worldwide GA, consumer marketing and a public tag remain unapproved; external legal review remains recommended before broader scaling.

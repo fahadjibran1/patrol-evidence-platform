@@ -42,7 +42,7 @@ The decisions below were supplied by the operator for Phase 11E. `APPROVED` reco
 | Renewal | Manual annual renewal for v1; no automatic renewal | APPROVED | Contract notice/expiry effects remain legal review |
 | Refund principle | Generally non-refundable after activation except where required by applicable law | MANAGEMENT RISK ACCEPTED FOR CONTROLLED PILOT | External legal review not performed; do not describe as legally resolved |
 | Customer evidence retention | No automatic retention deletion; customer controls evidence deletion, backup retention and organisational policy; uninstall preserves customer data | APPROVED PRODUCT POLICY | Legal/privacy wording remains review |
-| Rollout | Stage 1 internal; Stage 2 one to three friendly pilots; Stage 3 controlled public availability in approved markets; Stage 4 broader international rollout | APPROVED | Release authority is Vesoft Services Limited / company director |
+| Rollout | Stage 1 internal; Stage 2 up to 13 individually approved friendly business pilots; Stage 3 controlled public availability in approved markets; Stage 4 broader international rollout | APPROVED | Each Stage 2 business and jurisdiction must be approved and recorded before supply |
 | Support-data minimisation | Description/screenshots, customer-safe diagnostics, support bundle, narrow files, exceptional full data | APPROVED | Follow `secure-support-data-transfer.md` |
 | Secure support-transfer method | Vesoft-controlled Microsoft OneDrive/SharePoint restricted workflow; no unrestricted public links | APPROVED | Follow `secure-support-data-transfer.md`; record recipients, access and deletion |
 | External legal review | Not performed | MANAGEMENT RISK ACCEPTED FOR CONTROLLED PILOT | Do not describe as counsel/solicitor/external approval |
@@ -52,8 +52,8 @@ The decisions below were supplied by the operator for Phase 11E. `APPROVED` reco
 ## Remaining release actions
 
 - Record and management-approve each pilot customer and jurisdiction before supply.
-- Complete the final signed pilot artifact, signature verification, dependency inventory reconciliation and immutable release association in a later phase.
-- Authorise each controlled distribution action; this decision does not authorise unrestricted public publication.
+- Preserve the authorized installer, build identity, signature record and SHA-256 without substitution.
+- Use the approved private controlled-delivery procedure; unrestricted public publication remains unauthorized.
 
 ## Legal decisions not approved here
 
