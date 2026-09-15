@@ -2,6 +2,8 @@
 
 Status: **READINESS ASSESSED — PUBLIC DOWNLOAD NOT AUTHORIZED**
 
+Historical note: this assessment records the immutable v1.0.0 result. `GA-DIST-01` is remediated only in the separately versioned v1.0.1 candidate documented by `phase12c-active-trial-expiry.md`; the v1.0.0 installer and this historical conclusion remain unchanged.
+
 Assessment date: 15 September 2026
 
 This document evaluates a future public 30-day trial download. It does not supersede the controlled B2B pilot authorization, authorize publication, or change the certified binary.

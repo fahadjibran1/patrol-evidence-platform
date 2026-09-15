@@ -1,6 +1,6 @@
 # PatrolSafe public trial download page copy
 
-Status: **COPY DRAFT — DOWNLOAD DISABLED / RUNTIME EXPIRY BLOCKER OPEN**
+Status: **COPY DRAFT — DOWNLOAD DISABLED / v1.0.1 SIGNING AND AUTHORIZATION PENDING**
 
 # PatrolSafe by S4
 
@@ -27,11 +27,11 @@ PatrolSafe helps security-company operations teams organize newly received JPEG 
 5. Start monitoring and review newly received evidence.
 6. Create a verified local backup.
 
-PatrolSafe v1.0 is currently provided in English.
+PatrolSafe v1.0.1 is currently provided in English.
 
 ## Security and privacy
 
-The v1.0 operational database and evidence are stored on the customer's workstation or customer-selected storage. The audited application has no Vesoft cloud evidence upload or Vesoft telemetry. WhatsApp/Meta and Microsoft process information required to provide their services. Customers remain responsible for authorization, access control, retention and lawful use.
+The v1.0.1 operational database and evidence are stored on the customer's workstation or customer-selected storage. The audited application has no Vesoft cloud evidence upload or Vesoft telemetry. WhatsApp/Meta and Microsoft process information required to provide their services. Customers remain responsible for authorization, access control, retention and lawful use.
 
 PatrolSafe is digitally signed. This is evidence of publisher and file integrity; it is not a guarantee that software can never contain a defect.
 
@@ -45,17 +45,17 @@ PatrolSafe is digitally signed. This is evidence of publisher and file integrity
 - sufficient protected local and backup storage;
 - practical desktop display; certified review covered 1366×768 and 1920×1080.
 
-Windows 10, Windows Server, Arm64, macOS and Linux are not certified for v1.0.
+Windows 10, Windows Server, Arm64, macOS and Linux are not certified for v1.0.1.
 
 ## Download and verify
 
 | Field | Value |
 |---|---|
 | Publisher | Vesoft Services Limited |
-| Version | 1.0.0 |
+| Version | 1.0.1 |
 | Installer | `PatrolEvidencePlatformSetup.exe` |
-| Size | 193,817,568 bytes (approximately 185 MiB) |
-| SHA-256 | `F9E6EA6765000BECAD8495A96D3C00C63010B28A01D1D1F639CB4D66CE84924B` |
+| Size | `[INSERT CERTIFIED v1.0.1 INSTALLER SIZE]` |
+| SHA-256 | `[INSERT CERTIFIED v1.0.1 SHA-256]` |
 
 `[DOWNLOAD FOR WINDOWS — NOT ENABLED]`
 
@@ -65,7 +65,7 @@ Do not install a file with a different hash or publisher. Do not disable Defende
 
 ## Trial and licence
 
-An eligible new installation receives a 30-day local trial. Live monitoring pauses when the trial expires; existing evidence and backups remain accessible and customer data is preserved. The public v1 catalogue is Annual only, for one Windows workstation per licence. Paid licence issuance and replacement-workstation recovery are support-assisted.
+An eligible new installation receives a 30-day local trial. When the trial expires, monitoring stops during the running session. Existing evidence and Backup remain available, customer data is preserved, and WhatsApp is not unlinked merely because the trial ended. The public v1 catalogue is Annual only, for one Windows workstation per licence. Paid licence issuance and replacement-workstation recovery are support-assisted.
 
 Contact `support@sfour.co.uk` for activation or recovery and provide the Installation ID shown on the Licence page.
 
@@ -114,15 +114,15 @@ No. No payment is required to download PatrolSafe or begin an eligible 30-day tr
 
 ### What happens when the trial ends?
 
-Intended policy: live operations pause until PatrolSafe is activated, while existing evidence remains viewable, backup remains available and customer data is preserved. **Do not publish this statement until the active-monitoring expiry blocker is repaired and certified.**
+Monitoring stops when the 30-day trial ends. Existing evidence remains viewable, Backup remains available and customer data is preserved. Activate a valid Annual licence and manually resume monitoring to continue.
 
 ### Does PatrolSafe upload my evidence to Vesoft?
 
-The audited v1.0 application has no Vesoft cloud evidence upload. Evidence remains on the workstation or customer-selected storage unless the customer deliberately supplies it for support or moves it through its own systems.
+The audited v1.0.1 application has no Vesoft cloud evidence upload. Evidence remains on the workstation or customer-selected storage unless the customer deliberately supplies it for support or moves it through its own systems.
 
 ### Is WhatsApp required?
 
-Yes. PatrolSafe v1.0 collects newly received supported patrol images through an authorized WhatsApp account and approved groups. Service availability depends on WhatsApp/Meta and the customer's network.
+Yes. PatrolSafe v1.0.1 collects newly received supported patrol images through an authorized WhatsApp account and approved groups. Service availability depends on WhatsApp/Meta and the customer's network.
 
 ### Does PatrolSafe renew automatically?
 

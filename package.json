@@ -5,7 +5,7 @@
   "brandName": "PatrolSafe",
   "endorsement": "by S4",
   "tagline": "Patrol evidence. Automatically organised.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "buildId": "2026.09.13.00.15.24",
   "private": true,
   "workspaces": [
