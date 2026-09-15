@@ -57,6 +57,12 @@ import {
   probeWhatsAppWebConnectivity,
   WHATSAPP_NETWORK_FAILURE_CODE,
 } from './whatsapp-network-recovery.util';
+import type { LicenceEvaluation } from '@patrol/license-core';
+import {
+  monitoringEntitlementRestriction,
+  nextEntitlementRecheckDelayMs,
+  type MonitoringEntitlementRestriction,
+} from './whatsapp-entitlement-lifecycle.util';
 
 export type { WhatsAppCollectorContact, WhatsAppCollectorGroup } from './whatsapp-helper.types';
 
@@ -68,7 +74,9 @@ export interface WhatsAppCollectorStatus extends Omit<WhatsAppHelperStatusSnapsh
   certificationQrMasked: boolean;
   certificationLiveIngestion: WhatsAppCertificationLiveIngestionStatus;
   monitoringPreference: 'ENABLED' | 'PAUSED';
-  monitoringState: 'ACTIVE' | 'PAUSED' | 'NO_GROUPS_CONFIGURED' | 'STARTING' | 'ERROR';
+  monitoringState: 'ACTIVE' | 'PAUSED' | 'NO_GROUPS_CONFIGURED' | 'STARTING' | 'ERROR' | 'TRIAL_EXPIRED' | 'LICENCE_REQUIRED';
+  entitlementRestriction: MonitoringEntitlementRestriction | null;
+  entitlementMessage: string | null;
   sourceDiscoveryState: WhatsAppSourceDiscoveryState;
   sourceDiscoveryError: string | null;
   lastSourceDiscoveryAt: string | null;
@@ -95,6 +103,11 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
     process.env.PATROL_HELPER_INTERNAL_TOKEN?.trim() || randomUUID();
   private readonly startupDelayMs = 1_000;
   private readonly stopTimeoutMs = 8_000;
+  private entitlementRecheckTimer: NodeJS.Timeout | null = null;
+  private entitlementRestriction: MonitoringEntitlementRestriction | null = null;
+  private entitlementMessage: string | null = null;
+  private entitlementResumeRequired = false;
+  private entitlementTransitionCount = 0;
 
   private helperProcess: ChildProcessWithoutNullStreams | null = null;
   private helperStdout: readline.Interface | null = null;
@@ -224,6 +237,7 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleDestroy(): Promise<void> {
+    this.clearEntitlementRecheckTimer();
     this.unsubscribeMappingChanges?.();
     this.unsubscribeMappingChanges = null;
     const activeRecovery = this.networkRecoveryPromise;
@@ -233,6 +247,12 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
   }
 
   async getStatus(): Promise<WhatsAppCollectorStatus> {
+    if (this.entitlementRestriction) {
+      const currentEntitlement = this.licensingService.getEntitlementEvaluation();
+      if (!monitoringEntitlementRestriction(currentEntitlement)) {
+        this.clearEntitlementRestriction(true);
+      }
+    }
     await this.refreshMappedGroupsCount();
     const certificationQrMasked =
       isQrOnlyCertificationMode() &&
@@ -271,6 +291,8 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       certificationLiveIngestion: { ...this.certificationLiveIngestion },
       monitoringPreference: this.monitoringEnabled ? 'ENABLED' : 'PAUSED',
       monitoringState: this.resolveMonitoringState(),
+      entitlementRestriction: this.entitlementRestriction,
+      entitlementMessage: this.entitlementMessage,
       sourceDiscoveryState: this.sourceDiscoveryState,
       sourceDiscoveryError: this.sourceDiscoveryError,
       lastSourceDiscoveryAt: this.lastSourceDiscoveryAt,
@@ -281,7 +303,7 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
     if (isQrOnlyCertificationMode()) {
       throw new BadRequestException('Production monitoring is unavailable in certification mode.');
     }
-    this.licensingService.assertCollectorStartAllowed();
+    const entitlement = this.assertEntitlementForLicensedAction();
     await this.refreshMappedGroupsCount();
     if (!this.whatsAppSourceMappingService.getConfiguredLinkedAccountId()) {
       throw new BadRequestException('Connect WhatsApp before starting monitoring.');
@@ -290,6 +312,8 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException('Add at least one active WhatsApp group mapping before starting monitoring.');
     }
     this.monitoringEnabled = true;
+    this.entitlementResumeRequired = false;
+    this.scheduleEntitlementRecheck(entitlement);
     writeDesktopWorkspaceConfigPatch({ autoStartCollector: true });
     this.appendCollectorLog('production-monitoring-enabled', `mappings=${this.mappedGroupsCount}`);
     if (!this.isHelperRunning()) {
@@ -304,6 +328,7 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException('Production monitoring is unavailable in certification mode.');
     }
     this.monitoringEnabled = false;
+    this.clearEntitlementRecheckTimer();
     writeDesktopWorkspaceConfigPatch({ autoStartCollector: false });
     this.appendCollectorLog('production-monitoring-paused');
     if (this.isHelperRunning()) {
@@ -445,7 +470,10 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException('Use Try Again to retry this WhatsApp linking session.');
     }
 
-    this.licensingService.assertCollectorStartAllowed();
+    const entitlement = this.assertEntitlementForLicensedAction();
+    if (this.monitoringEnabled) {
+      this.scheduleEntitlementRecheck(entitlement);
+    }
 
     if (this.networkRecoveryPromise) {
       return this.networkRecoveryPromise;
@@ -848,7 +876,11 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
     const activeMappings = await this.whatsAppSourceMappingService.toRuntimeMappings(linkedAccountId);
 
     return {
-      monitoringEnabled: this.monitoringEnabled && activeMappings.length > 0,
+      monitoringEnabled:
+        this.monitoringEnabled &&
+        this.entitlementRestriction === null &&
+        !this.entitlementResumeRequired &&
+        activeMappings.length > 0,
       allowFromMe: this.allowFromMe,
       pilotGroupName: this.pilotGroupName ?? null,
       pilotSiteCode: this.pilotSiteCode ?? null,
@@ -862,6 +894,7 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
     ingestContext?: { contentLength?: string | number },
   ): Promise<{ ok: true; imageId: string; duplicate: boolean; filePath?: string }> {
     this.assertHelperToken(token);
+    this.assertEntitlementForHelperIngest();
     this.logIngestPayloadSize(payload, ingestContext?.contentLength);
     return this.ingestPatrolImagePayload(payload, 'helper');
   }
@@ -1284,6 +1317,14 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
           contacts: [...event.payload.contacts],
           browserCandidatesTried: [...event.payload.browserCandidatesTried],
         };
+        if (this.entitlementResumeRequired && event.payload.productionListenerCount > 0) {
+          this.helperStatus = {
+            ...this.helperStatus,
+            productionListenerCount: 0,
+            info: this.entitlementMessage ?? 'Monitoring requires an active PatrolSafe licence.',
+          };
+          this.sendHelperCommand({ type: 'set-production-monitoring', enabled: false });
+        }
         if (
           this.helperStatus.state === 'RECONNECT_AUTHORIZATION_PENDING' ||
           this.helperStatus.state === 'authenticated' ||
@@ -1444,6 +1485,8 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
 
   private maybeBeginNetworkRecovery(status: WhatsAppHelperStatusSnapshot, generation: number): void {
     if (
+      this.entitlementRestriction !== null ||
+      this.entitlementResumeRequired ||
       isQrOnlyCertificationMode() ||
       generation !== this.activeHelperGeneration ||
       this.networkRecoveryPromise ||
@@ -1570,7 +1613,10 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
           'network-connectivity-restored',
           `recoverySequence=${recoverySequence} nextGeneration=${this.helperGeneration + 1}`,
         );
-        this.licensingService.assertCollectorStartAllowed();
+        const entitlement = this.assertEntitlementForLicensedAction();
+        if (this.monitoringEnabled) {
+          this.scheduleEntitlementRecheck(entitlement);
+        }
         return this.startInternal();
       }
 
@@ -1814,6 +1860,12 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
   }
 
   private resolveMonitoringState(): WhatsAppCollectorStatus['monitoringState'] {
+    if (this.entitlementRestriction) {
+      return this.entitlementRestriction;
+    }
+    if (this.entitlementResumeRequired) {
+      return 'PAUSED';
+    }
     if (!this.monitoringEnabled) {
       return 'PAUSED';
     }
@@ -1839,6 +1891,15 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
     if (isQrOnlyCertificationMode()) {
       return;
     }
+    if (this.monitoringEnabled && !this.entitlementResumeRequired) {
+      const entitlement = this.licensingService.getEntitlementEvaluation(true);
+      if (monitoringEntitlementRestriction(entitlement)) {
+        this.applyEntitlementRestriction(entitlement, `monitoring-reconcile:${reason}`);
+        return;
+      }
+      this.clearEntitlementRestriction();
+      this.scheduleEntitlementRecheck(entitlement);
+    }
     if (!this.isHelperRunning()) {
       if (
         this.monitoringEnabled &&
@@ -1858,12 +1919,128 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
     if (this.helperStatus.state !== 'ready') {
       return;
     }
-    const enabled = this.monitoringEnabled && this.mappedGroupsCount > 0;
+    const enabled =
+      this.monitoringEnabled &&
+      this.entitlementRestriction === null &&
+      !this.entitlementResumeRequired &&
+      this.mappedGroupsCount > 0;
     this.sendHelperCommand({ type: 'set-production-monitoring', enabled });
     this.appendCollectorLog(
       'production-monitoring-reconciled',
       `reason=${reason} enabled=${enabled} mappings=${this.mappedGroupsCount}`,
     );
+  }
+
+  private assertEntitlementForLicensedAction(): LicenceEvaluation {
+    const evaluation = this.licensingService.getEntitlementEvaluation(true);
+    if (monitoringEntitlementRestriction(evaluation)) {
+      this.applyEntitlementRestriction(evaluation, 'licensed-action');
+      try {
+        this.licensingService.assertCollectorStartAllowed();
+      } catch (error) {
+        throw error;
+      }
+      throw new BadRequestException(evaluation.message);
+    }
+    this.clearEntitlementRestriction();
+    this.entitlementResumeRequired = false;
+    return evaluation;
+  }
+
+  /**
+   * This synchronous admission point defines the ingestion boundary: an event
+   * admitted here may finish, while every later event is rejected after expiry.
+   */
+  private assertEntitlementForHelperIngest(): void {
+    const evaluation = this.licensingService.getEntitlementEvaluation(true);
+    if (!monitoringEntitlementRestriction(evaluation)) {
+      return;
+    }
+    this.applyEntitlementRestriction(evaluation, 'helper-ingest-admission');
+    try {
+      this.licensingService.assertCollectorStartAllowed();
+    } catch (error) {
+      throw error;
+    }
+    throw new BadRequestException(evaluation.message);
+  }
+
+  private scheduleEntitlementRecheck(evaluation: LicenceEvaluation): void {
+    this.clearEntitlementRecheckTimer();
+    if (
+      !this.monitoringEnabled ||
+      this.entitlementResumeRequired ||
+      monitoringEntitlementRestriction(evaluation)
+    ) {
+      return;
+    }
+    const delay = nextEntitlementRecheckDelayMs(evaluation);
+    this.entitlementRecheckTimer = setTimeout(() => {
+      this.entitlementRecheckTimer = null;
+      this.reconcileActiveEntitlement();
+    }, delay);
+    this.entitlementRecheckTimer.unref?.();
+  }
+
+  private reconcileActiveEntitlement(): void {
+    if (!this.monitoringEnabled) {
+      return;
+    }
+    const evaluation = this.licensingService.getEntitlementEvaluation(true);
+    if (monitoringEntitlementRestriction(evaluation)) {
+      this.applyEntitlementRestriction(evaluation, 'scheduled-boundary');
+      return;
+    }
+    this.clearEntitlementRestriction();
+    this.scheduleEntitlementRecheck(evaluation);
+  }
+
+  private applyEntitlementRestriction(evaluation: LicenceEvaluation, trigger: string): void {
+    const restriction = monitoringEntitlementRestriction(evaluation);
+    if (!restriction) {
+      return;
+    }
+    const firstTransition = this.entitlementRestriction !== restriction;
+    this.entitlementRestriction = restriction;
+    this.entitlementResumeRequired = true;
+    this.entitlementMessage =
+      restriction === 'TRIAL_EXPIRED'
+        ? 'Your 30-day PatrolSafe trial has ended. Monitoring has stopped. Your existing evidence remains available.'
+        : 'Monitoring requires an active PatrolSafe licence. Your existing evidence remains available.';
+    this.clearEntitlementRecheckTimer();
+    this.cancelNetworkRecovery();
+    this.helperStatus = {
+      ...this.helperStatus,
+      productionListenerCount: 0,
+      info: this.entitlementMessage,
+      startupStage: restriction === 'TRIAL_EXPIRED' ? 'Trial expired' : 'Licence required',
+      lastError: null,
+    };
+    if (this.isHelperRunning()) {
+      this.sendHelperCommand({ type: 'set-production-monitoring', enabled: false });
+    }
+    if (firstTransition) {
+      this.entitlementTransitionCount += 1;
+      this.appendCollectorLog(
+        'monitoring-entitlement-restricted',
+        `restriction=${restriction} trigger=${trigger} listeners=detaching sessionPreserved=true`,
+      );
+    }
+  }
+
+  private clearEntitlementRestriction(preserveResumeRequirement = false): void {
+    this.entitlementRestriction = null;
+    this.entitlementMessage = null;
+    if (!preserveResumeRequirement) {
+      this.entitlementResumeRequired = false;
+    }
+  }
+
+  private clearEntitlementRecheckTimer(): void {
+    if (this.entitlementRecheckTimer) {
+      clearTimeout(this.entitlementRecheckTimer);
+      this.entitlementRecheckTimer = null;
+    }
   }
 
   private async syncLinkedWhatsAppAccount(connectedAccount: string): Promise<void> {

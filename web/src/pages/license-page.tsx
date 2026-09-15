@@ -162,7 +162,7 @@ export function LicensePage(): JSX.Element {
               : isLicensed
                 ? 'PatrolSafe is activated for this company.'
                 : isExpired
-                  ? 'Live operations are paused until PatrolSafe is activated. Existing evidence remains available.'
+                  ? 'Your 30-day PatrolSafe trial has ended. Monitoring has stopped. Your existing evidence remains available.'
                   : 'Activate PatrolSafe to continue live patrol monitoring.'}
           </p>
           {!isTrial && !isLicensed && status?.message ? <p className="muted-text">{status.message}</p> : null}

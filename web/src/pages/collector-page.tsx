@@ -71,7 +71,9 @@ export function CollectorPage(): JSX.Element {
                 <p className="eyebrow">WhatsApp session</p>
                 <h3>{view.accountTitle}</h3>
                 <p className="muted-text">
-                  {view.phase === 'relink-required'
+                  {status.entitlementRestriction
+                    ? status.entitlementMessage ?? 'Monitoring has stopped. Activate PatrolSafe to resume.'
+                    : view.phase === 'relink-required'
                     ? 'WhatsApp could not restore the saved linked session. Relink WhatsApp to continue.'
                     : view.phase === 'link-retry-required'
                       ? 'WhatsApp could not initialise. Check your internet connection and try again.'
@@ -103,7 +105,12 @@ export function CollectorPage(): JSX.Element {
             </div>
 
             <div className="button-row">
-              {view.phase === 'relink-required' ? (
+              {status.entitlementRestriction ? (
+                <>
+                  <Link className="primary-button" to="/license">Activate PatrolSafe</Link>
+                  <Link className="secondary-button" to="/settings/support">Contact support</Link>
+                </>
+              ) : view.phase === 'relink-required' ? (
                 <button
                   type="button"
                   className="primary-button"

@@ -73,4 +73,26 @@ describe('LicenceEvaluationService cache', () => {
     jest.advanceTimersByTime(LicenceEvaluationService.CACHE_TTL_MS + 1);
     expect(service.evaluate().status).toBe('clock_rollback');
   });
+
+  it('bypasses the request cache for an exact active-monitoring lifecycle check', () => {
+    const { service, identity, trial } = harness();
+    expect(service.evaluate().status).toBe('active');
+    trial.isTrialActive.mockReturnValue(false);
+
+    expect(service.evaluateFresh()).toMatchObject({
+      status: 'expired',
+      expiresAt: record.expiresAt,
+      collectorAllowed: false,
+    });
+    expect(identity.getOrCreateIdentity).toHaveBeenCalledTimes(2);
+    expect(service.evaluate().status).toBe('expired');
+  });
+
+  it('retains the authoritative trial expiry instant in active evaluations', () => {
+    const { service } = harness();
+    expect(service.evaluate()).toMatchObject({
+      status: 'active',
+      expiresAt: record.expiresAt,
+    });
+  });
 });

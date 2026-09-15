@@ -16,6 +16,7 @@ import {
 
 describe('WhatsAppCollectorService', () => {
   const HELPER_TOKEN = 'test-helper-token';
+  let currentEntitlement: Record<string, unknown>;
 
   const whatsAppSourceMappingService = {
     resolveActiveLinkedAccountId: jest.fn(),
@@ -36,6 +37,7 @@ describe('WhatsAppCollectorService', () => {
 
   const licensingService = {
     assertCollectorStartAllowed: jest.fn(),
+    getEntitlementEvaluation: jest.fn(() => currentEntitlement),
   } as unknown as LicensingService;
 
   function createConfigService(overrides?: Record<string, unknown>): ConfigService {
@@ -330,7 +332,19 @@ describe('WhatsAppCollectorService', () => {
       collectorType: CollectorType.WHATSAPP,
       filePath: 'evidence/img-1.jpg',
     });
-    licensingService.assertCollectorStartAllowed = jest.fn();
+    currentEntitlement = {
+      mode: 'trial',
+      status: 'active',
+      expiresAt: '2099-12-31T23:59:59.000Z',
+      collectorAllowed: true,
+      message: 'Trial active.',
+    };
+    licensingService.assertCollectorStartAllowed = jest.fn(() => {
+      if (currentEntitlement.collectorAllowed !== true) {
+        throw new Error(String(currentEntitlement.message));
+      }
+    });
+    licensingService.getEntitlementEvaluation = jest.fn(() => currentEntitlement as never);
     whatsAppSourceMappingService.subscribeToMappingChanges.mockReturnValue(jest.fn());
   });
 
@@ -448,6 +462,204 @@ describe('WhatsAppCollectorService', () => {
       const runtime = await service.getRuntimeConfig(HELPER_TOKEN);
       expect(runtime.monitoringEnabled).toBe(false);
       expect((await service.getStatus()).monitoringPreference).toBe('PAUSED');
+    });
+  });
+
+  describe('active entitlement lifecycle', () => {
+    it('stops active listeners exactly once at the trial boundary without stopping or unlinking WhatsApp', async () => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date('2026-10-15T12:00:00.000Z'));
+      try {
+        const service = createService({ whatsappAutoStart: true });
+        const { write } = attachRunningHelper(service);
+        (service as unknown as { helperStatus: WhatsAppHelperStatusSnapshot }).helperStatus = readyStatus({
+          productionListenerCount: 3,
+        });
+        currentEntitlement = {
+          mode: 'trial',
+          status: 'active',
+          expiresAt: '2026-10-15T12:01:00.000Z',
+          collectorAllowed: true,
+          message: 'Trial active.',
+        };
+        (service as unknown as { scheduleEntitlementRecheck(value: unknown): void })
+          .scheduleEntitlementRecheck(currentEntitlement);
+
+        jest.advanceTimersByTime(59_999);
+        expect((await service.getStatus()).monitoringState).toBe('ACTIVE');
+
+        currentEntitlement = {
+          ...currentEntitlement,
+          status: 'expired',
+          collectorAllowed: false,
+          message: 'Trial has expired.',
+        };
+        jest.advanceTimersByTime(2);
+
+        const status = await service.getStatus();
+        expect(status).toMatchObject({
+          state: 'ready',
+          connected: true,
+          ready: true,
+          monitoringPreference: 'ENABLED',
+          monitoringState: 'TRIAL_EXPIRED',
+          entitlementRestriction: 'TRIAL_EXPIRED',
+          productionListenerCount: 0,
+        });
+        expect(status.entitlementMessage).toContain('Monitoring has stopped');
+        expect(write).toHaveBeenCalledTimes(1);
+        expect(JSON.parse(write.mock.calls[0][0])).toEqual({
+          type: 'set-production-monitoring',
+          enabled: false,
+        });
+        expect((service as unknown as { entitlementTransitionCount: number }).entitlementTransitionCount).toBe(1);
+
+        jest.advanceTimersByTime(5 * 60 * 1000);
+        expect(write).toHaveBeenCalledTimes(1);
+        expect((service as unknown as { entitlementTransitionCount: number }).entitlementTransitionCount).toBe(1);
+        expect(whatsAppSourceMappingService.getConfiguredLinkedAccountId()).toBe('linked-account-1');
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('rejects new helper ingestion after expiry while an already admitted image finishes atomically', async () => {
+      const service = createService({ whatsappAutoStart: true });
+      attachRunningHelper(service);
+      let finishIngest!: (value: { id: string; collectorType: CollectorType; filePath: string }) => void;
+      patrolImageIngestionService.ingestPatrolImage.mockImplementationOnce(
+        () => new Promise((resolve) => { finishIngest = resolve; }),
+      );
+
+      const admitted = service.ingestFromHelper(HELPER_TOKEN, ingestPayload({ messageExternalId: 'accepted-before-expiry' }));
+      await Promise.resolve();
+      await Promise.resolve();
+      currentEntitlement = {
+        mode: 'trial',
+        status: 'expired',
+        expiresAt: '2026-10-15T12:01:00.000Z',
+        collectorAllowed: false,
+        message: 'Trial has expired.',
+      };
+      (service as unknown as { reconcileActiveEntitlement(): void }).reconcileActiveEntitlement();
+      finishIngest({ id: 'img-in-flight', collectorType: CollectorType.WHATSAPP, filePath: 'evidence/img-in-flight.jpg' });
+
+      await expect(admitted).resolves.toMatchObject({ ok: true, imageId: 'img-in-flight' });
+      await expect(
+        service.ingestFromHelper(HELPER_TOKEN, ingestPayload({ messageExternalId: 'rejected-after-expiry' })),
+      ).rejects.toThrow('Trial has expired.');
+      expect(patrolImageIngestionService.ingestPatrolImage).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps monitoring blocked when an offline recovery signal arrives after local expiry', async () => {
+      const service = createService({ whatsappAutoStart: true });
+      attachRunningHelper(service);
+      currentEntitlement = {
+        mode: 'trial',
+        status: 'expired',
+        expiresAt: '2026-10-15T12:01:00.000Z',
+        collectorAllowed: false,
+        message: 'Trial has expired.',
+      };
+      (service as unknown as { reconcileActiveEntitlement(): void }).reconcileActiveEntitlement();
+      emitHelperStatus(service, readyStatus({
+        state: 'failed',
+        connected: false,
+        ready: false,
+        productionListenerCount: 0,
+        failureCode: 'NETWORK_UNAVAILABLE',
+      }));
+
+      expect((service as unknown as { networkRecoveryPromise: Promise<unknown> | null }).networkRecoveryPromise).toBeNull();
+      await expect(service.getRuntimeConfig(HELPER_TOKEN)).resolves.toMatchObject({ monitoringEnabled: false });
+      await expect(service.getStatus()).resolves.toMatchObject({ monitoringState: 'TRIAL_EXPIRED' });
+    });
+
+    it('requires manual resume after a valid Annual licence is activated and preserves the linked session', async () => {
+      const service = createService({ whatsappAutoStart: true });
+      const { write } = attachRunningHelper(service);
+      currentEntitlement = {
+        mode: 'trial',
+        status: 'expired',
+        expiresAt: '2026-10-15T12:01:00.000Z',
+        collectorAllowed: false,
+        message: 'Trial has expired.',
+      };
+      (service as unknown as { reconcileActiveEntitlement(): void }).reconcileActiveEntitlement();
+      write.mockClear();
+
+      currentEntitlement = {
+        mode: 'commercial',
+        status: 'active',
+        expiresAt: '2027-10-15',
+        collectorAllowed: true,
+        message: 'Annual licence active.',
+      };
+      await expect(service.getStatus()).resolves.toMatchObject({
+        state: 'ready',
+        monitoringState: 'PAUSED',
+        entitlementRestriction: null,
+      });
+      await expect(service.getRuntimeConfig(HELPER_TOKEN)).resolves.toMatchObject({ monitoringEnabled: false });
+
+      await service.enableMonitoring();
+      expect(write).toHaveBeenCalledWith(`${JSON.stringify({ type: 'set-production-monitoring', enabled: true })}\n`);
+      emitHelperStatus(service, readyStatus({ productionListenerCount: 3 }));
+      await expect(service.getStatus()).resolves.toMatchObject({
+        monitoringState: 'ACTIVE',
+        connected: true,
+        entitlementRestriction: null,
+      });
+    });
+
+    it('fails restart closed after expiry without creating a new helper or QR', async () => {
+      const service = createService({ whatsappAutoStart: true });
+      currentEntitlement = {
+        mode: 'trial',
+        status: 'expired',
+        expiresAt: '2026-10-15T12:01:00.000Z',
+        collectorAllowed: false,
+        message: 'Trial has expired.',
+      };
+
+      await expect(service.start()).rejects.toThrow('Trial has expired.');
+      await expect(service.getStatus()).resolves.toMatchObject({
+        monitoringPreference: 'ENABLED',
+        monitoringState: 'TRIAL_EXPIRED',
+        qrCode: null,
+      });
+      expect((service as unknown as { helperProcess: unknown }).helperProcess).toBeNull();
+    });
+
+    it('does not stop a paid active licence at the unrelated trial boundary', async () => {
+      jest.useFakeTimers();
+      jest.setSystemTime(new Date('2026-10-15T12:00:00.000Z'));
+      try {
+        const service = createService({ whatsappAutoStart: true });
+        const { write } = attachRunningHelper(service);
+        (service as unknown as { helperStatus: WhatsAppHelperStatusSnapshot }).helperStatus = readyStatus({
+          productionListenerCount: 3,
+        });
+        currentEntitlement = {
+          mode: 'commercial',
+          status: 'active',
+          expiresAt: '2027-10-15',
+          collectorAllowed: true,
+          message: 'Annual licence active.',
+        };
+        (service as unknown as { scheduleEntitlementRecheck(value: unknown): void })
+          .scheduleEntitlementRecheck(currentEntitlement);
+
+        jest.advanceTimersByTime(5 * 60 * 1000);
+        await expect(service.getStatus()).resolves.toMatchObject({
+          monitoringState: 'ACTIVE',
+          entitlementRestriction: null,
+          productionListenerCount: 3,
+        });
+        expect(write).not.toHaveBeenCalled();
+      } finally {
+        jest.useRealTimers();
+      }
     });
   });
 
@@ -640,6 +852,13 @@ describe('WhatsAppCollectorService', () => {
       whatsAppSourceMappingService as unknown as WhatsAppSourceMappingService,
       patrolImageIngestionService as never,
       {
+        getEntitlementEvaluation: jest.fn(() => ({
+          mode: 'trial',
+          status: 'expired',
+          expiresAt: '2026-10-15T23:59:59.000Z',
+          collectorAllowed: false,
+          message: 'Trial expired',
+        })),
         assertCollectorStartAllowed: jest.fn(() => {
           throw new Error('Trial expired');
         }),

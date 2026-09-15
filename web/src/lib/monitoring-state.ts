@@ -42,7 +42,7 @@ export interface MonitoringView {
   connectionLabel: string;
   isConnected: boolean;
   isSessionReady: boolean;
-  monitoringState: 'ACTIVE' | 'PAUSED' | 'NO_GROUPS_CONFIGURED' | 'STARTING' | 'ERROR';
+  monitoringState: 'ACTIVE' | 'PAUSED' | 'NO_GROUPS_CONFIGURED' | 'STARTING' | 'ERROR' | 'TRIAL_EXPIRED' | 'LICENCE_REQUIRED';
   isLinking: boolean;
   isError: boolean;
   isOffline: boolean;
@@ -248,6 +248,10 @@ export function deriveMonitoringView(status: WhatsAppCollectorStatus | null): Mo
   const label = isSessionReady
     ? monitoringState === 'ACTIVE'
       ? 'Active'
+      : monitoringState === 'TRIAL_EXPIRED'
+        ? 'Trial expired'
+      : monitoringState === 'LICENCE_REQUIRED'
+        ? 'Licence required'
       : monitoringState === 'NO_GROUPS_CONFIGURED'
         ? 'No groups configured'
         : monitoringState === 'ERROR'

@@ -76,6 +76,30 @@ describe('WhatsApp customer state model', () => {
     expect(view.isLive).toBe(true);
   });
 
+  it('keeps WhatsApp Connected while presenting active trial expiry as a licensing stop', () => {
+    const current = status({
+      connected: true,
+      ready: true,
+      state: 'ready',
+      monitoringPreference: 'ENABLED',
+      monitoringState: 'TRIAL_EXPIRED',
+      entitlementRestriction: 'TRIAL_EXPIRED',
+      entitlementMessage: 'Your 30-day PatrolSafe trial has ended. Monitoring has stopped. Your existing evidence remains available.',
+      productionListenerCount: 0,
+    });
+    const view = deriveMonitoringView(current);
+
+    expect(view.connectionLabel).toBe('Connected');
+    expect(view.label).toBe('Trial expired');
+    expect(view.isLive).toBe(false);
+    const collectorPage = readFileSync(
+      path.join(process.cwd(), 'web', 'src', 'pages', 'collector-page.tsx'),
+      'utf8',
+    );
+    expect(collectorPage).toContain('Activate PatrolSafe');
+    expect(collectorPage).toContain('Contact support');
+  });
+
   it('allows the QR timeout warning only during an actual timed-out QR wait', () => {
     const now = Date.parse('2026-09-12T20:00:30.000Z');
     const waiting = status({

@@ -51,6 +51,17 @@ export class LicenceEvaluationService {
     return evaluation;
   }
 
+  /** Bypasses the short request cache for exact lifecycle-boundary enforcement. */
+  evaluateFresh(): LicenceEvaluation {
+    const evaluation = this.evaluateUncached();
+    this.cachedEvaluation = {
+      value: evaluation,
+      expiresAt: Date.now() + LicenceEvaluationService.CACHE_TTL_MS,
+      trialRevision: this.trialService.getStateRevision(),
+    };
+    return evaluation;
+  }
+
   invalidate(): void {
     this.cachedEvaluation = null;
   }
@@ -179,7 +190,7 @@ export class LicenceEvaluationService {
           installationId: identity.installationId,
           machineFingerprint: identity.machineFingerprint,
           startsAt: trial.startedAt.slice(0, 10),
-          expiresAt: trial.expiresAt.slice(0, 10),
+          expiresAt: trial.expiresAt,
           daysRemaining: 0,
           features: EXPIRED_LICENCE_FEATURES,
           message: 'System clock rollback detected. Licence evaluation is blocked until the clock is corrected.',
@@ -209,7 +220,7 @@ export class LicenceEvaluationService {
           installationId: identity.installationId,
           machineFingerprint: identity.machineFingerprint,
           startsAt: trial.startedAt.slice(0, 10),
-          expiresAt: expiresDate,
+          expiresAt: trial.expiresAt,
           daysRemaining: remaining,
           features: TRIAL_LICENCE_FEATURES,
           message: `Trial active. ${remaining} day(s) remaining.`,
@@ -319,7 +330,7 @@ export class LicenceEvaluationService {
       installationId: identity.installationId,
       machineFingerprint: identity.machineFingerprint,
       startsAt: trial.startedAt.slice(0, 10),
-      expiresAt: trial.expiresAt.slice(0, 10),
+      expiresAt: trial.expiresAt,
       daysRemaining: 0,
       features: EXPIRED_LICENCE_FEATURES,
       message:

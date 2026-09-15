@@ -53,13 +53,13 @@ export class LicenseService {
     return this.mapEvaluationToStatusResponse(evaluation, workspaceConfig);
   }
 
-  getEvaluation(): LicenceEvaluation {
+  getEvaluation(fresh = false): LicenceEvaluation {
     if (!this.desktopMode) {
       return this.evaluationFromBrowserStatus(this.buildBrowserModeStatus());
     }
 
     this.runLegacyMigrationOnce();
-    return this.evaluationService.evaluate();
+    return fresh ? this.evaluationService.evaluateFresh() : this.evaluationService.evaluate();
   }
 
   getTrialDiagnostics(): TrialBootstrapDiagnostics {

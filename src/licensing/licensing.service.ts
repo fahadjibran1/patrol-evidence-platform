@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DesktopWorkspaceConfig, readDesktopWorkspaceConfig } from '@/desktop/desktop-config.util';
 import { LicenseService } from './license.service';
+import type { LicenceEvaluation } from '@patrol/license-core';
 
 export type LicenseType = 'TRIAL' | 'FULL' | 'MONTHLY' | 'ANNUAL';
 export type LicenseStatus = 'ACTIVE' | 'TRIAL_ACTIVE' | 'EXPIRED' | 'INVALID' | 'NOT_ACTIVATED';
@@ -104,6 +105,10 @@ export class LicensingService {
     } catch (error) {
       throw new BadRequestException(error instanceof Error ? error.message : 'Collector start is not allowed.');
     }
+  }
+
+  getEntitlementEvaluation(fresh = false): LicenceEvaluation {
+    return this.licenseService.getEvaluation(fresh);
   }
 
   private mapStatusToSnapshot(

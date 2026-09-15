@@ -25,10 +25,19 @@ export function LicenseRouteGate({ children }: { children?: ReactNode }): JSX.El
       return;
     }
 
-    void apiRequest<LicenseStatusResponse>('/license/status')
-      .then(setStatus)
-      .catch(() => setStatus(null))
-      .finally(() => setIsLoading(false));
+    let active = true;
+    const refresh = (): void => {
+      void apiRequest<LicenseStatusResponse>('/license/status')
+        .then((next) => { if (active) setStatus(next); })
+        .catch(() => { if (active) setStatus(null); })
+        .finally(() => { if (active) setIsLoading(false); });
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 60_000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
   }, [desktop]);
 
   if (!desktop) {

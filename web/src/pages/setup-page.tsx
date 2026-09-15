@@ -2,6 +2,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiRequest } from '../lib/api';
 import { customerErrorMessage } from '../lib/customer-errors';
+import { formatPatrolDate } from '../lib/patrol-time';
 import { useAuth } from '../state/auth';
 import type {
   DesktopBootstrapStatus,
@@ -1097,7 +1098,7 @@ export function SetupPage(): JSX.Element {
             </div>
             <div className="ops-stat">
               <span>Trial ends</span>
-              <strong>{bootstrapStatus?.license.trialEndDate ?? '—'}</strong>
+              <strong>{bootstrapStatus?.license.trialEndDate ? formatPatrolDate(bootstrapStatus.license.trialEndDate) : '—'}</strong>
             </div>
           </div>
           <div className="input-button-row">
