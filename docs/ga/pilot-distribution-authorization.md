@@ -26,12 +26,20 @@ The installer identified above is the only binary authorized under this release 
 
 - Stage 1 Vesoft/internal deployment.
 - Individually approved Stage 2 business pilot customers.
-- Maximum initial external cohort: 13 businesses.
+- Maximum authorized external Stage 2 cohort: **13 businesses**.
 - An international pilot customer may be supplied only after Vesoft records and approves the customer and jurisdiction.
 
 This 15 September 2026 director authorization supersedes the earlier one-to-three operational cohort cap for this release action only. It does not amend the frozen legal-document snapshot, change the unresolved legal-risk categories or authorize unrestricted public GA.
 
 Every external recipient must have an approved `PILOT-###` entry in `pilot-customer-register.md` and a completed `pilot-release-checklist.md` before supply.
+
+## Phased Stage 2 rollout
+
+1. **Wave 1:** supply one to three individually approved businesses.
+2. Review installation, first run, WhatsApp reliability, evidence integrity, backup/recovery, support burden, usability and any Critical or High issues.
+3. **Wave 2:** if the review supports continuation, approve and supply additional businesses progressively, without exceeding 13 external businesses in total.
+
+Wave assignment does not itself approve a customer. Identification, jurisdiction approval and an approved pilot-register entry remain mandatory for every business.
 
 ## Not authorized
 
@@ -62,7 +70,7 @@ The archive is prepared locally only. It has not been uploaded and no sharing li
 
 | Severity | Meaning | Distribution response |
 |---|---|---|
-| CRITICAL | Data-integrity/security issue or widespread evidence-capture failure | Immediately consider pausing further pilot distribution; preserve evidence and assess notification/withdrawal |
+| CRITICAL | Data-integrity/security issue or widespread evidence-capture failure | Pause further pilot distribution; preserve evidence and assess notification/withdrawal before resuming |
 | HIGH | Major customer workflow unavailable | Pause affected expansion and investigate before further supply where relevant |
 | NORMAL | Operational or support issue | Record, support and review through normal pilot governance |
 | LOW | Question, cosmetic issue or enhancement | Record for review; do not silently patch the approved installer |

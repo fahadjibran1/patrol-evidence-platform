@@ -42,6 +42,8 @@ Exit criteria:
 
 Use written pilot terms and select no more than 13 friendly business customers in individually reviewed countries/regions with suitable Windows/WhatsApp environments. Record and approve each customer and jurisdiction before supply. Provide direct onboarding, but require operators to complete the normal customer UI rather than engineering shortcuts. Supporting additional countries must be a commercial/legal release decision, not a desktop runtime change; no hard-coded country allowlist or geoblocking is planned.
 
+Roll out in two controlled waves: Wave 1 covers one to three approved businesses, followed by an operational-results review. Wave 2 may then add approved businesses progressively up to the 13-business total cap. A Critical release issue pauses further distribution pending assessment and an explicit decision to resume.
+
 Track per customer:
 
 - legal entity, approved region and authorised contacts;

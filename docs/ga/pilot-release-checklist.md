@@ -4,6 +4,8 @@ Use one completed copy for each approved Stage 1 or Stage 2 business pilot. The 
 
 Pilot ID: ____________________
 
+Rollout wave: ____________________
+
 Business: ____________________
 
 Country/jurisdiction: ____________________
