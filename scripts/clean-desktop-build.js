@@ -24,10 +24,15 @@ for (const relativeTarget of targets) {
 
   if (relativeTarget === 'out') {
     for (const childName of fs.readdirSync(targetPath)) {
+      // Versioned release evidence is immutable. Build cleanup may remove only
+      // transient Forge/package output, never certified release directories.
+      if (childName === 'releases') {
+        continue;
+      }
       const childPath = path.join(targetPath, childName);
       fs.rmSync(childPath, { recursive: true, force: true });
     }
-    console.log(`Cleared contents: ${relativeTarget}`);
+    console.log(`Cleared transient contents: ${relativeTarget} (preserved out/releases)`);
     continue;
   }
 

@@ -1183,11 +1183,16 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
   }
 
   private buildHelperEnv(): NodeJS.ProcessEnv {
-    const port = String(this.configService.get<number>('port') ?? process.env.PORT ?? 3001);
+    const port = String(
+      process.env.PATROLSAFE_BOUND_BACKEND_PORT ??
+      this.configService.get<number>('port') ??
+      process.env.PORT ??
+      3001,
+    );
     return {
       ...process.env,
       ELECTRON_RUN_AS_NODE: '1',
-      PATROL_HELPER_API_BASE_URL: `http://localhost:${port}`,
+      PATROL_HELPER_API_BASE_URL: `http://127.0.0.1:${port}`,
       PATROL_HELPER_INTERNAL_TOKEN: this.helperInternalToken,
       PATROL_HELPER_SESSION_PATH: this.sessionPath,
       PATROL_HELPER_LOG_PATH: this.collectorLogPath,

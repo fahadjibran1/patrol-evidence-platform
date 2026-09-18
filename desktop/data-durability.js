@@ -251,6 +251,17 @@ function getSchemaVersion(database) {
   return SQLITE_MIGRATIONS.reduce((version, migration) => (applied.has(migration.id) ? migration.version : version), 0);
 }
 
+function countUnresolvedMappingConflicts(database) {
+  if (!tableNames(database).has('patrol_migration_conflicts')) return 0;
+  return Number(
+    database
+      .prepare(
+        `SELECT COUNT(*) AS "count" FROM "patrol_migration_conflicts" WHERE "resolvedAt" IS NULL`,
+      )
+      .get().count,
+  );
+}
+
 function writeFileAtomic(filePath, contents) {
   const tempPath = `${filePath}.tmp-${process.pid}-${crypto.randomUUID()}`;
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -326,8 +337,10 @@ function prepareSqliteDatabase(params) {
   const database = openDatabase(databasePath, params);
   let applied = [];
   let preUpgradeBackup = null;
+  let unresolvedMappingConflictsBefore = 0;
   try {
     const existingTables = tableNames(database);
+    unresolvedMappingConflictsBefore = countUnresolvedMappingConflicts(database);
     const priorVersion = getSchemaVersion(database);
     const pending = SQLITE_MIGRATIONS.filter((migration) => !readAppliedMigrations(database).has(migration.id));
     if (pending.length === 0) {
@@ -337,9 +350,8 @@ function prepareSqliteDatabase(params) {
         applied,
         adopted: false,
         preUpgradeBackup: null,
-        mappingConflictsPaused: existingTables.has('patrol_migration_conflicts')
-          ? Number(database.prepare('SELECT COUNT(*) AS "count" FROM "patrol_migration_conflicts" WHERE "resolvedAt" IS NULL').get().count)
-          : 0,
+        mappingConflictsPaused: 0,
+        mappingConflictsUnresolved: unresolvedMappingConflictsBefore,
       };
     }
 
@@ -383,14 +395,14 @@ function prepareSqliteDatabase(params) {
     if (String(result[0]?.integrity_check || '').toLowerCase() !== 'ok') {
       throw new Error('SQLite migration completed with an invalid database');
     }
+    const mappingConflictsUnresolved = countUnresolvedMappingConflicts(migrationDatabase);
     return {
       schemaVersion: getSchemaVersion(migrationDatabase),
       applied,
       adopted: existed,
       preUpgradeBackup,
-      mappingConflictsPaused: tableNames(migrationDatabase).has('patrol_migration_conflicts')
-        ? Number(migrationDatabase.prepare('SELECT COUNT(*) AS "count" FROM "patrol_migration_conflicts" WHERE "resolvedAt" IS NULL').get().count)
-        : 0,
+      mappingConflictsPaused: Math.max(mappingConflictsUnresolved - unresolvedMappingConflictsBefore, 0),
+      mappingConflictsUnresolved,
     };
   } catch (error) {
     error.code ||= 'PATROLSAFE_MIGRATION_FAILED';

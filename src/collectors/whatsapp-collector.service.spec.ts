@@ -194,6 +194,21 @@ describe('WhatsAppCollectorService', () => {
     });
   });
 
+  describe('helper backend endpoint', () => {
+    const originalBoundPort = process.env.PATROLSAFE_BOUND_BACKEND_PORT;
+
+    afterEach(() => {
+      if (originalBoundPort === undefined) delete process.env.PATROLSAFE_BOUND_BACKEND_PORT;
+      else process.env.PATROLSAFE_BOUND_BACKEND_PORT = originalBoundPort;
+    });
+
+    it('uses the actual OS-assigned loopback port rather than configured port zero', () => {
+      process.env.PATROLSAFE_BOUND_BACKEND_PORT = '54321';
+      const env = (createService({ port: 0 }) as unknown as { buildHelperEnv(): NodeJS.ProcessEnv }).buildHelperEnv();
+      expect(env.PATROL_HELPER_API_BASE_URL).toBe('http://127.0.0.1:54321');
+    });
+  });
+
   function attachRunningHelper(service: WhatsAppCollectorService): { write: jest.Mock } {
     const write = jest.fn();
     (service as unknown as {

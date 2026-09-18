@@ -32,6 +32,9 @@ describe('PatrolSafe SQLite migration and backup recovery', () => {
   it('preserves but pauses ambiguous legacy mappings before installing uniqueness', () => {
     expect(result.legacyMappingConflictQuarantined).toBe(true);
   });
+  it('does not present historical unresolved mappings as a migration from the current launch', () => {
+    expect(result.historicalMappingConflictDoesNotRetriggerMigrationNotice).toBe(true);
+  });
   it('does not delete or recreate a corrupt customer database', () => expect(result.corruptDatabase).toBe(true));
   it('writes a versioned and internally consistent backup manifest', () => expect(result.backupManifest).toBe(true));
   it('verifies database and evidence integrity', () => expect(result.backupIntegrity).toBe(true));

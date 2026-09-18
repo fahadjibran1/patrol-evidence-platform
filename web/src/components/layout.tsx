@@ -169,6 +169,13 @@ export function AppLayout(): JSX.Element {
             Reconnecting to the local control-room service. Your session is preserved.
           </div>
         ) : null}
+        {user?.role !== 'GUARD' && (bootstrapStatus?.unresolvedMappingConflicts ?? 0) > 0 ? (
+          <div className="banner banner-warning" role="status">
+            {bootstrapStatus?.unresolvedMappingConflicts} paused WhatsApp group mapping
+            {bootstrapStatus?.unresolvedMappingConflicts === 1 ? '' : 's'} need administrator review.{' '}
+            <NavLink to="/sites">Review site mappings</NavLink>
+          </div>
+        ) : null}
         {user?.role !== 'GUARD' ? (
           <div className="app-topbar">
             <div className="app-topbar-block">

@@ -430,7 +430,7 @@ export interface DesktopRestoreResult {
 
 export interface DesktopState {
   isDesktop: boolean;
-  apiBaseUrl: string;
+  apiBaseUrl: string | null;
   configPath: string | null;
   config: DesktopWorkspaceConfig;
   backend: {
@@ -438,6 +438,9 @@ export interface DesktopState {
     startedAt: string | null;
     lastExitAt: string | null;
     pid: number | null;
+  };
+  migration?: {
+    unresolvedMappingConflicts: number;
   };
 }
 
@@ -466,6 +469,7 @@ export interface DesktopBootstrapStatus {
   linkedWhatsAppAccountId: string | null;
   appTimeZone: string | null;
   settingsApplied: boolean;
+  unresolvedMappingConflicts: number;
   license: LicenseSnapshot;
 }
 

@@ -1,11 +1,12 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 const apiBaseUrlArgument = process.argv.find((value) => value.startsWith('--patrol-api-base-url='));
-const apiBaseUrl = apiBaseUrlArgument?.slice('--patrol-api-base-url='.length) || 'http://localhost:3001';
+const apiBaseUrl = apiBaseUrlArgument?.slice('--patrol-api-base-url='.length) || null;
 
 contextBridge.exposeInMainWorld('desktopBridge', {
   isDesktop: true,
   apiBaseUrl,
+  getApiBaseUrl: () => ipcRenderer.invoke('desktop:get-api-base-url'),
   getApiToken: () => ipcRenderer.invoke('desktop:get-api-token'),
   beginAdminRecovery: () => ipcRenderer.invoke('desktop:begin-admin-recovery'),
   getState: () => ipcRenderer.invoke('desktop:get-state'),

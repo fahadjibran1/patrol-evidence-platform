@@ -70,6 +70,7 @@ export interface DesktopBootstrapStatus {
   linkedWhatsAppAccountId: string | null;
   appTimeZone: string | null;
   settingsApplied: boolean;
+  unresolvedMappingConflicts: number;
   license: LicenseSnapshot;
 }
 
@@ -113,6 +114,7 @@ export class DesktopService {
               process.env.DB_HOST?.trim(),
           );
     const databaseStatus = await this.getDatabaseStatus(dbType, databasePath);
+    const unresolvedMappingConflicts = await this.getUnresolvedMappingConflictCount();
 
     const company = companyName
       ? await this.companiesRepo.findOne({
@@ -156,8 +158,21 @@ export class DesktopService {
       linkedWhatsAppAccountId: workspace.linkedWhatsAppAccountId?.trim() || null,
       appTimeZone: workspace.appTimeZone ? assertIanaTimeZone(workspace.appTimeZone) : null,
       settingsApplied,
+      unresolvedMappingConflicts,
       license,
     };
+  }
+
+  private async getUnresolvedMappingConflictCount(): Promise<number> {
+    if (!this.dataSource.isInitialized) return 0;
+    try {
+      const rows = await this.dataSource.query(
+        `SELECT COUNT(*) AS "count" FROM "patrol_migration_conflicts" WHERE "resolvedAt" IS NULL`,
+      ) as Array<{ count?: number | string }>;
+      return Number(rows[0]?.count ?? 0);
+    } catch {
+      return 0;
+    }
   }
 
   async initializeWorkspace(dto: InitializeDesktopWorkspaceDto): Promise<DesktopBootstrapStatus> {

@@ -188,6 +188,11 @@ async function run() {
     const preservedConflicts = Number(conflictResultDatabase.prepare('SELECT COUNT(*) AS count FROM "patrol_migration_conflicts"').get().count);
     conflictResultDatabase.close();
     results.legacyMappingConflictQuarantined = conflictUpgrade.mappingConflictsPaused === 2 && activeConflicts === 0 && preservedConflicts === 2 && fs.existsSync(conflictUpgrade.preUpgradeBackup.databaseBackupPath) && databaseCount(conflictDb, 'patrol_groups') === 2;
+    const conflictRepeat = prepare(conflictDb, conflictRoot);
+    results.historicalMappingConflictDoesNotRetriggerMigrationNotice =
+      conflictRepeat.applied.length === 0 &&
+      conflictRepeat.mappingConflictsPaused === 0 &&
+      conflictRepeat.mappingConflictsUnresolved === 2;
 
     const corruptDb = path.join(root, 'corrupt', 'data.db');
     fs.mkdirSync(path.dirname(corruptDb), { recursive: true });

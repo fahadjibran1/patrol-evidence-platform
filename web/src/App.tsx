@@ -25,9 +25,6 @@ import { getDesktopApiBaseUrl, isDesktopApp } from './lib/desktop';
 import type { DesktopBootstrapStatus, DesktopState } from './types';
 import { setWorkspaceTimeZone } from './lib/patrol-time';
 
-const DESKTOP_BOOTSTRAP_RETRY_WINDOW_MS = 15_000;
-const DESKTOP_BOOTSTRAP_RETRY_INTERVAL_MS = 1_000;
-
 interface FrontendBootStatus {
   frontendLoaded: boolean;
   desktopBridgeDetected: boolean;
@@ -123,57 +120,38 @@ export function App(): JSX.Element {
 
     let cancelled = false;
 
-    async function loadDesktopBootstrapWithRetry(reason: string): Promise<void> {
+    async function loadDesktopBootstrap(reason: string): Promise<void> {
       setIsBootstrapLoading(true);
-      const startedAt = Date.now();
-      let lastError: unknown = null;
-
-      while (!cancelled && Date.now() - startedAt < DESKTOP_BOOTSTRAP_RETRY_WINDOW_MS) {
-        try {
-          const [status, nextDesktopState] = await Promise.all([
-            apiRequest<DesktopBootstrapStatus>('/desktop/bootstrap/status'),
-            window.desktopBridge?.getState?.() ?? Promise.resolve(null),
-          ]);
-
-          if (cancelled) {
-            return;
-          }
-
-          const configuredTimeZone = nextDesktopState?.config.appTimeZone ?? status.appTimeZone;
-          if (configuredTimeZone) setWorkspaceTimeZone(configuredTimeZone);
-          setBootstrapStatus(status);
-          setDesktopState(nextDesktopState);
-          setBootstrapError(null);
-          setIsBootstrapLoading(false);
-          console.info(
-            `[frontend-bootstrap-status] reason=${reason} setupCompleted=${status.setupCompleted} backend=${
-              nextDesktopState?.backend.status ?? 'unknown'
-            }`,
-          );
-          return;
-        } catch (error) {
-          lastError = error;
-          console.warn(
-            `[frontend-bootstrap-retry] reason=${reason} message=${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          );
-          await new Promise((resolve) => window.setTimeout(resolve, DESKTOP_BOOTSTRAP_RETRY_INTERVAL_MS));
-        }
+      try {
+        const [status, nextDesktopState] = await Promise.all([
+          apiRequest<DesktopBootstrapStatus>('/desktop/bootstrap/status'),
+          window.desktopBridge?.getState?.() ?? Promise.resolve(null),
+        ]);
+        if (cancelled) return;
+        const configuredTimeZone = nextDesktopState?.config.appTimeZone ?? status.appTimeZone;
+        if (configuredTimeZone) setWorkspaceTimeZone(configuredTimeZone);
+        setBootstrapStatus(status);
+        setDesktopState(nextDesktopState);
+        setBootstrapError(null);
+        console.info(
+          `[frontend-bootstrap-status] reason=${reason} setupCompleted=${status.setupCompleted} backend=${
+            nextDesktopState?.backend.status ?? 'unknown'
+          }`,
+        );
+      } catch (error) {
+        if (cancelled) return;
+        const message = error instanceof Error ? error.message : 'Failed to load desktop bootstrap';
+        setBootstrapError(message);
+        window.__patrolFrontendLastError = message;
+        console.error('[frontend-bootstrap-failed]', error);
+      } finally {
+        if (!cancelled) setIsBootstrapLoading(false);
       }
-
-      if (cancelled) {
-        return;
-      }
-
-      const message = lastError instanceof Error ? lastError.message : 'Failed to load desktop bootstrap';
-      setBootstrapError(message);
-      window.__patrolFrontendLastError = message;
-      console.error('[frontend-bootstrap-failed]', lastError);
-      setIsBootstrapLoading(false);
     }
 
-    void loadDesktopBootstrapWithRetry('initial');
+    // Electron owns backend readiness and does not load this renderer until the
+    // spawned backend has passed the authenticated identity handshake.
+    void loadDesktopBootstrap('electron-verified-ready');
 
     return () => {
       cancelled = true;

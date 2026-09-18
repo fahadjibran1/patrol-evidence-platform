@@ -5,11 +5,13 @@ export interface BackendListenConfig {
 
 export function resolveBackendListenConfig(environment: NodeJS.ProcessEnv = process.env): BackendListenConfig {
   const configuredPort = Number(environment.PORT ?? 3000);
-  const port = Number.isInteger(configuredPort) && configuredPort >= 1 && configuredPort <= 65535
+  const desktopMode = Boolean(environment.DESKTOP_CONFIG_PATH?.trim());
+  const minimumPort = desktopMode ? 0 : 1;
+  const port = Number.isInteger(configuredPort) && configuredPort >= minimumPort && configuredPort <= 65535
     ? configuredPort
     : 3000;
 
-  if (environment.DESKTOP_CONFIG_PATH?.trim()) {
+  if (desktopMode) {
     return { port, host: '127.0.0.1' };
   }
 

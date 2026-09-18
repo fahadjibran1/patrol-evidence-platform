@@ -10,6 +10,13 @@ import { resolveBackendListenConfig } from './config/backend-listen.config';
 import { createPatrolSafeCorsOriginValidator, DESKTOP_API_TOKEN_HEADER } from './config/cors-origin.util';
 import { resolveDatabaseType, resolveSqliteDatabasePath } from './config/database-settings.util';
 
+// Shared CommonJS contract is also consumed by Electron before Nest exists.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { BACKEND_IDENTITY, BACKEND_READY_PREFIX } = require('../desktop/backend-identity.js') as {
+  BACKEND_IDENTITY: string;
+  BACKEND_READY_PREFIX: string;
+};
+
 /** Binary patrol images up to 25MB need ~34MB+ as base64 inside JSON. */
 const PATROL_IMAGE_MAX_BYTES = 25 * 1024 * 1024;
 const DEFAULT_UPLOAD_BODY_LIMIT_MB = 40;
@@ -114,6 +121,7 @@ async function bootstrap(): Promise<void> {
       'Authorization',
       'Content-Type',
       DESKTOP_API_TOKEN_HEADER,
+      'x-patrolsafe-backend-challenge',
       'x-patrol-collector-token',
       'x-patrolsafe-recovery-authority',
       'x-patrolsafe-recovery-token',
@@ -131,13 +139,38 @@ async function bootstrap(): Promise<void> {
   app.enableShutdownHooks();
   writeBackendRuntimeLog('bootstrap:pipes-ready');
 
+  const testDelayMs = Number(process.env.PATROLSAFE_TEST_BACKEND_READY_DELAY_MS ?? 0);
+  if (
+    process.env.PATROLSAFE_STARTUP_TEST_MODE === 'true' &&
+    Number.isFinite(testDelayMs) &&
+    testDelayMs > 0
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, Math.min(testDelayMs, 240_000)));
+  }
+
   const listen = resolveBackendListenConfig();
   if (listen.host) {
     await app.listen(listen.port, listen.host);
   } else {
     await app.listen(listen.port);
   }
-  writeBackendRuntimeLog('bootstrap:listening', `host=${listen.host ?? 'default'} port=${listen.port}`);
+  const address = app.getHttpServer().address();
+  const actualPort = typeof address === 'object' && address ? address.port : listen.port;
+  process.env.PATROLSAFE_BOUND_BACKEND_PORT = String(actualPort);
+  writeBackendRuntimeLog('bootstrap:listening', `host=${listen.host ?? 'default'} port=${actualPort}`);
+
+  const desktopSessionId = process.env.PATROLSAFE_DESKTOP_BACKEND_SESSION?.trim();
+  if (process.env.DESKTOP_CONFIG_PATH?.trim() && desktopSessionId) {
+    process.stdout.write(
+      `${BACKEND_READY_PREFIX}${JSON.stringify({
+        identity: BACKEND_IDENTITY,
+        host: '127.0.0.1',
+        port: actualPort,
+        processId: process.pid,
+        sessionId: desktopSessionId,
+      })}\n`,
+    );
+  }
 }
 
 void bootstrap();

@@ -4,7 +4,8 @@ declare global {
   interface Window {
     desktopBridge?: {
       isDesktop: boolean;
-      apiBaseUrl: string;
+      apiBaseUrl: string | null;
+      getApiBaseUrl?: () => Promise<string | null>;
       getApiToken: () => Promise<string>;
       beginAdminRecovery: () => Promise<string | null>;
       getState: () => Promise<DesktopState>;
@@ -33,6 +34,11 @@ export function isDesktopApp(): boolean {
 
 export function getDesktopApiBaseUrl(): string | null {
   return window.desktopBridge?.apiBaseUrl?.trim() ?? null;
+}
+
+export async function resolveDesktopApiBaseUrl(): Promise<string | null> {
+  const dynamic = await window.desktopBridge?.getApiBaseUrl?.();
+  return dynamic?.trim() || getDesktopApiBaseUrl();
 }
 
 let desktopApiTokenPromise: Promise<string | null> | null = null;

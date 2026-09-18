@@ -34,10 +34,20 @@ function stopRunningPatrolEvidenceProcesses() {
     return;
   }
 
-  spawnSync('cmd', ['/c', 'taskkill', '/IM', 'PatrolEvidencePlatform.exe', '/F', '/T'], {
+  // Never terminate an installed/customer PatrolSafe process merely to package a
+  // candidate. Only stale test/package processes executing from this repo's out
+  // directory may hold build output open.
+  const script = [
+    '$root = [IO.Path]::GetFullPath($env:PATROLSAFE_PACKAGE_OUT_ROOT).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar',
+    'Get-CimInstance Win32_Process -Filter "Name = \'PatrolEvidencePlatform.exe\'" |',
+    'Where-Object { $_.ExecutablePath -and [IO.Path]::GetFullPath($_.ExecutablePath).StartsWith($root, [StringComparison]::OrdinalIgnoreCase) } |',
+    'ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction Stop }',
+  ].join(' ');
+  spawnSync('powershell.exe', ['-NoProfile', '-Command', script], {
     cwd: projectRoot,
     stdio: 'ignore',
     windowsHide: true,
+    env: { ...process.env, PATROLSAFE_PACKAGE_OUT_ROOT: path.join(projectRoot, 'out') },
   });
 }
 

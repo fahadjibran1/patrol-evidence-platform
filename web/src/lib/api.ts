@@ -1,5 +1,5 @@
 import type { ApiErrorPayload } from '../types';
-import { getDesktopApiBaseUrl, getDesktopApiToken } from './desktop';
+import { getDesktopApiBaseUrl, getDesktopApiToken, resolveDesktopApiBaseUrl } from './desktop';
 import { createTimedSignal, LOCAL_API_TIMEOUT_MS } from './api-timeout';
 
 export class ApiError extends Error {
@@ -71,6 +71,11 @@ export function getApiBaseUrl(): string {
   return raw && raw.length > 0 ? raw.replace(/\/$/, '') : DEFAULT_API_URL;
 }
 
+async function resolveApiBaseUrl(): Promise<string> {
+  const desktopBaseUrl = await resolveDesktopApiBaseUrl();
+  return desktopBaseUrl?.replace(/\/$/, '') || getApiBaseUrl();
+}
+
 export async function apiRequest<T>(
   path: string,
   init: RequestInit = {},
@@ -94,7 +99,7 @@ export async function apiRequest<T>(
   let response: Response;
   const timedSignal = createTimedSignal(init.signal);
   try {
-    response = await fetch(`${getApiBaseUrl()}${path}`, {
+    response = await fetch(`${await resolveApiBaseUrl()}${path}`, {
       ...init,
       headers,
       signal: timedSignal.signal,
@@ -162,7 +167,7 @@ export async function downloadApiFile(path: string, token?: string): Promise<voi
     headers.set('Authorization', `Bearer ${token}`);
   }
 
-  const response = await fetch(`${getApiBaseUrl()}${path}`, { headers });
+  const response = await fetch(`${await resolveApiBaseUrl()}${path}`, { headers });
   if (!response.ok) {
     throw new ApiError(`Request failed with status ${response.status}`, response.status);
   }
@@ -187,7 +192,7 @@ export async function fetchApiBlobUrl(path: string, token?: string): Promise<str
   if (desktopApiToken) headers.set('X-PatrolSafe-Desktop-Token', desktopApiToken);
   if (token) headers.set('Authorization', `Bearer ${token}`);
 
-  const response = await fetch(`${getApiBaseUrl()}${path}`, { headers });
+  const response = await fetch(`${await resolveApiBaseUrl()}${path}`, { headers });
   if (!response.ok) throw new ApiError(`Request failed with status ${response.status}`, response.status);
   return window.URL.createObjectURL(await response.blob());
 }

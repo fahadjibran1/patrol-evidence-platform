@@ -105,6 +105,9 @@ export class PatrolGroupsService {
       active: nextActive,
       site: targetSite ?? group.site,
     });
+    if (saved.active) {
+      await this.resolveMigrationConflict(saved.id);
+    }
     this.whatsAppSourceMappingService.notifyMappingChanged();
     return saved;
   }
@@ -196,6 +199,19 @@ export class PatrolGroupsService {
   async remove(id: string, user: AuthenticatedUser): Promise<void> {
     const group = await this.findOne(id, user);
     await this.groupsRepo.remove(group);
+    await this.resolveMigrationConflict(id);
     this.whatsAppSourceMappingService.notifyMappingChanged();
+  }
+
+  private async resolveMigrationConflict(recordId: string): Promise<void> {
+    if (!this.groupsRepo.manager?.query) return;
+    try {
+      await this.groupsRepo.manager.query(
+        `UPDATE "patrol_migration_conflicts" SET "resolvedAt" = CURRENT_TIMESTAMP WHERE "recordId" = ? AND "resolvedAt" IS NULL`,
+        [recordId],
+      );
+    } catch {
+      // Databases created after the migration may not contain a conflict record.
+    }
   }
 }

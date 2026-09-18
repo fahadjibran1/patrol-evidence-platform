@@ -12,6 +12,12 @@ const {
   isExplicitCertificationLaunch,
   normalizeBackendPort,
 } = require('./runtime-contract');
+const {
+  BACKEND_CHALLENGE_HEADER,
+  BACKEND_IDENTITY_PATH,
+  parseReadyAnnouncement,
+  verifyIdentityResponse,
+} = require('./backend-identity');
 const { createDesktopProcessLifecycle } = require('./process-lifecycle');
 const { pathToFileURL } = require('url');
 const { Client } = require('pg');
@@ -109,6 +115,14 @@ let backendListeningDetected = false;
 let backendHealthCheckGeneration = 0;
 let desktopApiToken = null;
 let desktopRecoveryAuthority = null;
+let backendEndpoint = null;
+let backendIdentityVerified = false;
+let backendExpectedSessionId = null;
+let backendReadyAnnouncement = null;
+let backendReadyAnnouncementResolve = null;
+let backendReadyAnnouncementReject = null;
+let backendStdoutRemainder = '';
+let unresolvedMappingConflictCount = 0;
 
 function notifyDesktopState() {
   return processLifecycle.notifyRenderer(mainWindow, 'desktop:backend-status', getDesktopState());
@@ -747,16 +761,26 @@ function migrateLegacyWorkspaceTimeZone() {
 }
 
 function getBackendPort() {
+  if (backendEndpoint?.port) {
+    return backendEndpoint.port;
+  }
   const config = readWorkspaceConfig();
   return normalizeBackendPort(config.backendPort);
 }
 
 function getApiBaseUrl() {
+  if (isProductionDesktopMode() && !backendIdentityVerified) {
+    return null;
+  }
+  if (backendEndpoint?.port) {
+    return `http://127.0.0.1:${backendEndpoint.port}`;
+  }
   return formatApiBaseUrl(getBackendPort());
 }
 
 function getBackendHealthUrl() {
-  return `http://localhost:${getBackendPort()}${BACKEND_HEALTH_PATH}`;
+  const apiBaseUrl = getApiBaseUrl();
+  return apiBaseUrl ? `${apiBaseUrl}${BACKEND_HEALTH_PATH}` : null;
 }
 
 function resolvePackagedLicensePublicKeyPath() {
@@ -825,8 +849,138 @@ function markBackendListeningDetected(source) {
   appendDesktopLog('backend-listening-detected', source);
 }
 
+function resetBackendIdentityState() {
+  backendEndpoint = null;
+  backendIdentityVerified = false;
+  backendExpectedSessionId = null;
+  backendReadyAnnouncement = null;
+  backendReadyAnnouncementResolve = null;
+  backendReadyAnnouncementReject = null;
+  backendStdoutRemainder = '';
+}
+
+function createBackendAnnouncementWaiter(expectedSessionId) {
+  backendExpectedSessionId = expectedSessionId;
+  backendReadyAnnouncement = new Promise((resolve, reject) => {
+    backendReadyAnnouncementResolve = resolve;
+    backendReadyAnnouncementReject = reject;
+  });
+  return backendReadyAnnouncement;
+}
+
+function consumeBackendStdoutLines(text, child) {
+  backendStdoutRemainder += String(text || '');
+  const lines = backendStdoutRemainder.split(/\r?\n/);
+  backendStdoutRemainder = lines.pop() || '';
+
+  for (const line of lines) {
+    const announcement = parseReadyAnnouncement(line);
+    if (!announcement) continue;
+
+    if (
+      announcement.processId !== child.pid ||
+      announcement.sessionId !== backendExpectedSessionId ||
+      announcement.host !== '127.0.0.1'
+    ) {
+      appendDesktopLog('backend-identity-announcement-rejected', 'reason=spawn-identity-mismatch');
+      backendReadyAnnouncementReject?.(new Error('Spawned backend identity announcement did not match'));
+      continue;
+    }
+
+    appendDesktopLog(
+      'backend-endpoint-allocated',
+      `host=127.0.0.1 port=${announcement.port} pid=${announcement.processId}`,
+    );
+    backendReadyAnnouncementResolve?.(announcement);
+    backendReadyAnnouncementResolve = null;
+    backendReadyAnnouncementReject = null;
+  }
+}
+
+function requestBackendIdentity(endpoint, child, sessionId, timeoutMs = 5_000) {
+  const challenge = crypto.randomBytes(32).toString('hex');
+  const token = getDesktopApiToken();
+
+  return new Promise((resolve, reject) => {
+    const request = http.request(
+      {
+        hostname: '127.0.0.1',
+        port: endpoint.port,
+        path: BACKEND_IDENTITY_PATH,
+        method: 'GET',
+        headers: {
+          'x-patrolsafe-desktop-token': token,
+          [BACKEND_CHALLENGE_HEADER]: challenge,
+        },
+      },
+      (response) => {
+        let body = '';
+        response.on('data', (chunk) => {
+          body += chunk.toString();
+        });
+        response.on('end', () => {
+          if (response.statusCode !== 200) {
+            reject(new Error(`Spawned backend identity check returned ${response.statusCode}`));
+            return;
+          }
+
+          let payload;
+          try {
+            payload = JSON.parse(body);
+          } catch {
+            reject(new Error('Spawned backend identity response was invalid'));
+            return;
+          }
+
+          const valid = verifyIdentityResponse(token, payload, {
+            appVersion: PRODUCT_METADATA.version,
+            buildId: PRODUCT_METADATA.displayBuild || PRODUCT_METADATA.buildId,
+            processId: child.pid,
+            sessionId,
+            challenge,
+          });
+          if (!valid) {
+            reject(new Error('Spawned backend identity verification failed'));
+            return;
+          }
+          resolve(true);
+        });
+      },
+    );
+
+    request.on('error', reject);
+    request.setTimeout(timeoutMs, () => {
+      request.destroy(new Error('Spawned backend identity check timed out'));
+    });
+    request.end();
+  });
+}
+
+async function waitForSpawnedBackendIdentity(child, sessionId, timeoutMs) {
+  const announcement = await Promise.race([
+    backendReadyAnnouncement,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Spawned backend did not announce a private endpoint in time')), timeoutMs),
+    ),
+  ]);
+
+  await requestBackendIdentity(announcement, child, sessionId);
+  backendEndpoint = { host: '127.0.0.1', port: announcement.port };
+  backendIdentityVerified = true;
+  markBackendListeningDetected('authenticated-child-identity');
+  appendDesktopLog(
+    'backend-identity-verified',
+    `pid=${child.pid ?? 'unknown'} version=${PRODUCT_METADATA.version} build=${PRODUCT_METADATA.displayBuild || PRODUCT_METADATA.buildId}`,
+  );
+  return true;
+}
+
 function probeBackendHealthOnce(timeoutMs = 4_000) {
   const healthUrl = getBackendHealthUrl();
+
+  if (!healthUrl) {
+    return Promise.resolve({ ok: false, statusCode: null, healthUrl: null });
+  }
 
   return new Promise((resolve) => {
     const request = http.get(healthUrl, (response) => {
@@ -1039,6 +1193,15 @@ async function releaseStaleBackendPortIfNeeded() {
 }
 
 function resolveBackendHealthTimeoutMs(explicitTimeoutMs) {
+  const testTimeoutMs = Number(process.env.PATROLSAFE_TEST_BACKEND_TIMEOUT_MS);
+  if (
+    process.env.PATROLSAFE_STARTUP_TEST_MODE === 'true' &&
+    Number.isFinite(testTimeoutMs) &&
+    testTimeoutMs >= 1_000
+  ) {
+    return Math.min(testTimeoutMs, 240_000);
+  }
+
   if (typeof explicitTimeoutMs === 'number' && explicitTimeoutMs > 0) {
     return Math.max(explicitTimeoutMs, MIN_PACKAGED_BACKEND_HEALTH_TIMEOUT_MS);
   }
@@ -1062,6 +1225,9 @@ function getDesktopState() {
     configPath: getConfigPath(),
     config,
     backend: backendState,
+    migration: {
+      unresolvedMappingConflicts: unresolvedMappingConflictCount,
+    },
   };
 }
 
@@ -1323,6 +1489,36 @@ function renderStartupFailurePage(title, reason, errorMessage) {
   }
 
   isShowingFrontendFallback = true;
+  if (isProductionDesktopMode()) {
+    const safeHtml = `
+      <!doctype html>
+      <html lang="en">
+        <head>
+          <meta charset="UTF-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          <title>PatrolSafe could not start</title>
+          <style>
+            body { margin: 0; font-family: "Segoe UI", Arial, sans-serif; background: #f4f6f8; color: #182430; }
+            .card { max-width: 680px; margin: 64px auto; padding: 32px; background: #fff; border: 1px solid #d8dee6; border-radius: 16px; box-shadow: 0 12px 30px rgba(24,36,48,.08); }
+            h1 { margin: 0 0 12px; font-size: 28px; } p { line-height: 1.55; }
+            .detail { margin-top: 20px; padding: 16px; background: #f8fafc; border-radius: 12px; }
+          </style>
+        </head>
+        <body><main class="card">
+          <h1>${escapeHtml(title)}</h1>
+          <p>${escapeHtml(errorMessage || 'PatrolSafe could not securely start its local service.')}</p>
+          <p>Close PatrolSafe and try again. If the problem continues, contact ${escapeHtml(PRODUCT_METADATA.supportEmail)}.</p>
+          <div class="detail">
+            <strong>Support reference</strong>
+            <p>${escapeHtml(reason)} · ${escapeHtml(PRODUCT_METADATA.version)} · build ${escapeHtml(PRODUCT_METADATA.displayBuild || PRODUCT_METADATA.buildId)}</p>
+            <p>Startup stage: ${backendProcess ? 'local service started; secure readiness incomplete' : 'local service process unavailable'}</p>
+          </div>
+        </main></body>
+      </html>`;
+    mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(safeHtml)}`).catch(() => undefined);
+    mainWindow.show();
+    return;
+  }
   const backendSummary = `${backendState.status}${backendState.pid ? ` (pid ${backendState.pid})` : ''}`;
   const frontendEntryPoint = getResolvedFrontendEntryPoint();
   const backendResolution = resolveBackendEntryDetails();
@@ -2293,20 +2489,24 @@ async function startBackend() {
     return;
   }
 
-  if (backendState.status === 'ready' && !backendProcess) {
+  if (backendState.status === 'ready' && !backendProcess && !isProductionDesktopMode()) {
     appendDesktopLog('backend-start-skipped-existing-healthy', `port=${getBackendPort()}`);
     return;
   }
 
   clearBackendRecoveryTimeout();
 
-  if (await adoptExistingHealthyBackendIfAvailable()) {
-    return;
-  }
+  if (!isProductionDesktopMode()) {
+    if (await adoptExistingHealthyBackendIfAvailable()) {
+      return;
+    }
 
-  await releaseStaleBackendPortIfNeeded();
-  if (backendState.status === 'ready' && !backendProcess) {
-    return;
+    await releaseStaleBackendPortIfNeeded();
+    if (backendState.status === 'ready' && !backendProcess) {
+      return;
+    }
+  } else {
+    resetBackendIdentityState();
   }
 
   backendHealthCheckGeneration += 1;
@@ -2332,6 +2532,7 @@ async function startBackend() {
         'SQLITE_SCHEMA_READY',
         `version=${migration.schemaVersion} applied=${migration.applied.join(',') || 'none'} adopted=${migration.adopted} mappingConflictsPaused=${migration.mappingConflictsPaused || 0} preUpgradeBackup=${migration.preUpgradeBackup?.databaseBackupPath || 'none'}`,
       );
+      unresolvedMappingConflictCount = migration.mappingConflictsUnresolved ?? migration.mappingConflictsPaused ?? 0;
       if (migration.mappingConflictsPaused > 0) {
         void dialog.showMessageBox({
           type: 'warning',
@@ -2372,7 +2573,7 @@ async function startBackend() {
 
   const env = applyLicensePublicKeyRuntimeEnv({
     ...process.env,
-    PORT: String(getBackendPort()),
+    PORT: isProductionDesktopMode() ? '0' : String(getBackendPort()),
     DESKTOP_CONFIG_PATH: desktopConfigPath,
     DB_TYPE: runtimeValues.dbType,
     SQLITE_DB_PATH: runtimeValues.sqliteDbPath,
@@ -2387,6 +2588,11 @@ async function startBackend() {
     PATROLSAFE_BUILD_ID: PRODUCT_METADATA.displayBuild || PRODUCT_METADATA.buildId,
     JWT_REFRESH_EXPIRES_IN_DAYS: process.env.JWT_REFRESH_EXPIRES_IN_DAYS || '90',
   });
+  const backendSessionId = isProductionDesktopMode() ? crypto.randomUUID() : null;
+  if (backendSessionId) {
+    env.PATROLSAFE_DESKTOP_BACKEND_SESSION = backendSessionId;
+    createBackendAnnouncementWaiter(backendSessionId);
+  }
   appendDesktopLog(
     runtimeValues.autoStartCollector ? 'WHATSAPP_AUTOSTART_ENABLED' : 'WHATSAPP_AUTOSTART_SKIPPED',
     `WHATSAPP_AUTO_START=${env.WHATSAPP_AUTO_START}`,
@@ -2431,12 +2637,7 @@ async function startBackend() {
       };
       backendExitDetails = { code: 1, signal: null };
       notifyDesktopState();
-      renderStartupFailurePage(
-        'PatrolSafe by S4 – Frontend Load Failed',
-        'failed-to-start-local-backend',
-        'Compiled backend entry file was not found. Run npm run build before launching the desktop application.',
-      );
-      return;
+      throw new Error('Compiled backend entry file was not found. Contact PatrolSafe support.');
     }
 
     const packagedBackendEnv = {
@@ -2487,54 +2688,50 @@ async function startBackend() {
   notifyDesktopState();
 
   const healthTimeoutMs = resolveBackendHealthTimeoutMs();
-  void waitForBackendReady(healthTimeoutMs, healthCheckGeneration)
-    .then(() => {
-      if (healthCheckGeneration !== backendHealthCheckGeneration) {
-        return;
-      }
+  try {
+    if (isProductionDesktopMode()) {
+      await waitForSpawnedBackendIdentity(backendProcess, backendSessionId, healthTimeoutMs);
+    } else {
+      await waitForBackendReady(healthTimeoutMs, healthCheckGeneration);
+    }
+    if (healthCheckGeneration !== backendHealthCheckGeneration) {
+      throw new Error('Backend readiness check superseded');
+    }
 
-      clearBackendRecoveryTimeout();
-      appendDesktopLog('backend-health-check-success', `${getBackendHealthUrl()} state=ready`);
-      backendState = {
-        ...backendState,
-        status: 'ready',
-        pid: backendProcess?.pid ?? backendState.pid,
-      };
-      notifyDesktopState();
+    clearBackendRecoveryTimeout();
+    appendDesktopLog('backend-readiness-complete', `identity=${isProductionDesktopMode() ? 'verified' : 'development-health'} state=ready`);
+    backendState = {
+      ...backendState,
+      status: 'ready',
+      pid: backendProcess?.pid ?? backendState.pid,
+    };
+    notifyDesktopState();
 
-      if (backendRestartInProgress && isShowingFrontendFallback) {
-        reloadFrontendAfterBackendRecovery(getSetupRecoveryRouteHash());
-      }
-    })
-    .catch((error) => {
-      if (healthCheckGeneration !== backendHealthCheckGeneration) {
-        appendDesktopLog('backend-health-check-superseded', error instanceof Error ? error.message : String(error));
-        return;
-      }
-
-      if (backendListeningDetected || backendOutputBuffer.some((line) => backendOutputIndicatesListening(line))) {
-        markBackendListeningDetected('health-check-timeout-with-listening-log');
-        scheduleBackendRecoveryProbe();
-        return;
-      }
-
-      appendDesktopLog('Backend health check failed', error instanceof Error ? error.message : String(error));
-      backendState = {
-        ...backendState,
-        status: 'error',
-      };
-      notifyDesktopState();
-      if (app.isPackaged && !backendRestartInProgress) {
-        renderBackendFailurePage('backend-health-check-failed', error instanceof Error ? error.message : String(error));
-        scheduleBackendRecoveryProbe();
-      }
-    });
+    if (backendRestartInProgress && isShowingFrontendFallback) {
+      reloadFrontendAfterBackendRecovery(getSetupRecoveryRouteHash());
+    }
+  } catch (error) {
+    appendDesktopLog('Backend readiness failed', error instanceof Error ? error.message : String(error));
+    if (backendProcess) {
+      await stopBackend();
+    }
+    backendIdentityVerified = false;
+    backendState = {
+      ...backendState,
+      status: 'error',
+    };
+    notifyDesktopState();
+    throw error;
+  }
 }
 
 function attachBackendProcessHandlers(child, healthCheckGeneration) {
   child.stdout?.on('data', (chunk) => {
     const text = chunk.toString();
     appendBackendOutput('stdout', text);
+    if (isProductionDesktopMode()) {
+      consumeBackendStdoutLines(text, child);
+    }
     if (backendOutputIndicatesListening(text)) {
       markBackendListeningDetected(`stdout:${getBackendHealthUrl()}`);
     }
@@ -2549,7 +2746,7 @@ function attachBackendProcessHandlers(child, healthCheckGeneration) {
         'Native SQLite module requires rebuild. Run: npm run rebuild:native',
       );
     }
-    if (/EADDRINUSE|address already in use/i.test(text)) {
+    if (!isProductionDesktopMode() && /EADDRINUSE|address already in use/i.test(text)) {
       appendDesktopLog('backend-port-in-use', text.trim().replace(/\s+/g, ' ').slice(0, 240));
       void recoverBackendPortConflict(child);
     }
@@ -2564,6 +2761,7 @@ function attachBackendProcessHandlers(child, healthCheckGeneration) {
     }
 
     appendDesktopLog('Backend process error', error instanceof Error ? error.stack || error.message : String(error));
+    backendReadyAnnouncementReject?.(error);
     if (app.isPackaged && !backendRestartInProgress) {
       renderBackendFailurePage('backend-process-error', error instanceof Error ? error.message : String(error));
     }
@@ -2601,6 +2799,8 @@ function attachBackendProcessHandlers(child, healthCheckGeneration) {
       pid: null,
     };
     backendProcess = null;
+    backendIdentityVerified = false;
+    backendReadyAnnouncementReject?.(new Error(`Spawned backend exited before readiness (code ${code})`));
     notifyDesktopState();
 
     if (exitDisposition.expected) {
@@ -2611,7 +2811,7 @@ function attachBackendProcessHandlers(child, healthCheckGeneration) {
       return;
     }
 
-    if (sawPortConflict) {
+    if (sawPortConflict && !isProductionDesktopMode()) {
       appendDesktopLog(
         'backend-process-exit-ignored-during-restart',
         `pid=${child.pid ?? 'unknown'} code=${code} signal=${signal} reason=port-conflict`,
@@ -2620,7 +2820,7 @@ function attachBackendProcessHandlers(child, healthCheckGeneration) {
       return;
     }
 
-    if (app.isPackaged && failedDuringStartup) {
+    if (app.isPackaged && failedDuringStartup && !isProductionDesktopMode()) {
       void probeBackendHealthOnce().then((health) => {
         if (health.ok) {
           void adoptExistingHealthyBackendIfAvailable();
@@ -2639,6 +2839,7 @@ function attachBackendProcessHandlers(child, healthCheckGeneration) {
 function stopBackend() {
   clearBackendRecoveryTimeout();
   backendHealthCheckGeneration += 1;
+  backendIdentityVerified = false;
 
   if (!backendProcess) {
     backendState = {
@@ -2722,7 +2923,7 @@ async function restartBackend() {
 
   try {
     await stopBackend();
-    if (await adoptExistingHealthyBackendIfAvailable()) {
+    if (!isProductionDesktopMode() && await adoptExistingHealthyBackendIfAvailable()) {
       appendDesktopLog('backend-restart-complete', `${getBackendHealthUrl()} reused-existing`);
       if (isShowingFrontendFallback) {
         reloadFrontendAfterBackendRecovery(getSetupRecoveryRouteHash());
@@ -2730,8 +2931,8 @@ async function restartBackend() {
       return getDesktopState();
     }
     await startBackend();
-    if (backendState.status === 'ready' && !backendProcess) {
-      appendDesktopLog('backend-restart-complete', `${getBackendHealthUrl()} reused-existing`);
+    if (backendState.status === 'ready') {
+      appendDesktopLog('backend-restart-complete', `${getApiBaseUrl()} identity=verified`);
       if (isShowingFrontendFallback) {
         reloadFrontendAfterBackendRecovery(getSetupRecoveryRouteHash());
       }
@@ -2752,7 +2953,8 @@ async function restartBackend() {
   }
 }
 
-async function createMainWindow() {
+async function createMainWindow(options = {}) {
+  const loadFrontend = options.loadFrontend !== false;
   isShowingFrontendFallback = false;
   mainWindow = new BrowserWindow({
     title: PRODUCT_METADATA.productName,
@@ -2765,7 +2967,7 @@ async function createMainWindow() {
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
-      additionalArguments: [getApiBaseUrlArgument(getBackendPort())],
+      additionalArguments: backendIdentityVerified ? [getApiBaseUrlArgument(getBackendPort())] : [],
       contextIsolation: true,
       nodeIntegration: false,
       devTools: shouldOpenDebugTools(),
@@ -2862,6 +3064,10 @@ async function createMainWindow() {
     mainWindow?.show();
   });
 
+  if (!loadFrontend) {
+    return;
+  }
+
   if (!app.isPackaged && process.env.DESKTOP_DEV === 'true') {
     frontendState = {
       target: DEFAULT_WEB_URL,
@@ -2896,7 +3102,18 @@ if (handleSquirrelEvent()) {
   // Squirrel install/update/uninstall event handled.
 } else if (isBackendEntryProcess) {
   runPackagedBackendEntry();
+} else if (!app.requestSingleInstanceLock()) {
+  app.quit();
 } else {
+  app.on('second-instance', () => {
+    appendDesktopLog('Second desktop launch redirected to the existing instance');
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+
   app.whenReady()
     .then(async () => {
       if (typeof app.setAboutPanelOptions === 'function') {
@@ -2933,6 +3150,16 @@ if (handleSquirrelEvent()) {
     })
     .catch((error) => {
       appendDesktopLog('Electron startup failed', error instanceof Error ? error.stack || error.message : String(error));
+      if (!isBackendSmokeOnlyMode()) {
+        void createMainWindow({ loadFrontend: false }).then(() => {
+          renderStartupFailurePage(
+            'PatrolSafe could not start',
+            'local-service-identity-or-readiness-failed',
+            'PatrolSafe could not securely start its local service. Close PatrolSafe, try again, and contact support if the problem continues.',
+          );
+        });
+        return;
+      }
       throw error;
     });
 
@@ -2956,7 +3183,13 @@ if (handleSquirrelEvent()) {
     });
   };
 
-  handleTrusted('desktop:get-api-token', async () => getDesktopApiToken());
+  handleTrusted('desktop:get-api-base-url', async () => (backendIdentityVerified ? getApiBaseUrl() : null));
+  handleTrusted('desktop:get-api-token', async () => {
+    if (!backendIdentityVerified && isProductionDesktopMode()) {
+      throw new Error('PatrolSafe local service identity has not been verified');
+    }
+    return getDesktopApiToken();
+  });
   handleTrusted('desktop:begin-admin-recovery', async () => beginAdminRecovery());
   handleTrusted('desktop:get-state', async () => getDesktopState());
   handleTrusted('desktop:choose-storage-path', async () => {
@@ -3034,7 +3267,7 @@ if (handleSquirrelEvent()) {
   handleTrusted('desktop:restart-backend', async () => restartBackend());
   handleTrusted('desktop:start-backend', async () => {
     await startBackend();
-    if (backendState.status !== 'ready' || backendProcess) {
+    if (backendState.status !== 'ready') {
       await waitForBackendReady(RESTART_BACKEND_HEALTH_TIMEOUT_MS);
     }
     return getDesktopState();

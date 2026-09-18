@@ -9,8 +9,8 @@ const packagedRoot = path.resolve(process.argv[2] || path.join(__dirname, '..', 
 const appRoot = path.join(packagedRoot, 'resources', 'app');
 const packageMetadata = JSON.parse(fs.readFileSync(path.join(appRoot, 'package.json'), 'utf8'));
 const buildInfo = JSON.parse(fs.readFileSync(path.join(appRoot, 'build-info.json'), 'utf8'));
-if (packageMetadata.version !== '1.0.1' || buildInfo.version !== '1.0.1') {
-  fail(`expected v1.0.1 metadata, got package=${packageMetadata.version} build=${buildInfo.version}`);
+if (packageMetadata.version !== '1.0.2' || buildInfo.version !== '1.0.2') {
+  fail(`expected v1.0.2 metadata, got package=${packageMetadata.version} build=${buildInfo.version}`);
 }
 
 const lifecyclePath = path.join(appRoot, 'dist', 'collectors', 'whatsapp-entitlement-lifecycle.util.js');

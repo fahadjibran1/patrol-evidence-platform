@@ -6,8 +6,6 @@ const path = require('path');
 
 const projectRoot = path.resolve(__dirname, '..');
 const outRoot = path.join(projectRoot, 'out');
-const HEALTH_PORT = 3998;
-const HEALTH_URL = `http://localhost:${HEALTH_PORT}/health`;
 const HEALTH_TIMEOUT_MS = 180_000;
 const COLLECTOR_TIMEOUT_MS = 180_000;
 const LOG_POLL_INTERVAL_MS = 1_000;
@@ -78,6 +76,18 @@ function waitForHealth(url, timeoutMs) {
 
     tick();
   });
+}
+
+async function waitForVerifiedDesktopEndpoint(desktopLogPath, timeoutMs) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt <= timeoutMs) {
+    const log = fs.existsSync(desktopLogPath) ? fs.readFileSync(desktopLogPath, 'utf8') : '';
+    const matches = [...log.matchAll(/backend-identity-verified[^\r\n]*[\r\n]+[\s\S]*?backend-readiness-complete[^\r\n]*/g)];
+    const allocation = [...log.matchAll(/backend-endpoint-allocated host=127\.0\.0\.1 port=(\d+)/g)].at(-1);
+    if (matches.length > 0 && allocation) return `http://127.0.0.1:${Number(allocation[1])}`;
+    await delay(500);
+  }
+  throw new Error('Timed out waiting for the authenticated packaged desktop endpoint.');
 }
 
 function killChild(child) {
@@ -321,7 +331,7 @@ async function main() {
         dbType: 'sqlite',
         sqliteDbPath,
         storageRootPath: storageRoot,
-        backendPort: HEALTH_PORT,
+        backendPort: 3001,
         autoStartCollector: true,
       },
       null,
@@ -336,7 +346,6 @@ async function main() {
 
   const env = {
     ...process.env,
-    PORT: String(HEALTH_PORT),
     DESKTOP_CONFIG_PATH: configPath,
     DB_TYPE: 'sqlite',
     SQLITE_DB_PATH: sqliteDbPath,
@@ -362,11 +371,11 @@ async function main() {
   const output = collectChildOutput(child);
 
   try {
-    const healthBody = await waitForHealth(HEALTH_URL, HEALTH_TIMEOUT_MS);
-    pass(`health ready at ${HEALTH_URL}`);
+    const apiBaseUrl = await waitForVerifiedDesktopEndpoint(path.join(configRoot, 'desktop-runtime.log'), HEALTH_TIMEOUT_MS);
+    const healthBody = await waitForHealth(`${apiBaseUrl}/health`, HEALTH_TIMEOUT_MS);
+    pass('authenticated dynamic desktop endpoint became healthy');
     console.log(`WHATSAPP SMOKE HEALTH BODY: ${healthBody}`);
 
-    const apiBaseUrl = `http://localhost:${HEALTH_PORT}`;
     const accessToken = await initializeAndStartCollector(apiBaseUrl, configRoot);
 
     const result = await waitForCollectorOutcome(collectorLogPath, COLLECTOR_TIMEOUT_MS);
