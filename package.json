@@ -6,7 +6,7 @@
   "endorsement": "by S4",
   "tagline": "Patrol evidence. Automatically organised.",
   "version": "1.0.2",
-  "buildId": "2026.09.18.15.24.05",
+  "buildId": "2026.09.18.15.37.30",
   "private": true,
   "workspaces": [
     "packages/*",
@@ -156,5 +156,5 @@
       "path-to-regexp": "0.1.13"
     }
   },
-  "windowsBuild": "2026.9.18.924"
+  "windowsBuild": "2026.9.18.937"
 }
