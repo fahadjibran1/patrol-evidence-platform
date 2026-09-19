@@ -25,7 +25,7 @@ This record binds the licence-state synchronisation and WhatsApp recovery remedi
 | Required-PE manifest SHA-256 | `DFAE9CB1842EF5AD208DD1604DDBD8F560105D67DBC78924518287C59DA40B0F` |
 | Packaged dependency instances | 403 |
 | Unique packaged package/version records | 361 |
-| Packaged dependency inventory SHA-256 | `DC45DBF4BC2C5D463597FCC536DACAC6C49A41B74378B2D5436FCB7DB8D2E963` |
+| Packaged dependency inventory SHA-256 | `EB51008D54D99B86E5A3A0DF89B3B0270470190B367C097103CD1253DB467821` |
 | Packaged dependency set SHA-256 | `C1169F049C23E031B49DF4622049BAF9AEB8976DDE4E310AFC82547653C85A07` |
 | Third-party notices SHA-256 | `577029656F5B7F386C1F730E2D5218B235406F9DD2DDD9432AE813A562B21880` |
 | Candidate location | `out/releases/patrolsafe-v1.0.2-private-rc-2026.09.19.00.44.19/` |
