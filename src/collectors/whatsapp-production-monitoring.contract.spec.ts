@@ -55,8 +55,24 @@ describe('production monitoring runtime contract', () => {
 
   it('reconciles mapping changes without creating another helper generation', () => {
     expect(service).toContain("subscribeToMappingChanges(() => {");
-    expect(service).toContain("this.sendHelperCommand({ type: 'set-production-monitoring', enabled });");
+    expect(service).toContain('await this.requestMonitoringReconciliation(enabled, reason);');
+    expect(service).toContain("type: 'set-production-monitoring', enabled, requestId");
     expect(service).not.toContain("reason=mapping-change action=start-new-helper");
+  });
+
+  it('fails runtime configuration closed and bounds listener reconciliation', () => {
+    expect(helper).toContain("'runtime-config-unavailable'");
+    expect(helper).not.toContain("'runtime-config-fallback'");
+    expect(helper).toContain("type: 'production-monitoring-result'");
+    expect(service).toContain('production-monitoring-reconcile-timeout');
+    expect(service).toContain('WHATSAPP_MONITORING_LISTENER_TIMEOUT');
+  });
+
+  it('defers packaged helper startup until the bound endpoint and backend identity are authoritative', () => {
+    expect(service).toContain("'auto-start-deferred'");
+    expect(service).toContain('registerAuthoritativeBackendEndpoint');
+    expect(service).toContain('confirmDesktopBackendIdentityVerified');
+    expect(desktop).toContain("path: '/desktop/bootstrap/runtime-verified'");
   });
 
   it('provides customer monitoring controls without using collector stop as pause', () => {

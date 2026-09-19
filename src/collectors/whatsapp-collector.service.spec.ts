@@ -197,10 +197,19 @@ describe('WhatsAppCollectorService', () => {
 
   describe('helper backend endpoint', () => {
     const originalBoundPort = process.env.PATROLSAFE_BOUND_BACKEND_PORT;
+    const originalPackaged = process.env.PATROL_DESKTOP_PACKAGED;
+    const originalConfigPath = process.env.DESKTOP_CONFIG_PATH;
+    const originalSession = process.env.PATROLSAFE_DESKTOP_BACKEND_SESSION;
 
     afterEach(() => {
       if (originalBoundPort === undefined) delete process.env.PATROLSAFE_BOUND_BACKEND_PORT;
       else process.env.PATROLSAFE_BOUND_BACKEND_PORT = originalBoundPort;
+      if (originalPackaged === undefined) delete process.env.PATROL_DESKTOP_PACKAGED;
+      else process.env.PATROL_DESKTOP_PACKAGED = originalPackaged;
+      if (originalConfigPath === undefined) delete process.env.DESKTOP_CONFIG_PATH;
+      else process.env.DESKTOP_CONFIG_PATH = originalConfigPath;
+      if (originalSession === undefined) delete process.env.PATROLSAFE_DESKTOP_BACKEND_SESSION;
+      else process.env.PATROLSAFE_DESKTOP_BACKEND_SESSION = originalSession;
     });
 
     it('uses the actual OS-assigned loopback port rather than configured port zero', () => {
@@ -208,10 +217,50 @@ describe('WhatsAppCollectorService', () => {
       const env = (createService({ port: 0 }) as unknown as { buildHelperEnv(): NodeJS.ProcessEnv }).buildHelperEnv();
       expect(env.PATROL_HELPER_API_BASE_URL).toBe('http://127.0.0.1:54321');
     });
+
+    it('reproduces dynamic-port startup ordering and never launches a packaged helper with port zero', async () => {
+      process.env.PATROL_DESKTOP_PACKAGED = 'true';
+      process.env.DESKTOP_CONFIG_PATH = 'C:\\synthetic\\workspace-config.json';
+      process.env.PATROLSAFE_DESKTOP_BACKEND_SESSION = 'synthetic-session-1234567890';
+      delete process.env.PATROLSAFE_BOUND_BACKEND_PORT;
+      const service = createService({ port: 0, whatsappAutoStart: true });
+      jest.spyOn(service as unknown as { isSessionProfileEmpty(): boolean }, 'isSessionProfileEmpty').mockReturnValue(false);
+      const start = jest.spyOn(service, 'start').mockResolvedValue(await service.getStatus());
+
+      await service.onModuleInit();
+      expect(start).not.toHaveBeenCalled();
+      expect(() => (service as unknown as { buildHelperEnv(): NodeJS.ProcessEnv }).buildHelperEnv()).toThrow(
+        'PatrolSafe local service is not yet securely ready for WhatsApp.',
+      );
+      expect(() => service.registerAuthoritativeBackendEndpoint('127.0.0.1', 0)).toThrow(
+        'resolved loopback backend endpoint',
+      );
+
+      service.registerAuthoritativeBackendEndpoint('127.0.0.1', 54329);
+      expect(start).not.toHaveBeenCalled();
+      service.confirmDesktopBackendIdentityVerified();
+      await Promise.resolve();
+
+      expect(start).toHaveBeenCalledTimes(1);
+      expect((service as unknown as { buildHelperEnv(): NodeJS.ProcessEnv }).buildHelperEnv().PATROL_HELPER_API_BASE_URL)
+        .toBe('http://127.0.0.1:54329');
+    });
   });
 
-  function attachRunningHelper(service: WhatsAppCollectorService): { write: jest.Mock } {
-    const write = jest.fn();
+  function attachRunningHelper(
+    service: WhatsAppCollectorService,
+    options: { acknowledgeMonitoring?: boolean } = {},
+  ): { write: jest.Mock } {
+    const write = jest.fn((line: string) => {
+      const command = JSON.parse(line) as { type: string; enabled?: boolean; requestId?: string };
+      if (
+        command.type === 'set-production-monitoring' &&
+        command.requestId &&
+        options.acknowledgeMonitoring !== false
+      ) {
+        queueMicrotask(() => emitMonitoringResult(service, command.requestId as string, Boolean(command.enabled)));
+      }
+    });
     (service as unknown as {
       helperProcess: {
         exitCode: null;
@@ -230,6 +279,34 @@ describe('WhatsAppCollectorService', () => {
 
   function emitHelperStatus(service: WhatsAppCollectorService, payload: WhatsAppHelperStatusSnapshot): void {
     const line = `${WHATSAPP_HELPER_EVENT_PREFIX}${JSON.stringify({ type: 'status', payload })}`;
+    (service as unknown as { handleHelperStdoutLine(line: string): void }).handleHelperStdoutLine(line);
+  }
+
+  function emitMonitoringResult(
+    service: WhatsAppCollectorService,
+    requestId: string,
+    enabled: boolean,
+    overrides?: Partial<{
+      effective: boolean;
+      mappedGroupsCount: number;
+      productionListenerCount: number;
+      ok: boolean;
+      errorCode: string | null;
+    }>,
+  ): void {
+    const line = `${WHATSAPP_HELPER_EVENT_PREFIX}${JSON.stringify({
+      type: 'production-monitoring-result',
+      payload: {
+        requestId,
+        requested: enabled,
+        effective: enabled,
+        mappedGroupsCount: enabled ? 1 : 0,
+        productionListenerCount: enabled ? 3 : 0,
+        ok: true,
+        errorCode: null,
+        ...overrides,
+      },
+    })}`;
     (service as unknown as { handleHelperStdoutLine(line: string): void }).handleHelperStdoutLine(line);
   }
 
@@ -421,6 +498,70 @@ describe('WhatsAppCollectorService', () => {
       expect(JSON.parse(write.mock.calls[0][0])).toEqual({
         type: 'set-production-monitoring',
         enabled: true,
+        requestId: expect.any(String),
+      });
+      expect(status).toMatchObject({
+        monitoringState: 'ACTIVE',
+        productionListenerCount: 3,
+      });
+    });
+
+    it('reconciles six active mappings to the three owned production listeners', async () => {
+      const mappings = Array.from({ length: 6 }, (_, index) => ({
+        externalGroupId: `synthetic-${index}@g.us`,
+        sourceType: 'group' as const,
+        mappedGroupId: `mapping-${index}`,
+        groupName: `Synthetic Group ${index + 1}`,
+        siteCode: `SITE${index + 1}`,
+      }));
+      whatsAppSourceMappingService.countActiveMappingsForIngest.mockResolvedValue(6);
+      whatsAppSourceMappingService.toRuntimeMappings.mockResolvedValue(mappings);
+      const service = createService();
+      attachRunningHelper(service);
+
+      await expect(service.getRuntimeConfig(HELPER_TOKEN)).resolves.toMatchObject({
+        mappedGroups: mappings,
+      });
+      await expect(service.enableMonitoring()).resolves.toMatchObject({
+        mappedGroupsCount: 6,
+        productionListenerCount: 3,
+        monitoringState: 'ACTIVE',
+      });
+    });
+
+    it('fails closed when authenticated runtime configuration cannot be loaded', async () => {
+      const service = createService();
+      const { write } = attachRunningHelper(service, { acknowledgeMonitoring: false });
+
+      const enabling = service.enableMonitoring();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      const command = JSON.parse(write.mock.calls[0][0]) as { requestId: string; enabled: boolean };
+      emitMonitoringResult(service, command.requestId, true, {
+        effective: false,
+        mappedGroupsCount: 0,
+        productionListenerCount: 0,
+        ok: false,
+        errorCode: 'WHATSAPP_RUNTIME_CONFIG_UNAVAILABLE',
+      });
+
+      await expect(enabling).rejects.toThrow('WHATSAPP_RUNTIME_CONFIG_UNAVAILABLE');
+      await expect(service.getStatus()).resolves.toMatchObject({
+        monitoringState: 'ERROR',
+        productionListenerCount: 0,
+        failureCode: 'WHATSAPP_RUNTIME_CONFIG_UNAVAILABLE',
+      });
+    });
+
+    it('bounds STARTING and transitions to ERROR when listener acknowledgement times out', async () => {
+      const service = createService();
+      (service as unknown as { monitoringReconciliationTimeoutMs: number }).monitoringReconciliationTimeoutMs = 10;
+      attachRunningHelper(service, { acknowledgeMonitoring: false });
+
+      await expect(service.enableMonitoring()).rejects.toThrow('WHATSAPP_MONITORING_LISTENER_TIMEOUT');
+      await expect(service.getStatus()).resolves.toMatchObject({
+        monitoringState: 'ERROR',
+        productionListenerCount: 0,
+        failureCode: 'WHATSAPP_MONITORING_LISTENER_TIMEOUT',
       });
     });
 
@@ -619,7 +760,11 @@ describe('WhatsAppCollectorService', () => {
       await expect(service.getRuntimeConfig(HELPER_TOKEN)).resolves.toMatchObject({ monitoringEnabled: false });
 
       await service.enableMonitoring();
-      expect(write).toHaveBeenCalledWith(`${JSON.stringify({ type: 'set-production-monitoring', enabled: true })}\n`);
+      expect(JSON.parse(write.mock.calls[0][0])).toEqual({
+        type: 'set-production-monitoring',
+        enabled: true,
+        requestId: expect.any(String),
+      });
       emitHelperStatus(service, readyStatus({ productionListenerCount: 3 }));
       await expect(service.getStatus()).resolves.toMatchObject({
         monitoringState: 'ACTIVE',

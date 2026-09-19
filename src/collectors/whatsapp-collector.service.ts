@@ -45,6 +45,8 @@ import {
   WhatsAppSourceDiscoveryState,
   WhatsAppCertificationLiveIngestionStatus,
   WHATSAPP_HELPER_EVENT_PREFIX,
+  WHATSAPP_MONITORING_LISTENER_TIMEOUT,
+  WHATSAPP_RUNTIME_CONFIG_UNAVAILABLE,
   WHATSAPP_SESSION_RECOVERY_REQUIRED,
 } from './whatsapp-helper.types';
 import {
@@ -104,6 +106,13 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
     process.env.PATROL_HELPER_INTERNAL_TOKEN?.trim() || randomUUID();
   private readonly startupDelayMs = 1_000;
   private readonly stopTimeoutMs = 8_000;
+  private readonly monitoringReconciliationTimeoutMs = Math.max(
+    1_000,
+    Number(process.env.PATROL_HELPER_MONITORING_ACK_TIMEOUT_MS ?? 15_000),
+  );
+  private authoritativeBackendEndpoint: string | null = null;
+  private desktopBackendIdentityVerified = false;
+  private deferredDesktopAutoStart = false;
   private entitlementRecheckTimer: NodeJS.Timeout | null = null;
   private entitlementRestriction: MonitoringEntitlementRestriction | null = null;
   private entitlementMessage: string | null = null;
@@ -163,6 +172,15 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
         timer: NodeJS.Timeout;
       }
     | null = null;
+  private readonly pendingMonitoringReconciliations = new Map<
+    string,
+    {
+      enabled: boolean;
+      resolve: () => void;
+      reject: (error: Error) => void;
+      timer: NodeJS.Timeout;
+    }
+  >();
   private sourceDiscoveryState: WhatsAppSourceDiscoveryState = 'NOT_ATTEMPTED';
   private sourceDiscoveryError: string | null = null;
   private lastSourceDiscoveryAt: string | null = null;
@@ -204,7 +222,9 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit(): Promise<void> {
     this.unsubscribeMappingChanges = this.whatsAppSourceMappingService.subscribeToMappingChanges(() => {
-      void this.reconcileProductionMonitoring('mapping-change');
+      void this.reconcileProductionMonitoring('mapping-change').catch((error) => {
+        this.appendCollectorLog('production-monitoring-reconcile-failed', `reason=mapping-change error=${error instanceof Error ? error.message : String(error)}`);
+      });
     });
     if (!this.enabled) {
       this.logger.log('WHATSAPP_AUTOSTART_SKIPPED reason=collector-disabled');
@@ -236,6 +256,12 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       this.appendCollectorLog('session-auto-reconnect', 'monitoring=paused listeners=disabled');
     }
 
+    if (this.isPackagedDesktopRuntime()) {
+      this.deferredDesktopAutoStart = true;
+      this.appendCollectorLog('auto-start-deferred', 'awaiting-authoritative-endpoint-and-desktop-identity');
+      return;
+    }
+
     void this.start().catch((error) => {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.warn(`Patrol monitoring auto-start failed: ${message}`);
@@ -253,7 +279,33 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
     this.cancelSessionRecovery();
     await activeRecovery?.catch(() => undefined);
     await activeSessionRecovery?.catch(() => undefined);
+    this.rejectPendingMonitoringReconciliations('Patrol monitoring stopped before listener reconciliation completed.');
     await this.stopHelperProcess();
+  }
+
+  registerAuthoritativeBackendEndpoint(host: string, port: number): void {
+    if (host !== '127.0.0.1' || !Number.isInteger(port) || port < 1 || port > 65_535) {
+      throw new Error('Packaged WhatsApp helper requires a resolved loopback backend endpoint.');
+    }
+    this.authoritativeBackendEndpoint = `http://${host}:${port}`;
+    this.appendCollectorLog('authoritative-backend-endpoint-registered', `host=${host} port=${port}`);
+  }
+
+  confirmDesktopBackendIdentityVerified(): { ready: true } {
+    if (this.isPackagedDesktopRuntime() && !this.authoritativeBackendEndpoint) {
+      throw new Error('Packaged backend endpoint is unavailable after identity verification.');
+    }
+    this.desktopBackendIdentityVerified = true;
+    this.appendCollectorLog('desktop-backend-identity-confirmed');
+    if (this.deferredDesktopAutoStart) {
+      this.deferredDesktopAutoStart = false;
+      void this.start().catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.warn(`Patrol monitoring deferred auto-start failed: ${message}`);
+        this.appendCollectorLog('auto-start-failed', message);
+      });
+    }
+    return { ready: true };
   }
 
   async getStatus(): Promise<WhatsAppCollectorStatus> {
@@ -475,6 +527,8 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
     if (this.certificationTerminal) {
       return this.getStatus();
     }
+
+    this.assertPackagedHelperEndpointReady();
 
     if (this.helperStatus.state === LINK_RETRY_REQUIRED) {
       throw new BadRequestException('Use Try Again to retry this WhatsApp linking session.');
@@ -1203,16 +1257,11 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
   }
 
   private buildHelperEnv(): NodeJS.ProcessEnv {
-    const port = String(
-      process.env.PATROLSAFE_BOUND_BACKEND_PORT ??
-      this.configService.get<number>('port') ??
-      process.env.PORT ??
-      3001,
-    );
+    const apiBaseUrl = this.resolveHelperApiBaseUrl();
     return {
       ...process.env,
       ELECTRON_RUN_AS_NODE: '1',
-      PATROL_HELPER_API_BASE_URL: `http://127.0.0.1:${port}`,
+      PATROL_HELPER_API_BASE_URL: apiBaseUrl,
       PATROL_HELPER_INTERNAL_TOKEN: this.helperInternalToken,
       PATROL_HELPER_SESSION_PATH: this.sessionPath,
       PATROL_HELPER_LOG_PATH: this.collectorLogPath,
@@ -1235,6 +1284,36 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       PATROL_HELPER_FIRST_LINK_ATTEMPT:
         this.currentGenerationProfileSafety === 'NEVER_AUTHENTICATED_FIRST_LINK' ? 'true' : 'false',
     };
+  }
+
+  private isPackagedDesktopRuntime(): boolean {
+    return process.env.PATROL_DESKTOP_PACKAGED === 'true' && Boolean(process.env.DESKTOP_CONFIG_PATH?.trim());
+  }
+
+  private assertPackagedHelperEndpointReady(): void {
+    if (!this.isPackagedDesktopRuntime()) {
+      return;
+    }
+    if (!this.authoritativeBackendEndpoint || !this.desktopBackendIdentityVerified) {
+      throw new Error('PatrolSafe local service is not yet securely ready for WhatsApp.');
+    }
+  }
+
+  private resolveHelperApiBaseUrl(): string {
+    if (this.isPackagedDesktopRuntime()) {
+      this.assertPackagedHelperEndpointReady();
+      return this.authoritativeBackendEndpoint as string;
+    }
+    const port = Number(
+      process.env.PATROLSAFE_BOUND_BACKEND_PORT ??
+      this.configService.get<number>('port') ??
+      process.env.PORT ??
+      3001,
+    );
+    if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+      throw new Error('WhatsApp helper API endpoint is unresolved.');
+    }
+    return `http://127.0.0.1:${port}`;
   }
 
   private clearPreviousQrArtifact(): void {
@@ -1323,6 +1402,49 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       }
       if (event.type === 'certification-live-ingestion-status') {
         this.certificationLiveIngestion = { ...event.payload };
+        return;
+      }
+      if (event.type === 'production-monitoring-result') {
+        const pending = this.pendingMonitoringReconciliations.get(event.payload.requestId);
+        if (!pending) {
+          this.appendCollectorLog('production-monitoring-stale-result-ignored', `requestId=${event.payload.requestId}`);
+          return;
+        }
+        clearTimeout(pending.timer);
+        this.pendingMonitoringReconciliations.delete(event.payload.requestId);
+        this.helperStatus = {
+          ...this.helperStatus,
+          productionListenerCount: event.payload.productionListenerCount,
+        };
+        if (!event.payload.ok) {
+          const failureCode = event.payload.errorCode ?? 'WHATSAPP_MONITORING_RECONCILIATION_FAILED';
+          this.helperStatus = {
+            ...this.helperStatus,
+            failureCode,
+            info:
+              failureCode === WHATSAPP_RUNTIME_CONFIG_UNAVAILABLE
+                ? 'WhatsApp connected, but monitoring configuration could not be loaded. Try again.'
+                : 'WhatsApp connected, but monitoring listeners could not be started. Try again or contact support.',
+            lastError: 'Patrol monitoring reconciliation did not complete.',
+          };
+          pending.reject(new Error(failureCode));
+          return;
+        }
+        if (
+          this.helperStatus.failureCode === WHATSAPP_RUNTIME_CONFIG_UNAVAILABLE ||
+          this.helperStatus.failureCode === WHATSAPP_MONITORING_LISTENER_TIMEOUT ||
+          this.helperStatus.failureCode === 'WHATSAPP_MONITORING_RECONCILIATION_FAILED'
+        ) {
+          this.helperStatus = {
+            ...this.helperStatus,
+            failureCode: null,
+            lastError: null,
+            info: event.payload.effective
+              ? 'WhatsApp connected. Patrol monitoring is active.'
+              : 'WhatsApp connected. Patrol monitoring is paused.',
+          };
+        }
+        pending.resolve();
         return;
       }
       if (event.type === 'status') {
@@ -1424,7 +1546,9 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
           this.automaticNetworkRecoveryAttempts = 0;
           this.markSessionRecoveryStableAfterDelay(generation);
           this.maybeRequestChatDiscoveryRefresh();
-          void this.reconcileProductionMonitoring('network-or-session-ready');
+          void this.reconcileProductionMonitoring('network-or-session-ready').catch((error) => {
+            this.appendCollectorLog('production-monitoring-reconcile-failed', `reason=network-or-session-ready error=${error instanceof Error ? error.message : String(error)}`);
+          });
         }
         this.maybeBeginSessionRecovery(this.helperStatus, generation);
         this.maybeBeginNetworkRecovery(this.helperStatus, generation);
@@ -1994,6 +2118,7 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async stopHelperProcess(): Promise<void> {
+    this.rejectPendingMonitoringReconciliations('Patrol monitoring helper stopped before listener reconciliation completed.');
     if (!this.helperProcess) {
       return;
     }
@@ -2076,6 +2201,13 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
     if (this.mappedGroupsCount === 0) {
       return 'NO_GROUPS_CONFIGURED';
     }
+    if (
+      this.helperStatus.failureCode === WHATSAPP_RUNTIME_CONFIG_UNAVAILABLE ||
+      this.helperStatus.failureCode === WHATSAPP_MONITORING_LISTENER_TIMEOUT ||
+      this.helperStatus.failureCode === 'WHATSAPP_MONITORING_RECONCILIATION_FAILED'
+    ) {
+      return 'ERROR';
+    }
     if (this.helperStatus.state === 'ready' && this.helperStatus.productionListenerCount === 3) {
       return 'ACTIVE';
     }
@@ -2140,11 +2272,47 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       this.entitlementRestriction === null &&
       !this.entitlementResumeRequired &&
       this.mappedGroupsCount > 0;
-    this.sendHelperCommand({ type: 'set-production-monitoring', enabled });
+    await this.requestMonitoringReconciliation(enabled, reason);
     this.appendCollectorLog(
       'production-monitoring-reconciled',
       `reason=${reason} enabled=${enabled} mappings=${this.mappedGroupsCount}`,
     );
+  }
+
+  private requestMonitoringReconciliation(enabled: boolean, reason: string): Promise<void> {
+    if (!this.isHelperRunning() || this.helperProcess?.stdin.destroyed) {
+      return Promise.reject(new Error('WHATSAPP_HELPER_NOT_RUNNING'));
+    }
+    const requestId = randomUUID();
+    return new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        const pending = this.pendingMonitoringReconciliations.get(requestId);
+        if (!pending) {
+          return;
+        }
+        this.pendingMonitoringReconciliations.delete(requestId);
+        this.helperStatus = {
+          ...this.helperStatus,
+          productionListenerCount: 0,
+          failureCode: WHATSAPP_MONITORING_LISTENER_TIMEOUT,
+          info: 'WhatsApp connected, but monitoring listeners did not start in time. Try again or contact support.',
+          lastError: 'Patrol monitoring listener acknowledgement timed out.',
+        };
+        this.appendCollectorLog('production-monitoring-reconcile-timeout', `reason=${reason} requestId=${requestId}`);
+        reject(new Error(WHATSAPP_MONITORING_LISTENER_TIMEOUT));
+      }, this.monitoringReconciliationTimeoutMs);
+      this.pendingMonitoringReconciliations.set(requestId, { enabled, resolve, reject, timer });
+      this.sendHelperCommand({ type: 'set-production-monitoring', enabled, requestId });
+      this.appendCollectorLog('production-monitoring-reconcile-requested', `reason=${reason} enabled=${enabled} requestId=${requestId}`);
+    });
+  }
+
+  private rejectPendingMonitoringReconciliations(message: string): void {
+    for (const pending of this.pendingMonitoringReconciliations.values()) {
+      clearTimeout(pending.timer);
+      pending.reject(new Error(message));
+    }
+    this.pendingMonitoringReconciliations.clear();
   }
 
   private assertEntitlementForLicensedAction(): LicenceEvaluation {

@@ -153,6 +153,17 @@ export type WhatsAppHelperEvent = {
 } | {
   type: 'certification-live-ingestion-status';
   payload: WhatsAppCertificationLiveIngestionStatus;
+} | {
+  type: 'production-monitoring-result';
+  payload: {
+    requestId: string;
+    requested: boolean;
+    effective: boolean;
+    mappedGroupsCount: number;
+    productionListenerCount: number;
+    ok: boolean;
+    errorCode: string | null;
+  };
 };
 
 export type WhatsAppHelperCommand =
@@ -197,7 +208,10 @@ export type WhatsAppHelperCommand =
   | {
       type: 'set-production-monitoring';
       enabled: boolean;
+      requestId?: string;
     };
 
 export const WHATSAPP_HELPER_EVENT_PREFIX = 'PATROL_COLLECTOR_EVENT ';
 export const WHATSAPP_SESSION_RECOVERY_REQUIRED = 'WHATSAPP_SESSION_RECOVERY_REQUIRED';
+export const WHATSAPP_RUNTIME_CONFIG_UNAVAILABLE = 'WHATSAPP_RUNTIME_CONFIG_UNAVAILABLE';
+export const WHATSAPP_MONITORING_LISTENER_TIMEOUT = 'WHATSAPP_MONITORING_LISTENER_TIMEOUT';

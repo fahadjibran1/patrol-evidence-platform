@@ -27,6 +27,7 @@ import {
   WhatsAppHelperStatusSnapshot,
   WhatsAppCertificationLiveIngestionStatus,
   WHATSAPP_HELPER_EVENT_PREFIX,
+  WHATSAPP_RUNTIME_CONFIG_UNAVAILABLE,
   WHATSAPP_SESSION_RECOVERY_REQUIRED,
 } from './whatsapp-helper.types';
 import {
@@ -759,6 +760,22 @@ function emitCertificationLiveIngestionStatus(): void {
     },
   };
   process.stdout.write(`${WHATSAPP_HELPER_EVENT_PREFIX}${JSON.stringify(payload)}\n`);
+}
+
+function emitProductionMonitoringResult(payload: {
+  requestId: string;
+  requested: boolean;
+  effective: boolean;
+  mappedGroupsCount: number;
+  productionListenerCount: number;
+  ok: boolean;
+  errorCode: string | null;
+}): void {
+  const event: WhatsAppHelperEvent = {
+    type: 'production-monitoring-result',
+    payload,
+  };
+  process.stdout.write(`${WHATSAPP_HELPER_EVENT_PREFIX}${JSON.stringify(event)}\n`);
 }
 
 function disarmCertificationLiveIngestion(reason: string): void {
@@ -1976,22 +1993,26 @@ async function finalizeClientReady(
         'discovery=0 mapping=0 backfill=0 ingestionListeners=0 sending=0',
       );
     } else {
-      const runtimeConfig = await fetchRuntimeConfig();
-      productionMonitoringEnabled =
-        runtimeConfig.monitoringEnabled && runtimeConfig.mappedGroups.length > 0;
-      if (productionMonitoringEnabled) {
-        await logLiveEventBridgeProbe(currentClient, `finalize-ready:${context.readySource}`);
-        attachLiveMediaListenersOnce(currentClient);
-        if (client) {
-          logMediaListenerCounts(client, 'ready-event');
+      try {
+        const runtimeConfig = await fetchRuntimeConfig();
+        productionMonitoringEnabled =
+          runtimeConfig.monitoringEnabled && runtimeConfig.mappedGroups.length > 0;
+        if (productionMonitoringEnabled) {
+          await logLiveEventBridgeProbe(currentClient, `finalize-ready:${context.readySource}`);
+          attachLiveMediaListenersOnce(currentClient);
+          if (client) {
+            logMediaListenerCounts(client, 'ready-event');
+          }
+          setTimeout(() => verifyAndReattachLiveMediaListeners('post-ready'), 2_000);
+        } else {
+          resetLiveMessageListenerState();
+          appendCollectorLog(
+            'PRODUCTION_MONITORING_IDLE',
+            `preference=${runtimeConfig.monitoringEnabled ? 'enabled' : 'paused'} mappings=${runtimeConfig.mappedGroups.length}`,
+          );
         }
-        setTimeout(() => verifyAndReattachLiveMediaListeners('post-ready'), 2_000);
-      } else {
-        resetLiveMessageListenerState();
-        appendCollectorLog(
-          'PRODUCTION_MONITORING_IDLE',
-          `preference=${runtimeConfig.monitoringEnabled ? 'enabled' : 'paused'} mappings=${runtimeConfig.mappedGroups.length}`,
-        );
+      } catch {
+        appendCollectorLog('PRODUCTION_MONITORING_CONFIG_ERROR', 'ready=true listeners=0 retry=customer-or-reconcile');
       }
     }
     startReadyHeartbeat();
@@ -2486,19 +2507,16 @@ async function fetchJson(relativePath: string, init?: RequestInit) {
 }
 
 async function fetchRuntimeConfig(): Promise<WhatsAppHelperRuntimeConfig> {
-  const fallback: WhatsAppHelperRuntimeConfig = {
-    monitoringEnabled: false,
-    allowFromMe: process.env.PATROL_HELPER_ALLOW_FROM_ME === 'true',
-    pilotGroupName: process.env.PATROL_HELPER_PILOT_GROUP_NAME?.trim() || null,
-    pilotSiteCode: process.env.PATROL_HELPER_PILOT_SITE_CODE?.trim() || null,
-    mappedGroups: [],
-  };
-
   try {
     const runtimeConfig = (await fetchJson(
       '/collectors/whatsapp/internal/runtime-config',
     )) as WhatsAppHelperRuntimeConfig;
     status.allowFromMe = runtimeConfig.allowFromMe;
+    if (status.failureCode === WHATSAPP_RUNTIME_CONFIG_UNAVAILABLE) {
+      status.failureCode = null;
+      status.lastError = null;
+      status.info = 'WhatsApp connected. Patrol monitoring configuration loaded.';
+    }
     emitStatus();
     appendCollectorLog(
       'runtime-config-loaded',
@@ -2507,12 +2525,19 @@ async function fetchRuntimeConfig(): Promise<WhatsAppHelperRuntimeConfig> {
     return runtimeConfig;
   } catch (error) {
     appendCollectorLog(
-      'runtime-config-fallback',
-      `error=${error instanceof Error ? error.message : String(error)} using local defaults`,
+      'runtime-config-unavailable',
+      `error=${error instanceof Error ? error.message : String(error)} action=fail-closed`,
     );
-    status.allowFromMe = fallback.allowFromMe;
-    emitStatus();
-    return fallback;
+    productionMonitoringEnabled = false;
+    resetLiveMessageListenerState();
+    updateStatus({
+      failureCode: WHATSAPP_RUNTIME_CONFIG_UNAVAILABLE,
+      info: 'WhatsApp connected, but patrol monitoring configuration could not be loaded. Try starting monitoring again.',
+      startupStage: 'Monitoring configuration unavailable',
+      lastError: 'Patrol monitoring configuration is temporarily unavailable.',
+      productionListenerCount: 0,
+    });
+    throw new Error(WHATSAPP_RUNTIME_CONFIG_UNAVAILABLE);
   }
 }
 
@@ -4172,21 +4197,46 @@ function wireCommands(): void {
         appendCollectorLog('certification-operational-command-suppressed', 'action=set-production-monitoring');
         return;
       }
-      const runtimeConfig = await fetchRuntimeConfig();
-      productionMonitoringEnabled =
-        command.enabled && runtimeConfig.monitoringEnabled && runtimeConfig.mappedGroups.length > 0;
-      if (client && readinessFinalized && status.state === 'ready') {
-        if (productionMonitoringEnabled) {
-          attachLiveMediaListeners(client, 'monitoring-reconcile');
-        } else {
-          resetLiveMessageListenerState();
+      try {
+        const runtimeConfig = await fetchRuntimeConfig();
+        productionMonitoringEnabled =
+          command.enabled && runtimeConfig.monitoringEnabled && runtimeConfig.mappedGroups.length > 0;
+        if (client && readinessFinalized && status.state === 'ready') {
+          if (productionMonitoringEnabled) {
+            attachLiveMediaListeners(client, 'monitoring-reconcile');
+          } else {
+            resetLiveMessageListenerState();
+          }
+        }
+        appendCollectorLog(
+          'production-monitoring-command',
+          `requested=${command.enabled} effective=${productionMonitoringEnabled} mappings=${runtimeConfig.mappedGroups.length}`,
+        );
+        emitStatus();
+        if (command.requestId) {
+          emitProductionMonitoringResult({
+            requestId: command.requestId,
+            requested: command.enabled,
+            effective: productionMonitoringEnabled,
+            mappedGroupsCount: runtimeConfig.mappedGroups.length,
+            productionListenerCount: status.productionListenerCount,
+            ok: command.enabled ? productionMonitoringEnabled && status.productionListenerCount === 3 : status.productionListenerCount === 0,
+            errorCode: null,
+          });
+        }
+      } catch {
+        if (command.requestId) {
+          emitProductionMonitoringResult({
+            requestId: command.requestId,
+            requested: command.enabled,
+            effective: false,
+            mappedGroupsCount: 0,
+            productionListenerCount: status.productionListenerCount,
+            ok: false,
+            errorCode: WHATSAPP_RUNTIME_CONFIG_UNAVAILABLE,
+          });
         }
       }
-      appendCollectorLog(
-        'production-monitoring-command',
-        `requested=${command.enabled} effective=${productionMonitoringEnabled} mappings=${runtimeConfig.mappedGroups.length}`,
-      );
-      emitStatus();
       return;
     }
 

@@ -9,6 +9,7 @@ import { validateSqliteNativeModule } from './config/validate-sqlite-native';
 import { resolveBackendListenConfig } from './config/backend-listen.config';
 import { createPatrolSafeCorsOriginValidator, DESKTOP_API_TOKEN_HEADER } from './config/cors-origin.util';
 import { resolveDatabaseType, resolveSqliteDatabasePath } from './config/database-settings.util';
+import { WhatsAppCollectorService } from './collectors/whatsapp-collector.service';
 
 // Shared CommonJS contract is also consumed by Electron before Nest exists.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -157,6 +158,7 @@ async function bootstrap(): Promise<void> {
   const address = app.getHttpServer().address();
   const actualPort = typeof address === 'object' && address ? address.port : listen.port;
   process.env.PATROLSAFE_BOUND_BACKEND_PORT = String(actualPort);
+  app.get(WhatsAppCollectorService).registerAuthoritativeBackendEndpoint('127.0.0.1', actualPort);
   writeBackendRuntimeLog('bootstrap:listening', `host=${listen.host ?? 'default'} port=${actualPort}`);
 
   const desktopSessionId = process.env.PATROLSAFE_DESKTOP_BACKEND_SESSION?.trim();

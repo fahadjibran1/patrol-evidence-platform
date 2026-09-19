@@ -9,6 +9,7 @@ import { InitializeDesktopWorkspaceDto } from './dto/initialize-desktop-workspac
 import { ResetDesktopAdminPasswordDto } from './dto/reset-desktop-admin-password.dto';
 import { UpdateDesktopLicenseDto } from './dto/update-desktop-license.dto';
 import { VerifyDesktopSetupDto } from './dto/verify-desktop-setup.dto';
+import { WhatsAppCollectorService } from '@/collectors/whatsapp-collector.service';
 
 // Shared with the Electron parent without duplicating the cryptographic contract.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -22,6 +23,7 @@ export class DesktopController {
   constructor(
     private readonly desktopService: DesktopService,
     private readonly desktopRecoveryService: DesktopRecoveryService,
+    private readonly whatsAppCollectorService: WhatsAppCollectorService,
   ) {}
 
   @Get('status')
@@ -45,6 +47,11 @@ export class DesktopController {
       sessionId,
       challenge: normalizedChallenge,
     });
+  }
+
+  @Post('runtime-verified')
+  confirmRuntimeVerified() {
+    return this.whatsAppCollectorService.confirmDesktopBackendIdentityVerified();
   }
 
   @Post('initialize')

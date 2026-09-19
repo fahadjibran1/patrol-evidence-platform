@@ -123,6 +123,8 @@ let backendReadyAnnouncementResolve = null;
 let backendReadyAnnouncementReject = null;
 let backendStdoutRemainder = '';
 let unresolvedMappingConflictCount = 0;
+let quitCleanupStarted = false;
+let quitCleanupComplete = false;
 
 function notifyDesktopState() {
   return processLifecycle.notifyRenderer(mainWindow, 'desktop:backend-status', getDesktopState());
@@ -956,6 +958,40 @@ function requestBackendIdentity(endpoint, child, sessionId, timeoutMs = 5_000) {
   });
 }
 
+function confirmBackendRuntimeVerified(endpoint, timeoutMs = 5_000) {
+  const token = getDesktopApiToken();
+  return new Promise((resolve, reject) => {
+    const request = http.request(
+      {
+        hostname: '127.0.0.1',
+        port: endpoint.port,
+        path: '/desktop/bootstrap/runtime-verified',
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'content-length': '0',
+          'x-patrolsafe-desktop-token': token,
+        },
+      },
+      (response) => {
+        response.resume();
+        response.on('end', () => {
+          if (response.statusCode === 201 || response.statusCode === 200) {
+            resolve(true);
+            return;
+          }
+          reject(new Error(`Spawned backend runtime activation returned ${response.statusCode}`));
+        });
+      },
+    );
+    request.on('error', reject);
+    request.setTimeout(timeoutMs, () => {
+      request.destroy(new Error('Spawned backend runtime activation timed out'));
+    });
+    request.end();
+  });
+}
+
 async function waitForSpawnedBackendIdentity(child, sessionId, timeoutMs) {
   const announcement = await Promise.race([
     backendReadyAnnouncement,
@@ -965,6 +1001,7 @@ async function waitForSpawnedBackendIdentity(child, sessionId, timeoutMs) {
   ]);
 
   await requestBackendIdentity(announcement, child, sessionId);
+  await confirmBackendRuntimeVerified(announcement);
   backendEndpoint = { host: '127.0.0.1', port: announcement.port };
   backendIdentityVerified = true;
   markBackendListeningDetected('authenticated-child-identity');
@@ -3170,10 +3207,26 @@ if (handleSquirrelEvent()) {
     }
   });
 
-  app.on('before-quit', () => {
+  app.on('before-quit', (event) => {
     appendDesktopLog('Electron before-quit');
     processLifecycle.beginQuit();
-    void stopBackend();
+    if (quitCleanupComplete) {
+      return;
+    }
+    event.preventDefault();
+    if (quitCleanupStarted) {
+      return;
+    }
+    quitCleanupStarted = true;
+    void stopBackend()
+      .catch((error) => {
+        appendDesktopLog('Backend shutdown during quit failed', error instanceof Error ? error.message : String(error));
+      })
+      .finally(() => {
+        quitCleanupComplete = true;
+        appendDesktopLog('Electron quit cleanup complete');
+        app.quit();
+      });
   });
 
   const handleTrusted = (channel, handler) => {
