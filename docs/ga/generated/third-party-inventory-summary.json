@@ -1,6 +1,6 @@
 {
   "generator": "scripts/generate-ga-third-party-inventory.js",
-  "sourceCommit": "0186389dca09b22a7049ab7094f49988c9746dd0",
+  "sourceCommit": "9ab06a6fea3854b5414eab5131b0cf963e2f9895",
   "sourceTree": "out/PatrolSafe by S4-win32-x64/resources/app",
   "repositoryProductionUniquePackageVersions": 488,
   "packageInstances": 403,
@@ -123,9 +123,9 @@
     }
   ],
   "artifactHashes": {
-    "repositoryProductionDependenciesCsv": "8883922A3DFC0D1A7880DEAC2C978DF8E6A9F51D857200E283A9DDA90AC365C9",
+    "repositoryProductionDependenciesCsv": "456686B0A346AF3D38D7EF8E0A04C6582BF3C130BAACE940E1F01D99E3628CC6",
     "packagedProductionDependenciesCsv": "DC45DBF4BC2C5D463597FCC536DACAC6C49A41B74378B2D5436FCB7DB8D2E963",
-    "reconciliationCsv": "FE622533147FDE5F4059200492924866BAA95DC2F7868ECD1070DD9F68A58D2E",
-    "thirdPartyNoticesDraft": "577029656F5B7F386C1F730E2D5218B235406F9DD2DDD9432AE813A562B21880"
+    "reconciliationCsv": "24B5300FD04320F33334D164293AB62E87502C62A2373E4DC04804B3CA54D100",
+    "thirdPartyNoticesDraft": "C81F68A73EE81A3B0726E417E785965A59C2588AA0336AC8BCA42F2391FC2CDF"
   }
 }
