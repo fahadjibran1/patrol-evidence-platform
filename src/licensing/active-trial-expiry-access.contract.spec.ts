@@ -10,7 +10,9 @@ describe('active trial expiry customer-access contract', () => {
     for (const route of ['/evidence', '/settings/backup', '/license', '/settings/support']) {
       expect(routeGate).toContain(`'${route}'`);
     }
-    expect(routeGate).toContain('window.setInterval(refresh, 60_000)');
+    expect(routeGate).toContain('useEntitlement()');
+    const entitlement = read('web', 'src', 'state', 'entitlement.tsx');
+    expect(entitlement).toContain('window.setInterval(refresh, 60_000)');
   });
 
   it('leaves evidence reads unguarded while helper ingestion has an active entitlement admission check', () => {

@@ -9,3 +9,7 @@ For packaged operation, the child backend binds to an operating-system-assigned 
 The production failure page contains only a product-level support reference, release identity and sanitized startup stage. Detailed paths and backend output remain in local diagnostic logs; credentials, licence secrets, WhatsApp data and the identity proof are not logged.
 
 The SQLite migration result now distinguishes mappings newly paused in the current migration from historical unresolved conflicts. The modal is current-launch-only; unresolved mappings remain visible through an administrator action banner. No customer data is deleted or reset.
+
+The final UAT remediation also centralises the renderer's licence and entitlement snapshot. A successful licence mutation updates all consumers immediately and reconciles both authoritative backend status endpoints in the same running session.
+
+Unexpected termination of a previously healthy WhatsApp session now starts a bounded replacement helper generation while preserving LocalAuth. Obsolete-generation callbacks remain rejected. If the preserved session cannot recover safely, PatrolSafe stops retrying and presents a terminal relink-required state; sites, mappings, schedules and evidence remain intact.

@@ -27,6 +27,7 @@ import {
   WhatsAppHelperStatusSnapshot,
   WhatsAppCertificationLiveIngestionStatus,
   WHATSAPP_HELPER_EVENT_PREFIX,
+  WHATSAPP_SESSION_RECOVERY_REQUIRED,
 } from './whatsapp-helper.types';
 import {
   type AccountBoundSignal,
@@ -98,6 +99,7 @@ import {
   isWhatsAppTransportFailure,
   WHATSAPP_NETWORK_FAILURE_CODE,
 } from './whatsapp-network-recovery.util';
+import { shouldRecoverUnexpectedHealthySession } from './whatsapp-session-recovery.util';
 
 type MessageSource = 'live' | 'backfill';
 type MessageProcessingResult = 'imported' | 'duplicate' | 'skipped';
@@ -4795,6 +4797,12 @@ async function runBrowserAttempt(
       !operatorLogoutRequested &&
       !readinessFinalized &&
       authenticationReachedAttemptId === startupAttemptId;
+    const unexpectedHealthySessionEnd = shouldRecoverUnexpectedHealthySession({
+      wasHealthy,
+      reason: normalizedReason,
+      operatorLogoutRequested,
+      shutdownRequested,
+    });
 
     logLifecycleEvent(
       'disconnected',
@@ -4831,7 +4839,9 @@ async function runBrowserAttempt(
         qrDeliveredAt: null,
         qrPersistedAt: null,
         connectedAccount: status.connectedAccount,
-        info: status.sessionCorruptionSuspected
+        info: unexpectedHealthySessionEnd
+          ? 'WhatsApp session ended unexpectedly. PatrolSafe is preparing a safe reconnect.'
+          : status.sessionCorruptionSuspected
           ? SESSION_CORRUPTION_USER_MESSAGE
           : postAuthIncomplete
             ? POST_AUTH_LOGOUT_MESSAGE
@@ -4841,7 +4851,9 @@ async function runBrowserAttempt(
           : normalizedReason === 'LOGOUT'
             ? 'WhatsApp logged out on the phone or session ended.'
             : normalizedReason,
-        failureCode: isWhatsAppTransportFailure(normalizedReason)
+        failureCode: unexpectedHealthySessionEnd
+          ? WHATSAPP_SESSION_RECOVERY_REQUIRED
+          : isWhatsAppTransportFailure(normalizedReason)
           ? WHATSAPP_NETWORK_FAILURE_CODE
           : status.failureCode,
         lastDisconnectAt: new Date().toISOString(),

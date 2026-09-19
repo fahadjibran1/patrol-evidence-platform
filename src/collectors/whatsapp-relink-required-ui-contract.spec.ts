@@ -23,7 +23,7 @@ describe('WhatsApp relink-required renderer contract', () => {
   });
 
   it('shows explicit relink guidance and preserves a guarded action boundary', () => {
-    expect(collectorPage).toContain('WhatsApp could not restore the saved linked session. Relink WhatsApp to continue.');
+    expect(collectorPage).toContain('Relink to continue; your sites, mappings, schedules and evidence remain preserved.');
     expect(collectorPage).toContain('Relink WhatsApp');
     expect(collectorPage).toContain("onClick={() => void relink()}");
     expect(monitoringContext).toContain("runAction('/collectors/whatsapp/relink')");

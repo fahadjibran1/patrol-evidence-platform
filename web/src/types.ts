@@ -172,7 +172,7 @@ export interface WhatsAppCollectorStatus {
   certificationState?: 'DISABLED' | 'EXPECTING_QR_ONLY' | 'AUTHENTICATION_AUTHORIZED' | 'UNEXPECTED_AUTHENTICATION';
   certificationQrMasked?: boolean;
   monitoringPreference?: 'ENABLED' | 'PAUSED';
-  monitoringState?: 'ACTIVE' | 'PAUSED' | 'NO_GROUPS_CONFIGURED' | 'STARTING' | 'ERROR' | 'TRIAL_EXPIRED' | 'LICENCE_REQUIRED';
+  monitoringState?: 'ACTIVE' | 'PAUSED' | 'NO_GROUPS_CONFIGURED' | 'STARTING' | 'WAITING_FOR_WHATSAPP' | 'WHATSAPP_RELINK_REQUIRED' | 'ERROR' | 'TRIAL_EXPIRED' | 'LICENCE_REQUIRED';
   entitlementRestriction?: 'TRIAL_EXPIRED' | 'LICENCE_REQUIRED' | null;
   entitlementMessage?: string | null;
   sourceDiscoveryState?: 'NOT_ATTEMPTED' | 'LOADING' | 'AVAILABLE' | 'EMPTY' | 'ERROR';

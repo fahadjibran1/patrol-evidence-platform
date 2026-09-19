@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { apiRequest } from '../lib/api';
 import { useAuth } from '../state/auth';
+import { useEntitlement } from '../state/entitlement';
 import { useMonitoring } from '../state/monitoring';
-import type { DesktopBootstrapStatus, UserRole } from '../types';
+import type { UserRole } from '../types';
 import { AboutButton } from './about-dialog';
 import { BuildLabel } from './build-label';
 import { PRODUCT_INFO } from '../lib/product-info';
@@ -43,22 +43,12 @@ function sidebarDotClass(tone: 'ready' | 'warning' | 'error' | 'idle'): string {
 
 export function AppLayout(): JSX.Element {
   const navigate = useNavigate();
-  const { user, logout, token, connectionState } = useAuth();
+  const { user, logout, connectionState } = useAuth();
   const { view } = useMonitoring();
-  const [bootstrapStatus, setBootstrapStatus] = useState<DesktopBootstrapStatus | null>(null);
+  const { bootstrapStatus } = useEntitlement();
 
   const visiblePrimaryItems = primaryNavItems.filter((item) => item.roles.includes(user?.role ?? 'GUARD'));
   const visibleSettingsItems = settingsNavItems.filter((item) => item.roles.includes(user?.role ?? 'GUARD'));
-
-  useEffect(() => {
-    if (!token || user?.role === 'GUARD') {
-      return;
-    }
-
-    void apiRequest<DesktopBootstrapStatus>('/desktop/bootstrap/status', {}, token)
-      .then(setBootstrapStatus)
-      .catch(() => setBootstrapStatus(null));
-  }, [token, user?.role]);
 
   const workspaceLabel = useMemo(() => {
     return bootstrapStatus?.workspaceName || bootstrapStatus?.companyName || 'PatrolSafe Workspace';

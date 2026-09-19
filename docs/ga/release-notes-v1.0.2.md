@@ -10,6 +10,9 @@ PatrolSafe v1.0.2 is a focused desktop reliability update.
 - Isolated PatrolSafe's local desktop service and verified it before the application opens.
 - Added clearer, customer-safe startup diagnostics when the local service cannot start securely.
 - Corrected the WhatsApp mapping migration notice so it appears only when mappings are newly paused during the current upgrade. Historical paused mappings remain visible to administrators for review.
+- Licence activation and deactivation status now updates consistently across PatrolSafe without restarting or signing in again.
+- Improved recovery when a previously linked WhatsApp session ends unexpectedly, with a clear relink action when automatic recovery is no longer safe.
+- Clarified the two-step licence request (`.tgreq`) and activation (`.tglic`) workflow.
 
 ## Preserved behaviour
 

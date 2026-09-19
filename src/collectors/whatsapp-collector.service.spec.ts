@@ -10,6 +10,7 @@ import {
 import { WhatsAppCollectorService } from './whatsapp-collector.service';
 import {
   WHATSAPP_HELPER_EVENT_PREFIX,
+  WHATSAPP_SESSION_RECOVERY_REQUIRED,
   type WhatsAppHelperIngestPayload,
   type WhatsAppHelperStatusSnapshot,
 } from './whatsapp-helper.types';
@@ -1264,6 +1265,113 @@ describe('WhatsAppCollectorService', () => {
         productionListenerCount: 3,
         backfillMessagesScanned: 0,
       });
+    });
+  });
+
+  describe('unexpected session recovery supervisor', () => {
+    type SessionRecoveryInternals = {
+      helperStatus: WhatsAppHelperStatusSnapshot;
+      helperProcess: unknown;
+      activeHelperGeneration: number;
+      currentGenerationProfileSafety: 'EXISTING_SESSION_PROTECTED';
+      sessionRecoveryPromise: Promise<unknown> | null;
+      automaticSessionRecoveryAttempts: number;
+      stopHelperProcess(): Promise<void>;
+      releaseCurrentProfileOwnership(profileDir: string, generation: number): Promise<void>;
+      startInternal(): Promise<unknown>;
+      isSessionProfileEmpty(): boolean;
+    };
+
+    function prepareSessionRecovery(monitoringEnabled = true): {
+      service: WhatsAppCollectorService;
+      internal: SessionRecoveryInternals;
+      order: string[];
+      startInternal: jest.SpyInstance;
+    } {
+      const service = createService({ whatsappAutoStart: monitoringEnabled });
+      attachRunningHelper(service);
+      const internal = service as unknown as SessionRecoveryInternals;
+      internal.activeHelperGeneration = 1;
+      internal.currentGenerationProfileSafety = 'EXISTING_SESSION_PROTECTED';
+      jest.spyOn(internal, 'isSessionProfileEmpty').mockReturnValue(false);
+      const order: string[] = [];
+      jest.spyOn(internal, 'stopHelperProcess').mockImplementation(async () => {
+        order.push('helper-stopped');
+        internal.helperProcess = null;
+      });
+      jest.spyOn(internal, 'releaseCurrentProfileOwnership').mockImplementation(async (_path, generation) => {
+        order.push(`profile-released:${generation}`);
+      });
+      const startInternal = jest.spyOn(internal, 'startInternal').mockImplementation(async () => {
+        order.push('new-generation-started');
+        internal.activeHelperGeneration += 1;
+        internal.helperStatus = readyStatus({
+          connectedAccount: 'linked-account-1',
+          productionListenerCount: monitoringEnabled ? 3 : 0,
+        });
+        return service.getStatus();
+      });
+      return { service, internal, order, startInternal };
+    }
+
+    const unexpectedLogout = (): WhatsAppHelperStatusSnapshot => readyStatus({
+      state: 'disconnected',
+      connected: false,
+      ready: false,
+      connectedAccount: 'linked-account-1',
+      productionListenerCount: 0,
+      failureCode: WHATSAPP_SESSION_RECOVERY_REQUIRED,
+      lastError: 'WhatsApp logged out on the phone or session ended.',
+    });
+
+    it('replaces an irrecoverable helper generation while preserving LocalAuth ownership', async () => {
+      const { service, internal, order, startInternal } = prepareSessionRecovery();
+
+      emitHelperStatus(service, unexpectedLogout());
+      await internal.sessionRecoveryPromise;
+
+      expect(order).toEqual(['helper-stopped', 'profile-released:1', 'new-generation-started']);
+      expect(startInternal).toHaveBeenCalledTimes(1);
+      await expect(service.getStatus()).resolves.toMatchObject({
+        state: 'ready',
+        connected: true,
+        monitoringState: 'ACTIVE',
+        productionListenerCount: 3,
+      });
+    });
+
+    it('settles repeated unexpected session endings into explicit relink-required', async () => {
+      const { service, internal, startInternal } = prepareSessionRecovery();
+
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        emitHelperStatus(service, unexpectedLogout());
+        await internal.sessionRecoveryPromise;
+      }
+
+      expect(startInternal).toHaveBeenCalledTimes(2);
+      await expect(service.getStatus()).resolves.toMatchObject({
+        state: 'RELINK_REQUIRED',
+        monitoringState: 'WHATSAPP_RELINK_REQUIRED',
+        failureCode: 'WHATSAPP_RELINK_REQUIRED',
+        productionListenerCount: 0,
+      });
+    });
+
+    it('keeps authenticated and ready callbacks from an old generation ignored', async () => {
+      const { service, internal } = prepareSessionRecovery();
+      internal.activeHelperGeneration = 2;
+      internal.helperStatus = readyStatus({ state: 'starting', connected: false, ready: false });
+
+      for (const staleState of ['authenticated', 'ready'] as const) {
+        const line = `${WHATSAPP_HELPER_EVENT_PREFIX}${JSON.stringify({
+          type: 'status',
+          payload: readyStatus({ state: staleState }),
+        })}`;
+        (service as unknown as { handleHelperStdoutLine(line: string, generation: number): void })
+          .handleHelperStdoutLine(line, 1);
+      }
+
+      await expect(service.getStatus()).resolves.toMatchObject({ state: 'starting', connected: false, ready: false });
     });
   });
 

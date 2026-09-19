@@ -1,5 +1,5 @@
 export const LICENCE_IMPORT_MAX_BYTES = 256 * 1024;
-export const LICENCE_IMPORT_ACCEPT = '.tglic,.lic,.txt,application/json,text/plain';
+export const LICENCE_IMPORT_ACCEPT = '.tglic';
 
 const ALLOWED_EXTENSIONS = ['.tglic', '.lic', '.txt', '.json'] as const;
 

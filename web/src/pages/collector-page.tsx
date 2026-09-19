@@ -74,7 +74,7 @@ export function CollectorPage(): JSX.Element {
                   {status.entitlementRestriction
                     ? status.entitlementMessage ?? 'Monitoring has stopped. Activate PatrolSafe to resume.'
                     : view.phase === 'relink-required'
-                    ? 'WhatsApp could not restore the saved linked session. Relink WhatsApp to continue.'
+                    ? 'WhatsApp could not restore the saved linked session. Relink to continue; your sites, mappings, schedules and evidence remain preserved.'
                     : view.phase === 'link-retry-required'
                       ? 'WhatsApp could not initialise. Check your internet connection and try again.'
                     : view.phase === 'reconnecting'

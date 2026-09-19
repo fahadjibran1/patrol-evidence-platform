@@ -45,6 +45,7 @@ import {
   WhatsAppSourceDiscoveryState,
   WhatsAppCertificationLiveIngestionStatus,
   WHATSAPP_HELPER_EVENT_PREFIX,
+  WHATSAPP_SESSION_RECOVERY_REQUIRED,
 } from './whatsapp-helper.types';
 import {
   QR_ONLY_CERTIFICATION_PROCESS_MARKER,
@@ -74,7 +75,7 @@ export interface WhatsAppCollectorStatus extends Omit<WhatsAppHelperStatusSnapsh
   certificationQrMasked: boolean;
   certificationLiveIngestion: WhatsAppCertificationLiveIngestionStatus;
   monitoringPreference: 'ENABLED' | 'PAUSED';
-  monitoringState: 'ACTIVE' | 'PAUSED' | 'NO_GROUPS_CONFIGURED' | 'STARTING' | 'ERROR' | 'TRIAL_EXPIRED' | 'LICENCE_REQUIRED';
+  monitoringState: 'ACTIVE' | 'PAUSED' | 'NO_GROUPS_CONFIGURED' | 'STARTING' | 'WAITING_FOR_WHATSAPP' | 'WHATSAPP_RELINK_REQUIRED' | 'ERROR' | 'TRIAL_EXPIRED' | 'LICENCE_REQUIRED';
   entitlementRestriction: MonitoringEntitlementRestriction | null;
   entitlementMessage: string | null;
   sourceDiscoveryState: WhatsAppSourceDiscoveryState;
@@ -117,7 +118,13 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
   private networkRecoveryPromise: Promise<WhatsAppCollectorStatus> | null = null;
   private networkRecoverySequence = 0;
   private automaticNetworkRecoveryAttempts = 0;
+  private sessionRecoveryPromise: Promise<WhatsAppCollectorStatus> | null = null;
+  private sessionRecoverySequence = 0;
+  private automaticSessionRecoveryAttempts = 0;
+  private sessionRecoveryStableTimer: NodeJS.Timeout | null = null;
   private readonly maxAutomaticNetworkRecoveryAttempts = 2;
+  private readonly maxAutomaticSessionRecoveryAttempts = 2;
+  private readonly sessionRecoveryStableMs = 30_000;
   private readonly networkConnectivityCheckAttempts = 4;
   private readonly networkConnectivityCheckDelayMs = 5_000;
   private helperGeneration = 0;
@@ -241,8 +248,11 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
     this.unsubscribeMappingChanges?.();
     this.unsubscribeMappingChanges = null;
     const activeRecovery = this.networkRecoveryPromise;
+    const activeSessionRecovery = this.sessionRecoveryPromise;
     this.cancelNetworkRecovery();
+    this.cancelSessionRecovery();
     await activeRecovery?.catch(() => undefined);
+    await activeSessionRecovery?.catch(() => undefined);
     await this.stopHelperProcess();
   }
 
@@ -479,6 +489,10 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       return this.networkRecoveryPromise;
     }
 
+    if (this.sessionRecoveryPromise) {
+      return this.sessionRecoveryPromise;
+    }
+
     if (isRecoverableWhatsAppNetworkFailure(this.helperStatus)) {
       return this.beginNetworkRecovery('customer-retry', true);
     }
@@ -501,8 +515,11 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
 
   async stop(): Promise<WhatsAppCollectorStatus> {
     const activeRecovery = this.networkRecoveryPromise;
+    const activeSessionRecovery = this.sessionRecoveryPromise;
     this.cancelNetworkRecovery();
+    this.cancelSessionRecovery();
     await activeRecovery?.catch(() => undefined);
+    await activeSessionRecovery?.catch(() => undefined);
     if (this.linkRetryCleanupPromise) {
       await this.linkRetryCleanupPromise;
     }
@@ -618,6 +635,7 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       'session-reset-requested',
       `user-initiated reset stack=${stack.replace(/\s+/g, ' ')}`,
     );
+    this.cancelSessionRecovery();
     await this.stopHelperProcess();
     await this.sleep(3_000);
 
@@ -668,6 +686,7 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException('WhatsApp relink is available only after a failed reconnect session.');
     }
 
+    this.cancelSessionRecovery();
     const archiveResult = await this.archiveCurrentSessionForFreshLink('explicit-relink');
     if (!archiveResult.ok) {
       this.helperStatus = this.buildDefaultStatus({
@@ -717,6 +736,7 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
       `create-fresh-whatsapp-profile stack=${stack.replace(/\s+/g, ' ')} pid=${process.pid} profileDir=${profileDir}`,
     );
 
+    this.cancelSessionRecovery();
     const archiveResult = await this.archiveCurrentSessionForFreshLink('fresh-profile');
     if (!archiveResult.ok) {
       this.helperStatus = this.buildDefaultStatus({
@@ -1402,9 +1422,11 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
         }
         if (previousState !== 'ready' && this.helperStatus.state === 'ready') {
           this.automaticNetworkRecoveryAttempts = 0;
+          this.markSessionRecoveryStableAfterDelay(generation);
           this.maybeRequestChatDiscoveryRefresh();
           void this.reconcileProductionMonitoring('network-or-session-ready');
         }
+        this.maybeBeginSessionRecovery(this.helperStatus, generation);
         this.maybeBeginNetworkRecovery(this.helperStatus, generation);
         this.maybeBeginLinkRetryCleanup(this.helperStatus, generation);
       }
@@ -1486,6 +1508,183 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
     } catch {
       return false;
     }
+  }
+
+  private maybeBeginSessionRecovery(status: WhatsAppHelperStatusSnapshot, generation: number): void {
+    if (
+      this.entitlementRestriction !== null ||
+      this.entitlementResumeRequired ||
+      isQrOnlyCertificationMode() ||
+      generation !== this.activeHelperGeneration ||
+      this.sessionRecoveryPromise ||
+      this.networkRecoveryPromise ||
+      status.failureCode !== WHATSAPP_SESSION_RECOVERY_REQUIRED ||
+      status.state !== 'disconnected' ||
+      this.currentGenerationProfileSafety !== 'EXISTING_SESSION_PROTECTED' ||
+      !this.whatsAppSourceMappingService.getConfiguredLinkedAccountId() ||
+      this.isSessionProfileEmpty()
+    ) {
+      return;
+    }
+
+    this.clearSessionRecoveryStableTimer();
+    if (this.automaticSessionRecoveryAttempts >= this.maxAutomaticSessionRecoveryAttempts) {
+      void this.beginSessionRelinkRequired(generation);
+      return;
+    }
+
+    this.automaticSessionRecoveryAttempts += 1;
+    const recoverySequence = ++this.sessionRecoverySequence;
+    const recovery = this.runSessionRecovery(recoverySequence, generation).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      this.certificationTerminal = true;
+      this.helperStatus = this.buildDefaultStatus({
+        state: 'RELINK_REQUIRED',
+        connected: false,
+        ready: false,
+        productionListenerCount: 0,
+        failureCode: 'WHATSAPP_RELINK_REQUIRED',
+        startupStage: 'WhatsApp relink required',
+        info: 'WhatsApp needs to be relinked. Your sites, mappings, schedules and evidence are preserved.',
+        lastError: 'Safe WhatsApp session recovery could not complete.',
+        qrCode: null,
+        connectedAccount: null,
+        groups: [],
+        contacts: [],
+      });
+      this.appendCollectorLog(
+        'session-recovery-failed-closed',
+        `failedGeneration=${generation} recoverySequence=${recoverySequence} error=${message}`,
+      );
+      return this.getStatus();
+    });
+    const trackedRecovery = recovery.finally(() => {
+      if (this.sessionRecoveryPromise === trackedRecovery) {
+        this.sessionRecoveryPromise = null;
+      }
+    });
+    this.sessionRecoveryPromise = trackedRecovery;
+  }
+
+  private async runSessionRecovery(
+    recoverySequence: number,
+    failedGeneration: number,
+  ): Promise<WhatsAppCollectorStatus> {
+    const profileDir = path.join(this.sessionPath, 'session-patrol-evidence-platform');
+    this.helperStatus = {
+      ...this.helperStatus,
+      state: 'reconnecting',
+      connected: false,
+      ready: false,
+      productionListenerCount: 0,
+      failureCode: WHATSAPP_SESSION_RECOVERY_REQUIRED,
+      startupStage: 'Reconnecting saved WhatsApp session',
+      info: 'WhatsApp session ended unexpectedly. PatrolSafe is reconnecting safely.',
+      lastError: null,
+    };
+    this.appendCollectorLog(
+      'session-recovery-start',
+      `failedGeneration=${failedGeneration} recoverySequence=${recoverySequence} attempt=${this.automaticSessionRecoveryAttempts}/${this.maxAutomaticSessionRecoveryAttempts}`,
+    );
+
+    await this.stopHelperProcess();
+    await this.releaseCurrentProfileOwnership(profileDir, failedGeneration);
+    if (recoverySequence !== this.sessionRecoverySequence) {
+      this.appendCollectorLog('session-recovery-cancelled', `recoverySequence=${recoverySequence}`);
+      return this.getStatus();
+    }
+
+    this.helperStatus = this.buildDefaultStatus({
+      state: 'starting',
+      info: 'Reconnecting the preserved WhatsApp session...',
+      startupStage: 'Reconnecting saved WhatsApp session',
+      failureCode: null,
+      lastError: null,
+      qrCode: null,
+      connectedAccount: null,
+      productionListenerCount: 0,
+    });
+    const entitlement = this.assertEntitlementForLicensedAction();
+    if (this.monitoringEnabled) {
+      this.scheduleEntitlementRecheck(entitlement);
+    }
+    return this.startInternal();
+  }
+
+  private async beginSessionRelinkRequired(failedGeneration: number): Promise<WhatsAppCollectorStatus> {
+    if (this.sessionRecoveryPromise) {
+      return this.sessionRecoveryPromise;
+    }
+
+    const recoverySequence = ++this.sessionRecoverySequence;
+    const profileDir = path.join(this.sessionPath, 'session-patrol-evidence-platform');
+    this.certificationTerminal = true;
+    this.helperStatus = this.buildDefaultStatus({
+      state: 'RELINK_REQUIRED',
+      connected: false,
+      ready: false,
+      productionListenerCount: 0,
+      failureCode: 'WHATSAPP_RELINK_REQUIRED',
+      startupStage: 'WhatsApp relink required',
+      info: 'WhatsApp needs to be relinked. Your sites, mappings, schedules and evidence are preserved.',
+      lastError: 'The preserved WhatsApp session could not recover after bounded reconnect attempts.',
+      qrCode: null,
+      connectedAccount: null,
+      groups: [],
+      contacts: [],
+    });
+    this.appendCollectorLog(
+      'session-recovery-bounded-failure',
+      `failedGeneration=${failedGeneration} attempts=${this.automaticSessionRecoveryAttempts} sessionPreserved=true`,
+    );
+
+    const terminal = (async (): Promise<WhatsAppCollectorStatus> => {
+      await this.stopHelperProcess();
+      await this.releaseCurrentProfileOwnership(profileDir, failedGeneration);
+      if (recoverySequence !== this.sessionRecoverySequence) {
+        return this.getStatus();
+      }
+      return this.getStatus();
+    })().catch((error) => {
+      this.appendCollectorLog(
+        'session-relink-release-failed',
+        `failedGeneration=${failedGeneration} error=${error instanceof Error ? error.message : String(error)}`,
+      );
+      return this.getStatus();
+    });
+    const trackedTerminal = terminal.finally(() => {
+      if (this.sessionRecoveryPromise === trackedTerminal) {
+        this.sessionRecoveryPromise = null;
+      }
+    });
+    this.sessionRecoveryPromise = trackedTerminal;
+    return trackedTerminal;
+  }
+
+  private markSessionRecoveryStableAfterDelay(generation: number): void {
+    this.clearSessionRecoveryStableTimer();
+    const timer = setTimeout(() => {
+      this.sessionRecoveryStableTimer = null;
+      if (generation === this.activeHelperGeneration && this.helperStatus.state === 'ready') {
+        this.automaticSessionRecoveryAttempts = 0;
+        this.appendCollectorLog('session-recovery-stable', `generation=${generation}`);
+      }
+    }, this.sessionRecoveryStableMs);
+    timer.unref?.();
+    this.sessionRecoveryStableTimer = timer;
+  }
+
+  private clearSessionRecoveryStableTimer(): void {
+    if (this.sessionRecoveryStableTimer) {
+      clearTimeout(this.sessionRecoveryStableTimer);
+      this.sessionRecoveryStableTimer = null;
+    }
+  }
+
+  private cancelSessionRecovery(): void {
+    this.sessionRecoverySequence += 1;
+    this.automaticSessionRecoveryAttempts = 0;
+    this.clearSessionRecoveryStableTimer();
   }
 
   private maybeBeginNetworkRecovery(status: WhatsAppHelperStatusSnapshot, generation: number): void {
@@ -1880,9 +2079,21 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
     if (this.helperStatus.state === 'ready' && this.helperStatus.productionListenerCount === 3) {
       return 'ACTIVE';
     }
+    if (this.helperStatus.state === 'RELINK_REQUIRED') {
+      return 'WHATSAPP_RELINK_REQUIRED';
+    }
+    if (
+      this.helperStatus.state === 'reconnecting' ||
+      this.helperStatus.state === 'starting' ||
+      this.helperStatus.state === 'browser-launching' ||
+      this.helperStatus.state === 'whatsapp-loading' ||
+      this.helperStatus.state === 'authenticated' ||
+      this.helperStatus.state === 'waiting-for-client-info'
+    ) {
+      return 'WAITING_FOR_WHATSAPP';
+    }
     if (
       this.helperStatus.state === 'failed' ||
-      this.helperStatus.state === 'RELINK_REQUIRED' ||
       this.helperStatus.state === 'LINK_RETRY_REQUIRED' ||
       this.helperStatus.state === 'disconnected'
     ) {

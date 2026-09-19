@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from './state/auth';
 import { AppLayout } from './components/layout';
 import { MonitoringProvider } from './state/monitoring';
+import { EntitlementProvider } from './state/entitlement';
 import { LoginPage } from './pages/login-page';
 import { DashboardPage } from './pages/dashboard-page';
 import { SitesPage } from './pages/sites-page';
@@ -275,11 +276,13 @@ export function App(): JSX.Element {
             <Navigate to="/desktop/setup" replace />
           ) : (
             <ProtectedRoute token={token}>
-              <LicenseRouteGate>
-                <MonitoringProvider>
-                  <AppLayout />
-                </MonitoringProvider>
-              </LicenseRouteGate>
+              <EntitlementProvider>
+                <LicenseRouteGate>
+                  <MonitoringProvider>
+                    <AppLayout />
+                  </MonitoringProvider>
+                </LicenseRouteGate>
+              </EntitlementProvider>
             </ProtectedRoute>
           )
         }

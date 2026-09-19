@@ -4,8 +4,8 @@ import { apiRequest } from '../lib/api';
 import { customerErrorMessage } from '../lib/customer-errors';
 import { formatPatrolDate } from '../lib/patrol-time';
 import { useAuth } from '../state/auth';
+import { useEntitlement } from '../state/entitlement';
 import type {
-  DesktopBootstrapStatus,
   PatrolGroup,
   PatrolSchedule,
   PatrolSourceType,
@@ -54,13 +54,13 @@ function hourOptions(): { label: string; value: number }[] {
 
 export function SetupPage(): JSX.Element {
   const { token, user } = useAuth();
+  const { bootstrapStatus, reconcileEntitlement } = useEntitlement();
   const [sites, setSites] = useState<Site[]>([]);
   const [groups, setGroups] = useState<PatrolGroup[]>([]);
   const [schedules, setSchedules] = useState<PatrolSchedule[]>([]);
   const [whatsAppGroups, setWhatsAppGroups] = useState<WhatsAppCollectorGroup[]>([]);
   const [whatsAppContacts, setWhatsAppContacts] = useState<WhatsAppCollectorContact[]>([]);
   const [collectorStatus, setCollectorStatus] = useState<WhatsAppCollectorStatus | null>(null);
-  const [bootstrapStatus, setBootstrapStatus] = useState<DesktopBootstrapStatus | null>(null);
   const [licenseKey, setLicenseKey] = useState('');
   const [siteForm, setSiteForm] = useState({ siteCode: '', siteName: '', clientName: '' });
   const [groupForm, setGroupForm] = useState({
@@ -97,7 +97,6 @@ export function SetupPage(): JSX.Element {
       nextSchedules,
       nextWhatsAppGroups,
       nextWhatsAppContacts,
-      nextBootstrapStatus,
       nextCollectorStatus,
     ] = await Promise.all([
       apiRequest<Site[]>('/sites', {}, token ?? undefined),
@@ -105,7 +104,6 @@ export function SetupPage(): JSX.Element {
       apiRequest<PatrolSchedule[]>('/patrol-schedules', {}, token ?? undefined),
       apiRequest<WhatsAppCollectorGroup[]>('/collectors/whatsapp/groups', {}, token ?? undefined).catch(() => []),
       apiRequest<WhatsAppCollectorContact[]>('/collectors/whatsapp/contacts', {}, token ?? undefined).catch(() => []),
-      apiRequest<DesktopBootstrapStatus>('/desktop/bootstrap/status', {}, token ?? undefined).catch(() => null),
       apiRequest<WhatsAppCollectorStatus>('/collectors/whatsapp/status', {}, token ?? undefined).catch(() => null),
     ]);
 
@@ -114,10 +112,8 @@ export function SetupPage(): JSX.Element {
     setSchedules(nextSchedules);
     setWhatsAppGroups(nextWhatsAppGroups);
     setWhatsAppContacts(nextWhatsAppContacts);
-    setBootstrapStatus(nextBootstrapStatus);
     setCollectorStatus(nextCollectorStatus);
     setMappingSiteSelections(Object.fromEntries(nextGroups.map((group) => [group.id, group.siteId])));
-    setLicenseKey(nextBootstrapStatus?.license.licenseKey ?? '');
 
     setGroupForm((current) =>
       current.siteId || !nextSites[0] ? current : { ...current, siteId: nextSites[0].id },
@@ -132,6 +128,10 @@ export function SetupPage(): JSX.Element {
       setError(customerErrorMessage(loadError, 'Setup could not be loaded. Refresh the page and try again.')),
     );
   }, [loadData]);
+
+  useEffect(() => {
+    setLicenseKey(bootstrapStatus?.license.licenseKey ?? '');
+  }, [bootstrapStatus?.license.licenseKey]);
 
   const hasSites = sites.length > 0;
   const whatsAppLinked = Boolean(collectorStatus?.connected || collectorStatus?.ready);
@@ -173,11 +173,11 @@ export function SetupPage(): JSX.Element {
       return 'Not available in browser mode';
     }
 
-    if (license.licenseType === 'FULL' && license.status === 'ACTIVE') {
-      return 'Full licence active';
+    if (license.displayMode === 'Licensed' && license.status === 'ACTIVE') {
+      return 'Licensed';
     }
 
-    if (license.status === 'ACTIVE') {
+    if (license.status === 'TRIAL_ACTIVE' || (license.status === 'ACTIVE' && license.plan === 'trial')) {
       return `Trial active · ${license.daysRemaining} day${license.daysRemaining === 1 ? '' : 's'} left`;
     }
 
@@ -358,7 +358,7 @@ export function SetupPage(): JSX.Element {
     clearMessages();
 
     try {
-      const nextBootstrapStatus = await apiRequest<DesktopBootstrapStatus>(
+      await apiRequest(
         '/desktop/bootstrap/license',
         {
           method: 'POST',
@@ -369,7 +369,7 @@ export function SetupPage(): JSX.Element {
         },
         token ?? undefined,
       );
-      setBootstrapStatus(nextBootstrapStatus);
+      await reconcileEntitlement();
       setSuccess('Licence updated.');
     } catch (licenseError) {
       setError(customerErrorMessage(licenseError, 'The licence could not be updated. Try again or contact your PatrolSafe supplier.'));

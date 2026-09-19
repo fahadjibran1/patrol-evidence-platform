@@ -112,7 +112,13 @@ describe('WhatsApp customer state model', () => {
   });
 
   it('presents relink and disconnected states as connection states, not monitoring states', () => {
-    expect(deriveMonitoringView(status({ state: 'RELINK_REQUIRED' })).connectionLabel).toBe('Relink required');
+    const relink = deriveMonitoringView(status({
+      state: 'RELINK_REQUIRED',
+      monitoringState: 'WHATSAPP_RELINK_REQUIRED',
+    }));
+    expect(relink.connectionLabel).toBe('Relink required');
+    expect(relink.headerLabel).toBe('Paused — relink required');
+    expect(relink.accountTitle).toBe('Session expired');
     expect(deriveMonitoringView(status({ state: 'disconnected' })).connectionLabel).toBe('Reconnecting');
   });
 

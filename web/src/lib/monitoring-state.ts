@@ -42,7 +42,7 @@ export interface MonitoringView {
   connectionLabel: string;
   isConnected: boolean;
   isSessionReady: boolean;
-  monitoringState: 'ACTIVE' | 'PAUSED' | 'NO_GROUPS_CONFIGURED' | 'STARTING' | 'ERROR' | 'TRIAL_EXPIRED' | 'LICENCE_REQUIRED';
+  monitoringState: 'ACTIVE' | 'PAUSED' | 'NO_GROUPS_CONFIGURED' | 'STARTING' | 'WAITING_FOR_WHATSAPP' | 'WHATSAPP_RELINK_REQUIRED' | 'ERROR' | 'TRIAL_EXPIRED' | 'LICENCE_REQUIRED';
   isLinking: boolean;
   isError: boolean;
   isOffline: boolean;
@@ -252,6 +252,10 @@ export function deriveMonitoringView(status: WhatsAppCollectorStatus | null): Mo
         ? 'Trial expired'
       : monitoringState === 'LICENCE_REQUIRED'
         ? 'Licence required'
+      : monitoringState === 'WHATSAPP_RELINK_REQUIRED'
+        ? 'Paused — WhatsApp relink required'
+      : monitoringState === 'WAITING_FOR_WHATSAPP'
+        ? 'Waiting for WhatsApp'
       : monitoringState === 'NO_GROUPS_CONFIGURED'
         ? 'No groups configured'
         : monitoringState === 'ERROR'
@@ -270,7 +274,7 @@ export function deriveMonitoringView(status: WhatsAppCollectorStatus | null): Mo
   const headerLabel = isSessionReady
     ? label
     : phase === 'relink-required'
-      ? 'Session expired'
+      ? 'Paused — relink required'
     : phase === 'link-retry-required'
       ? 'WhatsApp could not initialise'
     : isError
@@ -282,7 +286,7 @@ export function deriveMonitoringView(status: WhatsAppCollectorStatus | null): Mo
   const sidebarLabel = isSessionReady
     ? `Monitoring ${label.toLowerCase()}`
     : phase === 'relink-required'
-      ? 'WhatsApp session expired'
+      ? 'Monitoring paused — relink required'
     : phase === 'link-retry-required'
       ? 'WhatsApp needs another try'
     : isError

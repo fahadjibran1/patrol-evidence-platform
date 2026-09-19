@@ -1,8 +1,7 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
-import { useEffect, useState, type ReactNode } from 'react';
-import { apiRequest } from '../lib/api';
+import type { ReactNode } from 'react';
 import { isDesktopApp } from '../lib/desktop';
-import type { LicenseStatusResponse } from '../types';
+import { useEntitlement } from '../state/entitlement';
 
 const LICENSE_ALLOWED_PATHS = new Set([
   '/license',
@@ -16,29 +15,7 @@ const LICENSE_ALLOWED_PATHS = new Set([
 export function LicenseRouteGate({ children }: { children?: ReactNode }): JSX.Element {
   const location = useLocation();
   const desktop = isDesktopApp();
-  const [status, setStatus] = useState<LicenseStatusResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(desktop);
-
-  useEffect(() => {
-    if (!desktop) {
-      setIsLoading(false);
-      return;
-    }
-
-    let active = true;
-    const refresh = (): void => {
-      void apiRequest<LicenseStatusResponse>('/license/status')
-        .then((next) => { if (active) setStatus(next); })
-        .catch(() => { if (active) setStatus(null); })
-        .finally(() => { if (active) setIsLoading(false); });
-    };
-    refresh();
-    const timer = window.setInterval(refresh, 60_000);
-    return () => {
-      active = false;
-      window.clearInterval(timer);
-    };
-  }, [desktop]);
+  const { licenceStatus: status, isLoading } = useEntitlement();
 
   if (!desktop) {
     return <>{children ?? <Outlet />}</>;

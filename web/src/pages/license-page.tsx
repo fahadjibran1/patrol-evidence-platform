@@ -1,9 +1,10 @@
-import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from 'react';
+import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../lib/api';
 import { isDesktopApp } from '../lib/desktop';
 import { LICENCE_IMPORT_ACCEPT, readLocalLicenceFile } from '../lib/licence-file-import';
 import { useAuth } from '../state/auth';
+import { useEntitlement } from '../state/entitlement';
 import type { LicenseStatusResponse } from '../types';
 import { Card, PageHeader, StatusBadge } from '../components/ui';
 import { formatPatrolDate } from '../lib/patrol-time';
@@ -14,8 +15,8 @@ const PUBLIC_REQUEST_PLAN = 'annual' as const;
 export function LicensePage(): JSX.Element {
   const navigate = useNavigate();
   const { token } = useAuth();
+  const { licenceStatus: status, reconcileEntitlement } = useEntitlement();
   const desktop = isDesktopApp();
-  const [status, setStatus] = useState<LicenseStatusResponse | null>(null);
   const [companyName, setCompanyName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -23,16 +24,9 @@ export function LicensePage(): JSX.Element {
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const loadStatus = useCallback(async () => {
-    const next = await apiRequest<LicenseStatusResponse>('/license/status', {}, token ?? undefined);
-    setStatus(next);
-    if (next.companyName) setCompanyName(next.companyName);
-    return next;
-  }, [token]);
-
   useEffect(() => {
-    void loadStatus().catch(() => setError('Licence status could not be loaded. Try again.'));
-  }, [loadStatus]);
+    if (status?.companyName) setCompanyName(status.companyName);
+  }, [status?.companyName]);
 
   async function handleExportRequest(): Promise<void> {
     setIsSubmitting(true);
@@ -69,7 +63,7 @@ export function LicensePage(): JSX.Element {
         { method: 'POST', body: JSON.stringify({ licenceFileContents: raw }) },
         token ?? undefined,
       );
-      setStatus(next);
+      await reconcileEntitlement(next);
       setSuccess(next.uiState === 'Licensed' ? 'PatrolSafe is now activated.' : next.message);
     } catch {
       setError('That licence file could not be activated. Confirm it belongs to this workstation and try again.');
@@ -89,7 +83,7 @@ export function LicensePage(): JSX.Element {
         { method: 'POST', body: JSON.stringify({}) },
         token ?? undefined,
       );
-      setStatus(next);
+      await reconcileEntitlement(next);
       setSuccess('Licence deactivated. Existing data was preserved.');
     } catch {
       setError('The licence could not be deactivated. No company data was changed.');
@@ -176,26 +170,28 @@ export function LicensePage(): JSX.Element {
 
       <div className="settings-grid">
         <Card className="action-card">
-          <h3>Activate a licence</h3>
-          <p className="muted-text">Select the PatrolSafe licence file supplied for this workstation.</p>
-          <input ref={fileInputRef} type="file" accept={LICENCE_IMPORT_ACCEPT} hidden onChange={(event) => void handleImportLicenceFile(event)} />
-          <div className="button-row">
-            <button type="button" className="primary-button" disabled={isSubmitting} onClick={() => fileInputRef.current?.click()}>
-              {isSubmitting ? 'Checking licence…' : 'Choose licence file'}
-            </button>
-            <a className="secondary-button" href={SUPPLIER_CONTACT}>Contact supplier</a>
-          </div>
-        </Card>
-
-        <Card className="action-card">
-          <h3>Request a licence</h3>
+          <p className="eyebrow">Step 1</p>
+          <h3>Request licence</h3>
           <p className="muted-text">Annual subscription — £299 plus VAT where applicable for one Windows workstation per year. Renewal is manual.</p>
-          <p className="muted-text">Create a request file for your PatrolSafe supplier. It contains workstation identity information but no passwords.</p>
+          <p className="muted-text">Create a licence request (.tgreq) and send it to your PatrolSafe supplier. It contains workstation identity information but no passwords.</p>
           <label>Company name<input value={companyName} onChange={(event) => setCompanyName(event.target.value)} /></label>
           <div className="customer-detail-list"><strong>Licence term</strong><span>Annual</span></div>
           <button type="button" className="primary-button" disabled={isSubmitting || companyName.trim().length < 2} onClick={() => void handleExportRequest()}>
-            Create licence request
+            Create licence request (.tgreq)
           </button>
+        </Card>
+
+        <Card className="action-card">
+          <p className="eyebrow">Step 2</p>
+          <h3>Activate licence</h3>
+          <p className="muted-text">Choose the supplied PatrolSafe licence file (.tglic) for this workstation.</p>
+          <input ref={fileInputRef} type="file" accept={LICENCE_IMPORT_ACCEPT} hidden onChange={(event) => void handleImportLicenceFile(event)} />
+          <div className="button-row">
+            <button type="button" className="primary-button" disabled={isSubmitting} onClick={() => fileInputRef.current?.click()}>
+              {isSubmitting ? 'Checking licence…' : 'Choose licence file (.tglic)'}
+            </button>
+            <a className="secondary-button" href={SUPPLIER_CONTACT}>Contact supplier</a>
+          </div>
         </Card>
       </div>
 
