@@ -188,12 +188,6 @@ export function SetupPage(): JSX.Element {
 
   const discoveredSources =
     groupForm.sourceType === 'group' ? whatsAppGroups : whatsAppContacts;
-  const filteredDiscoveredSources = useMemo(() => {
-    const query = sourceSearch.trim().toLowerCase();
-    return discoveredSources
-      .filter((source) => !query || source.name.toLowerCase().includes(query))
-      .sort((left, right) => left.name.localeCompare(right.name));
-  }, [discoveredSources, sourceSearch]);
   const mappingsBySourceId = useMemo(() => {
     const result = new Map<string, PatrolGroup[]>();
     for (const mapping of currentAccountMappings) {
@@ -205,6 +199,18 @@ export function SetupPage(): JSX.Element {
     }
     return result;
   }, [currentAccountMappings]);
+  const filteredDiscoveredSources = useMemo(() => {
+    const query = sourceSearch.trim().toLowerCase();
+    const priority = (sourceId: string): number => {
+      const sourceMappings = mappingsBySourceId.get(sourceId) ?? [];
+      if (sourceMappings.some((mapping) => mapping.active)) return 1;
+      if (sourceMappings.length > 0) return 2;
+      return 0;
+    };
+    return discoveredSources
+      .filter((source) => !query || source.name.toLowerCase().includes(query))
+      .sort((left, right) => priority(left.id) - priority(right.id) || left.name.localeCompare(right.name));
+  }, [discoveredSources, mappingsBySourceId, sourceSearch]);
 
   const licenceLabel = useMemo(() => {
     const license = bootstrapStatus?.license;

@@ -28,6 +28,14 @@ describe('customer site to WhatsApp mapping workflow contract', () => {
     expect(setupPage).toContain('Internal WhatsApp identifiers are hidden.');
   });
 
+  it('shows available groups before mapped and paused groups without hiding any status', () => {
+    expect(setupPage).toContain('if (sourceMappings.some((mapping) => mapping.active)) return 1;');
+    expect(setupPage).toContain('if (sourceMappings.length > 0) return 2;');
+    expect(setupPage).toContain('priority(left.id) - priority(right.id)');
+    expect(setupPage).toContain(".filter((source) => !query || source.name.toLowerCase().includes(query))");
+    expect(setupPage).toContain("'Paused — administrator review required'");
+  });
+
   it('uses the existing protected mapping lifecycle instead of duplicating backend writes', () => {
     expect(setupPage).toContain("apiRequest(\n        '/patrol-groups'");
     expect(mappingService).toContain('assertNoDuplicateActiveMapping');
