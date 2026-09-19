@@ -18,6 +18,7 @@ import {
 describe('WhatsAppCollectorService', () => {
   const HELPER_TOKEN = 'test-helper-token';
   let currentEntitlement: Record<string, unknown>;
+  let mappingChangeListener: (() => void) | null;
 
   const whatsAppSourceMappingService = {
     resolveActiveLinkedAccountId: jest.fn(),
@@ -28,7 +29,7 @@ describe('WhatsAppCollectorService', () => {
     getConfiguredLinkedAccountId: jest.fn(),
     findActiveMappingsForIngest: jest.fn(),
     findActiveCertificationMappings: jest.fn(),
-    subscribeToMappingChanges: jest.fn(() => jest.fn()),
+    subscribeToMappingChanges: jest.fn((_listener: () => void) => jest.fn()),
   };
 
   const patrolImageIngestionService = {
@@ -438,7 +439,11 @@ describe('WhatsAppCollectorService', () => {
       }
     });
     licensingService.getEntitlementEvaluation = jest.fn(() => currentEntitlement as never);
-    whatsAppSourceMappingService.subscribeToMappingChanges.mockReturnValue(jest.fn());
+    mappingChangeListener = null;
+    whatsAppSourceMappingService.subscribeToMappingChanges.mockImplementation((listener: () => void) => {
+      mappingChangeListener = listener;
+      return jest.fn();
+    });
   });
 
   describe('persistent production monitoring', () => {
@@ -523,6 +528,26 @@ describe('WhatsAppCollectorService', () => {
         mappedGroups: mappings,
       });
       await expect(service.enableMonitoring()).resolves.toMatchObject({
+        mappedGroupsCount: 6,
+        productionListenerCount: 3,
+        monitoringState: 'ACTIVE',
+      });
+    });
+
+    it('keeps monitoring ACTIVE and reconciles the current helper when a sixth mapping is added', async () => {
+      whatsAppSourceMappingService.countActiveMappingsForIngest.mockResolvedValue(5);
+      const service = createService();
+      const { write } = attachRunningHelper(service);
+      await service.onModuleInit();
+      await service.enableMonitoring();
+
+      whatsAppSourceMappingService.countActiveMappingsForIngest.mockResolvedValue(6);
+      mappingChangeListener?.();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      await new Promise<void>((resolve) => setImmediate(resolve));
+
+      expect(write).toHaveBeenCalledTimes(2);
+      await expect(service.getStatus()).resolves.toMatchObject({
         mappedGroupsCount: 6,
         productionListenerCount: 3,
         monitoringState: 'ACTIVE',

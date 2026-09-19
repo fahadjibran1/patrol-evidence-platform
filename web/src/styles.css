@@ -279,6 +279,23 @@ summary:focus-visible {
 }
 .setup-sites-list { margin-bottom: 0.25rem; }
 .setup-site-row p { margin: 0.15rem 0 0; }
+.site-next-action,
+.setup-focused-site-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid rgba(56, 189, 248, 0.32);
+  border-radius: 14px;
+  background: rgba(56, 189, 248, 0.08);
+}
+
+.site-next-action p,
+.setup-focused-site-card p {
+  margin-top: 0.25rem;
+}
 .setup-existing-block { margin-top: 0.5rem; padding-top: 0.75rem; border-top: 1px solid var(--border); }
 .setup-advanced-details { display: grid; gap: 0.75rem; }
 .setup-advanced-details > summary {
@@ -999,6 +1016,12 @@ input, select, textarea {
 }
 
 @media (max-width: 900px) {
+  .site-next-action,
+  .setup-focused-site-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .settings-grid, .security-action-card, .security-action-form, .licence-hero, .check-list { grid-template-columns: 1fr; }
   .advanced-support-card { align-items: flex-start; flex-direction: column; }
 }

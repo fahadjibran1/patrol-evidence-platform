@@ -163,7 +163,7 @@ export function AppLayout(): JSX.Element {
           <div className="banner banner-warning" role="status">
             {bootstrapStatus?.unresolvedMappingConflicts} paused WhatsApp group mapping
             {bootstrapStatus?.unresolvedMappingConflicts === 1 ? '' : 's'} need administrator review.{' '}
-            <NavLink to="/sites">Review site mappings</NavLink>
+            <NavLink to="/setup?step=mapping&review=conflicts">Review WhatsApp mappings</NavLink>
           </div>
         ) : null}
         {user?.role !== 'GUARD' ? (

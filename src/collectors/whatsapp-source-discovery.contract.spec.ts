@@ -49,8 +49,10 @@ describe('customer WhatsApp source discovery contract', () => {
   });
 
   it('uses discovered display names in normal flow without requiring a raw JID', () => {
-    expect(setup).toContain('{entry.name}');
-    expect(setup).toContain('onChange={(event) => handleDiscoveredSourceSelection(event.target.value)}');
+    expect(setup).toContain('{source.name}');
+    expect(setup).toContain('onClick={() => handleDiscoveredSourceSelection(source.id)}');
+    expect(setup).toContain('Search {groupForm.sourceType');
+    expect(setup).toContain('Internal WhatsApp identifiers are hidden.');
     expect(setup).toContain('<summary>Advanced options</summary>');
   });
 

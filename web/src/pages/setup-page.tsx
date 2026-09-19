@@ -1,5 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { apiRequest } from '../lib/api';
 import { customerErrorMessage } from '../lib/customer-errors';
 import { formatPatrolDate } from '../lib/patrol-time';
@@ -55,6 +55,7 @@ function hourOptions(): { label: string; value: number }[] {
 export function SetupPage(): JSX.Element {
   const { token, user } = useAuth();
   const { bootstrapStatus, reconcileEntitlement } = useEntitlement();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [sites, setSites] = useState<Site[]>([]);
   const [groups, setGroups] = useState<PatrolGroup[]>([]);
   const [schedules, setSchedules] = useState<PatrolSchedule[]>([]);
@@ -89,6 +90,7 @@ export function SetupPage(): JSX.Element {
   const [licenseAdvancedOpen, setLicenseAdvancedOpen] = useState(false);
   const [mappingSiteSelections, setMappingSiteSelections] = useState<Record<string, string>>({});
   const [selectedStep, setSelectedStep] = useState<number | null>(null);
+  const [sourceSearch, setSourceSearch] = useState('');
 
   const loadData = useCallback(async (): Promise<void> => {
     const [
@@ -139,9 +141,29 @@ export function SetupPage(): JSX.Element {
   const currentAccountMappings = groups.filter(
     (group) => !group.externalGroupId || (currentLinkedAccountId && group.linkedAccountId === currentLinkedAccountId),
   );
-  const hasMappings = currentAccountMappings.some((group) => group.active && Boolean(group.externalGroupId));
-  const hasSchedules = schedules.length > 0;
+  const requestedSiteId = searchParams.get('siteId');
+  const requestedStep = searchParams.get('step');
+  const focusedSite = sites.find((site) => site.id === requestedSiteId) ?? null;
+  const focusedSiteMappings = focusedSite
+    ? currentAccountMappings.filter((group) => group.siteId === focusedSite.id)
+    : currentAccountMappings;
+  const focusedSiteSchedules = focusedSite
+    ? schedules.filter((schedule) => schedule.siteId === focusedSite.id)
+    : schedules;
+  const hasMappings = focusedSiteMappings.some((group) => group.active && Boolean(group.externalGroupId));
+  const hasSchedules = focusedSiteSchedules.some((schedule) => schedule.active);
   const monitoringLive = collectorStatus?.monitoringState === 'ACTIVE';
+
+  useEffect(() => {
+    if (requestedStep === 'mapping') setSelectedStep(3);
+    if (requestedStep === 'schedule') setSelectedStep(5);
+  }, [requestedStep]);
+
+  useEffect(() => {
+    if (!focusedSite) return;
+    setGroupForm((current) => ({ ...current, siteId: focusedSite.id }));
+    setScheduleForm((current) => ({ ...current, siteId: focusedSite.id }));
+  }, [focusedSite?.id]);
 
   const stepComplete = useMemo(
     () => ({
@@ -166,6 +188,23 @@ export function SetupPage(): JSX.Element {
 
   const discoveredSources =
     groupForm.sourceType === 'group' ? whatsAppGroups : whatsAppContacts;
+  const filteredDiscoveredSources = useMemo(() => {
+    const query = sourceSearch.trim().toLowerCase();
+    return discoveredSources
+      .filter((source) => !query || source.name.toLowerCase().includes(query))
+      .sort((left, right) => left.name.localeCompare(right.name));
+  }, [discoveredSources, sourceSearch]);
+  const mappingsBySourceId = useMemo(() => {
+    const result = new Map<string, PatrolGroup[]>();
+    for (const mapping of currentAccountMappings) {
+      const sourceId = mapping.externalGroupId?.trim();
+      if (!sourceId) continue;
+      const existing = result.get(sourceId) ?? [];
+      existing.push(mapping);
+      result.set(sourceId, existing);
+    }
+    return result;
+  }, [currentAccountMappings]);
 
   const licenceLabel = useMemo(() => {
     const license = bootstrapStatus?.license;
@@ -232,7 +271,7 @@ export function SetupPage(): JSX.Element {
     setIsSavingSite(true);
 
     try {
-      await apiRequest<Site>(
+      const savedSite = await apiRequest<Site>(
         '/sites',
         {
           method: 'POST',
@@ -246,9 +285,16 @@ export function SetupPage(): JSX.Element {
         token ?? undefined,
       );
       setSiteForm({ siteCode: '', siteName: '', clientName: '' });
-      setSuccess('Site saved. Next, link WhatsApp on the Monitoring page.');
+      setGroupForm((current) => ({ ...current, siteId: savedSite.id }));
+      setScheduleForm((current) => ({ ...current, siteId: savedSite.id }));
+      setSuccess(
+        whatsAppLinked
+          ? `${savedSite.siteName} was created. Choose its WhatsApp group next.`
+          : `${savedSite.siteName} was created. Link WhatsApp, then choose its patrol group.`,
+      );
       await loadData();
-      setSelectedStep(2);
+      setSearchParams({ siteId: savedSite.id, step: whatsAppLinked ? 'mapping' : 'whatsapp' });
+      setSelectedStep(whatsAppLinked ? 3 : 2);
     } catch (submissionError) {
       setError(customerErrorMessage(submissionError, 'The site could not be saved. Check the details and try again.'));
     } finally {
@@ -275,9 +321,13 @@ export function SetupPage(): JSX.Element {
         },
         token ?? undefined,
       );
+      const mappedSiteId = groupForm.siteId;
       setGroupForm((current) => ({ ...current, groupName: '', externalGroupId: '' }));
-      setSuccess('WhatsApp source linked to site. Set the patrol schedule next.');
+      setScheduleForm((current) => ({ ...current, siteId: mappedSiteId }));
+      setSourceSearch('');
+      setSuccess('WhatsApp source linked to site. Monitoring configuration is being refreshed; set the patrol schedule next.');
       await loadData();
+      setSearchParams({ siteId: mappedSiteId, step: 'schedule' });
       setSelectedStep(5);
     } catch (submissionError) {
       setError(customerErrorMessage(submissionError, 'The WhatsApp group could not be mapped. Check your selections and try again.'));
@@ -300,7 +350,9 @@ export function SetupPage(): JSX.Element {
         },
         token ?? undefined,
       );
-      setSuccess('Patrol schedule saved. Go to Monitoring to start live capture.');
+      setSuccess(monitoringLive
+        ? 'Patrol schedule saved. Monitoring remains active.'
+        : 'Patrol schedule saved. Go to Monitoring to start live capture.');
       await loadData();
       setSelectedStep(6);
     } catch (submissionError) {
@@ -427,19 +479,45 @@ export function SetupPage(): JSX.Element {
             <h3>{setupReady ? 'Ready for live monitoring' : `${completedCount} of 5 essentials complete`}</h3>
             <p className="muted-text">
               {setupReady
-                ? 'Sites, WhatsApp, mappings, and schedules are in place. Monitoring is live.'
-                : 'Work through each step in order. You can return here any time to add another site.'}
+                ? focusedSite
+                  ? `${focusedSite.siteName} has an active mapping and schedule. Monitoring is live.`
+                  : 'Sites, WhatsApp, mappings, and schedules are in place. Monitoring is live.'
+                : focusedSite
+                  ? `Complete the remaining steps for ${focusedSite.siteName}. Other sites do not mark this site complete.`
+                  : 'Work through each step in order. You can return here any time to add another site.'}
             </p>
           </div>
           <div className="setup-progress-badges">
             <span className="setup-progress-item"><span>Sites</span><strong>{hasSites ? 'Ready' : 'Needed'}</strong></span>
             <span className="setup-progress-item"><span>WhatsApp</span><strong>{whatsAppLinked ? 'Connected' : 'Not linked'}</strong></span>
-            <span className="setup-progress-item"><span>Groups</span><strong>{hasMappings ? 'Mapped' : 'Needed'}</strong></span>
-            <span className="setup-progress-item"><span>Schedule</span><strong>{hasSchedules ? 'Ready' : 'Needed'}</strong></span>
+            <span className="setup-progress-item"><span>{focusedSite ? 'Site group' : 'Groups'}</span><strong>{hasMappings ? 'Mapped' : 'Needed'}</strong></span>
+            <span className="setup-progress-item"><span>{focusedSite ? 'Site schedule' : 'Schedule'}</span><strong>{hasSchedules ? 'Ready' : 'Needed'}</strong></span>
             <span className="setup-progress-item"><span>Monitoring</span><strong>{monitoringLive ? 'Active' : 'Paused'}</strong></span>
           </div>
         </div>
       </Card>
+
+      {focusedSite ? (
+        <Card className="setup-focused-site-card">
+          <div>
+            <p className="setup-step-eyebrow">Current site workflow</p>
+            <h3>{focusedSite.siteName}</h3>
+            <p className="muted-text">
+              {focusedSite.siteCode} · {focusedSiteMappings.filter((mapping) => mapping.active).length} active mapping(s) ·{' '}
+              {focusedSiteSchedules.filter((schedule) => schedule.active).length} active schedule(s)
+            </p>
+          </div>
+          <div className="button-row">
+            <button type="button" className="primary-button" onClick={() => setSelectedStep(3)}>
+              Manage WhatsApp groups
+            </button>
+            <button type="button" className="secondary-button" onClick={() => setSelectedStep(5)}>
+              Configure patrol schedule
+            </button>
+            <Link className="secondary-button setup-link-button" to="/sites">All sites</Link>
+          </div>
+        </Card>
+      ) : null}
 
       {error ? (
         <Card className="setup-message-card">
@@ -487,7 +565,19 @@ export function SetupPage(): JSX.Element {
                   <p>{site.siteName}</p>
                   {site.clientName ? <p className="muted-text">{site.clientName}</p> : null}
                 </div>
-                <StatusBadge value={site.active ? 'ACTIVE' : 'INACTIVE'} />
+                <div className="button-row">
+                  <StatusBadge value={site.active ? 'ACTIVE' : 'INACTIVE'} />
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => {
+                      setSearchParams({ siteId: site.id, step: 'mapping' });
+                      setSelectedStep(3);
+                    }}
+                  >
+                    Manage WhatsApp groups
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -614,6 +704,12 @@ export function SetupPage(): JSX.Element {
           <p className="setup-blocked-hint muted-text">Link WhatsApp on Monitoring first, then refresh the source list below.</p>
         ) : (
           <>
+            {collectorStatus?.monitoringState === 'ERROR' ? (
+              <div className="banner banner-warning" role="status">
+                WhatsApp monitoring needs attention. Mapping changes remain saved, but live configuration could not be refreshed.{' '}
+                <Link to="/collector">Open Monitoring to retry</Link>.
+              </div>
+            ) : null}
             <div className="setup-source-type-picker">
               <p className="setup-field-label">Step 3 — Where do patrol photos arrive?</p>
               <div className="setup-source-type-buttons">
@@ -678,29 +774,83 @@ export function SetupPage(): JSX.Element {
                   ))}
                 </select>
               </label>
-              <label>
-                {groupForm.sourceType === 'group' ? 'WhatsApp group' : 'WhatsApp contact'}
-                <select
-                  value={
-                    discoveredSources.some((entry) => entry.id === groupForm.externalGroupId)
-                      ? groupForm.externalGroupId
-                      : ''
-                  }
-                  onChange={(event) => handleDiscoveredSourceSelection(event.target.value)}
-                  required={discoveredSources.length > 0}
-                >
-                  <option value="">
-                    {discoveredSources.length === 0
-                      ? 'No sources yet — refresh after linking'
-                      : `Select ${groupForm.sourceType === 'group' ? 'group' : 'contact'}`}
-                  </option>
-                  {discoveredSources.map((entry) => (
-                    <option key={entry.id} value={entry.id}>
-                      {entry.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              {discoveredSources.length > 0 ? (
+                <div className="setup-source-panel">
+                  <label className="setup-source-search">
+                    Search {groupForm.sourceType === 'group' ? 'WhatsApp groups' : 'WhatsApp contacts'}
+                    <input
+                      value={sourceSearch}
+                      onChange={(event) => setSourceSearch(event.target.value)}
+                      placeholder={`Search ${discoveredSources.length} discovered source${discoveredSources.length === 1 ? '' : 's'}`}
+                    />
+                  </label>
+                  <p className="muted-text setup-source-count">
+                    Showing {filteredDiscoveredSources.length} of {discoveredSources.length}. Internal WhatsApp identifiers are hidden.
+                  </p>
+                  <div className="setup-source-table-wrap setup-source-table-scroll">
+                    <table className="setup-source-table">
+                      <thead>
+                        <tr>
+                          <th>Name</th>
+                          <th>Status</th>
+                          <th aria-label="Action" />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredDiscoveredSources.length === 0 ? (
+                          <tr>
+                            <td colSpan={3} className="setup-source-empty">No sources match this search.</td>
+                          </tr>
+                        ) : filteredDiscoveredSources.map((source) => {
+                          const sourceMappings = mappingsBySourceId.get(source.id) ?? [];
+                          const activeMapping = sourceMappings.find((mapping) => mapping.active);
+                          const pausedMapping = sourceMappings.find((mapping) => !mapping.active);
+                          const selected = groupForm.externalGroupId === source.id;
+                          const mappedSite = activeMapping?.site ?? sites.find((site) => site.id === activeMapping?.siteId);
+                          return (
+                            <tr key={source.id} className={selected ? 'selected' : undefined}>
+                              <td className="setup-source-name">{source.name}</td>
+                              <td>
+                                {activeMapping
+                                  ? `Mapped to ${mappedSite?.siteName ?? mappedSite?.siteCode ?? 'another site'}`
+                                  : pausedMapping
+                                    ? 'Paused — administrator review required'
+                                    : 'Available'}
+                              </td>
+                              <td className="setup-source-action">
+                                {activeMapping ? (
+                                  <StatusBadge value="MAPPED" />
+                                ) : pausedMapping ? (
+                                  <button
+                                    type="button"
+                                    className="secondary-button setup-source-map-button"
+                                    onClick={() => document.getElementById(`saved-mapping-${pausedMapping.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+                                  >
+                                    Review
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className={selected ? 'secondary-button setup-source-map-button' : 'primary-button setup-source-map-button'}
+                                    onClick={() => handleDiscoveredSourceSelection(source.id)}
+                                  >
+                                    {selected ? 'Selected' : 'Select'}
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : null}
+              {groupForm.externalGroupId ? (
+                <div className="setup-source-selected">
+                  Selected: <strong>{groupForm.groupName}</strong>
+                </div>
+              ) : null}
               <label>
                 Display name on reports
                 <input
@@ -750,12 +900,16 @@ export function SetupPage(): JSX.Element {
             {currentAccountMappings.length > 0 ? (
               <div className="setup-existing-block stack-list">
                 <p className="setup-field-label">Current mappings</p>
-                {currentAccountMappings.map((group) => (
-                  <div className="list-row" key={group.id}>
+                {currentAccountMappings
+                  .slice()
+                  .sort((left, right) => Number(right.siteId === focusedSite?.id) - Number(left.siteId === focusedSite?.id))
+                  .map((group) => (
+                  <div className="list-row" key={group.id} id={`saved-mapping-${group.id}`}>
                     <div>
                       <strong>{group.groupName}</strong>
                       <p className="muted-text">
                         {group.site?.siteCode ?? 'Site'} · {group.sourceType === 'contact' ? 'Contact' : 'Group'}
+                        {!group.active ? ' · Paused — administrator review required' : ''}
                       </p>
                       <label>
                         Site for future evidence
@@ -826,10 +980,10 @@ export function SetupPage(): JSX.Element {
           <p className="setup-blocked-hint muted-text">Create a site first.</p>
         ) : (
           <>
-            {schedules.length > 0 ? (
+            {focusedSiteSchedules.length > 0 ? (
               <div className="setup-existing-block stack-list">
-                <p className="setup-field-label">Saved schedules</p>
-                {schedules.map((schedule) => {
+                <p className="setup-field-label">{focusedSite ? `Schedules for ${focusedSite.siteName}` : 'Saved schedules'}</p>
+                {focusedSiteSchedules.map((schedule) => {
                   const site = sites.find((entry) => entry.id === schedule.siteId);
                   return (
                     <div className="list-row" key={schedule.id}>
@@ -851,8 +1005,8 @@ export function SetupPage(): JSX.Element {
               </div>
             ) : (
               <EmptyState
-                title="No schedule yet"
-                description="Set any monitoring window for this site (for example 09:00–17:00 or overnight 18:00–06:00). Start is inclusive and end is exclusive. Times use the workspace time zone in Company Settings."
+                title={focusedSite ? `No schedule for ${focusedSite.siteName}` : 'No schedule yet'}
+                description="Add a patrol schedule to define expected coverage. Monitoring can remain active without a current schedule window, but scheduled reporting waits for configured coverage. Times use the workspace time zone in Company Settings."
               />
             )}
 

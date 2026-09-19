@@ -52,6 +52,26 @@ describe('WhatsAppSourceMappingService', () => {
     expect(service.isMappingEligibleForIngest(inactiveMapping, '447700000001@c.us')).toBe(false);
   });
 
+  it('keeps seven paused migration conflicts excluded when six approved mappings are eligible', async () => {
+    const accountId = '447700000001@c.us';
+    const approved = Array.from({ length: 6 }, (_, index) => createGroup({
+      id: `approved-${index}`,
+      externalGroupId: `12036320000000000${index}@g.us`,
+      linkedAccountId: accountId,
+    }));
+    const paused = Array.from({ length: 7 }, (_, index) => createGroup({
+      id: `paused-${index}`,
+      externalGroupId: `12036330000000000${index}@g.us`,
+      linkedAccountId: accountId,
+      active: false,
+    }));
+    patrolGroupRepo.find.mockResolvedValue([...approved, ...paused]);
+
+    await expect(service.findActiveMappingsForIngest(accountId)).resolves.toEqual(approved);
+    expect(paused.every((mapping) => mapping.active === false)).toBe(true);
+    expect(patrolGroupRepo.save).not.toHaveBeenCalled();
+  });
+
   it('excludes archived sites from ingest eligibility', () => {
     const archivedSite = createGroup({
       site: {

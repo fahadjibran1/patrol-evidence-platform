@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { apiRequest } from '../lib/api';
 import { customerErrorMessage } from '../lib/customer-errors';
 import { useAuth } from '../state/auth';
-import type { Site } from '../types';
+import type { PatrolGroup, PatrolSchedule, Site } from '../types';
 import { Card, EmptyState, PageHeader, StatusBadge } from '../components/ui';
 import { formatPatrolDateTime } from '../lib/patrol-time';
 
@@ -21,6 +21,8 @@ export function SitesPage(): JSX.Element {
   const navigate = useNavigate();
   const { token, user } = useAuth();
   const [sites, setSites] = useState<Site[]>([]);
+  const [groups, setGroups] = useState<PatrolGroup[]>([]);
+  const [schedules, setSchedules] = useState<PatrolSchedule[]>([]);
   const [includeArchived, setIncludeArchived] = useState(false);
   const [siteCode, setSiteCode] = useState('');
   const [siteName, setSiteName] = useState('');
@@ -32,14 +34,21 @@ export function SitesPage(): JSX.Element {
   const [archivePreview, setArchivePreview] = useState<ArchivePreview | null>(null);
   const [confirmCode, setConfirmCode] = useState('');
   const [archiveReason, setArchiveReason] = useState('');
+  const [createdSite, setCreatedSite] = useState<Site | null>(null);
 
   const activeSites = useMemo(() => sites.filter((site) => !site.archivedAt), [sites]);
   const archivedSites = useMemo(() => sites.filter((site) => Boolean(site.archivedAt)), [sites]);
 
   async function loadSites(): Promise<void> {
     const path = includeArchived ? '/sites?includeArchived=true' : '/sites';
-    const nextSites = await apiRequest<Site[]>(path, {}, token ?? undefined);
+    const [nextSites, nextGroups, nextSchedules] = await Promise.all([
+      apiRequest<Site[]>(path, {}, token ?? undefined),
+      apiRequest<PatrolGroup[]>('/patrol-groups', {}, token ?? undefined),
+      apiRequest<PatrolSchedule[]>('/patrol-schedules', {}, token ?? undefined),
+    ]);
     setSites(nextSites);
+    setGroups(nextGroups);
+    setSchedules(nextSchedules);
   }
 
   useEffect(() => {
@@ -59,7 +68,7 @@ export function SitesPage(): JSX.Element {
     setError(null);
 
     try {
-      await apiRequest<Site>(
+      const savedSite = await apiRequest<Site>(
         editingSiteId ? `/sites/${editingSiteId}` : '/sites',
         {
           method: editingSiteId ? 'PATCH' : 'POST',
@@ -74,6 +83,9 @@ export function SitesPage(): JSX.Element {
       );
 
       resetForm();
+      if (!editingSiteId) {
+        setCreatedSite(savedSite);
+      }
       await loadSites();
     } catch (saveError) {
       setError(customerErrorMessage(saveError, 'The site could not be saved. Check the details and try again.'));
@@ -214,6 +226,21 @@ export function SitesPage(): JSX.Element {
               ) : null}
             </div>
           </form>
+          {createdSite ? (
+            <div className="site-next-action" role="status">
+              <div>
+                <strong>{createdSite.siteName} is ready.</strong>
+                <p className="muted-text">Next, choose the WhatsApp patrol group for this site.</p>
+              </div>
+              <button
+                type="button"
+                className="primary-button"
+                onClick={() => navigate(`/setup?siteId=${encodeURIComponent(createdSite.id)}&step=mapping`)}
+              >
+                Add WhatsApp group
+              </button>
+            </div>
+          ) : null}
         </Card>
 
         <Card>
@@ -243,13 +270,33 @@ export function SitesPage(): JSX.Element {
                     <strong>{site.siteCode}</strong>
                     <p>{site.siteName}</p>
                     <p>{site.clientName || 'No client assigned'}</p>
+                    <p className="muted-text">
+                      {groups.filter((group) => group.siteId === site.id && group.active && group.externalGroupId).length}{' '}
+                      active WhatsApp mapping(s) ·{' '}
+                      {schedules.filter((schedule) => schedule.siteId === site.id && schedule.active).length} active schedule(s)
+                    </p>
                   </div>
                   <div className="button-row">
                     <StatusBadge value={site.active} />
                     <button
                       type="button"
+                      className="primary-button"
+                      onClick={() => navigate(`/setup?siteId=${encodeURIComponent(site.id)}&step=mapping`)}
+                    >
+                      Manage WhatsApp groups
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => navigate(`/setup?siteId=${encodeURIComponent(site.id)}&step=schedule`)}
+                    >
+                      Configure schedule
+                    </button>
+                    <button
+                      type="button"
                       className="secondary-button"
                       onClick={() => {
+                        setCreatedSite(null);
                         setEditingSiteId(site.id);
                         setSiteCode(site.siteCode);
                         setSiteName(site.siteName);
