@@ -1,9 +1,12 @@
 import { randomUUID } from 'node:crypto';
+import { validateSync } from 'class-validator';
 // @ts-ignore Node 22 provides node:sqlite; the repository's @types/node predates its declaration.
 import { DatabaseSync } from 'node:sqlite';
 import { UserRole } from '@/common/enums/user-role.enum';
 import { PatrolSourceType } from '@/common/enums/patrol-source-type.enum';
 import { PatrolGroupsService } from './patrol-groups.service';
+import { CheckSourceAvailabilityDto } from './dto/check-source-availability.dto';
+import { loadSourceAvailabilityBatched } from '../../web/src/lib/source-availability';
 
 /** Isolated persisted-data contract; never opens the installed PatrolSafe database. */
 describe('discovered-source mapping against synthetic persisted SQLite state', () => {
@@ -65,6 +68,22 @@ describe('discovered-source mapping against synthetic persisted SQLite state', (
     expect(await service.getSourceAvailability([sourceId], user)).toEqual([
       { sourceId, status: 'mapped-elsewhere' },
     ]);
+    const discovered = [
+      sourceId,
+      ...Array.from({ length: 117 }, (_, index) => `synthetic-group-${index}@g.us`),
+      ...Array.from({ length: 422 }, (_, index) => `synthetic-contact-${index}@c.us`),
+    ];
+    const batchSizes: number[] = [];
+    const batched = await loadSourceAvailabilityBatched(discovered, async (sourceIds) => {
+      const dto = new CheckSourceAvailabilityDto();
+      dto.sourceIds = sourceIds;
+      expect(validateSync(dto)).toEqual([]);
+      batchSizes.push(sourceIds.length);
+      return service.getSourceAvailability(sourceIds, user);
+    });
+    expect(batchSizes).toEqual([200, 200, 140]);
+    expect(batched.statuses[sourceId]).toBe('mapped-elsewhere');
+    expect(batched.unavailableCount).toBe(0);
     const request = {
       siteId: 'new-site', groupName: 'test1', externalGroupId: sourceId,
       sourceType: PatrolSourceType.GROUP, active: true,

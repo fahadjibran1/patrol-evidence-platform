@@ -38,7 +38,7 @@ export class PatrolGroupsService {
       const group = bySource.get(sourceId);
       return {
         sourceId,
-        status: !group ? 'available' : user.role === UserRole.ADMIN || group.site.companyId === user.companyId
+        status: !group ? 'available' : group.site.companyId === user.companyId
           ? 'mapped-here' : 'mapped-elsewhere',
       };
     });

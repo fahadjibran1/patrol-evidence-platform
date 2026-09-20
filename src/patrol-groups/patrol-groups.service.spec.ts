@@ -143,6 +143,16 @@ describe('PatrolGroupsService customer mapping lifecycle', () => {
     expect(repo.save).not.toHaveBeenCalled();
   });
 
+  it('classifies a foreign workspace as elsewhere even for an administrator viewing a company', async () => {
+    const foreignMapping = group({ site: { id: 'historic-site', companyId: 'other-company' } as never });
+    repo.find.mockResolvedValue([foreignMapping]);
+    const availability = await service.getSourceAvailability([sourceId], {
+      ...companyAdmin,
+      role: UserRole.ADMIN,
+    });
+    expect(availability).toEqual([{ sourceId, status: 'mapped-elsewhere' }]);
+  });
+
   it('enforces tenant site ownership through SitesService', async () => {
     sites.findActiveById.mockRejectedValue(new BadRequestException('Invalid site'));
     await expect(service.update('mapping-1', { siteId: 'other-company-site' }, companyAdmin)).rejects.toThrow(

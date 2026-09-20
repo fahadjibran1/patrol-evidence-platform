@@ -28,9 +28,20 @@ describe('customer site to WhatsApp mapping workflow contract', () => {
     expect(setupPage).toContain('Internal WhatsApp identifiers are hidden.');
   });
 
+  it('fails closed when mapping status is unknown and offers an explicit retry', () => {
+    expect(setupPage).toContain('loadSourceAvailabilityBatched(sourceIds');
+    expect(setupPage).toContain("if (sourceAvailability?.[selectedSourceId] !== 'available') return;");
+    expect(setupPage).toContain("if (currentAvailability !== 'available')");
+    expect(setupPage).toContain('Refresh mapping status');
+    expect(setupPage).toContain('availability !== \'available\' ? (');
+    expect(setupPage).toContain('<StatusBadge value={isCheckingSourceAvailability ? \'CHECKING\' : \'UNAVAILABLE\'} />');
+    expect(setupPage).toContain("result.statuses[current.externalGroupId] !== 'available'");
+  });
+
   it('shows available groups before mapped and paused groups without hiding any status', () => {
     expect(setupPage).toContain('if (sourceMappings.some((mapping) => mapping.active)) return 1;');
     expect(setupPage).toContain('if (sourceMappings.length > 0) return 2;');
+    expect(setupPage).toContain("return availability === 'available' ? 0 : 3;");
     expect(setupPage).toContain('priority(left.id) - priority(right.id)');
     expect(setupPage).toContain(".filter((source) => !query || source.name.toLowerCase().includes(query))");
     expect(setupPage).toContain("'Paused — administrator review required'");

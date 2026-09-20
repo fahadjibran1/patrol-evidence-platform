@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { apiRequest } from '../lib/api';
+import { loadSourceAvailabilityBatched, type SourceAvailabilityEntry, type SourceAvailabilityStatus } from '../lib/source-availability';
 import { customerErrorMessage } from '../lib/customer-errors';
 import { formatPatrolDate } from '../lib/patrol-time';
 import { useAuth } from '../state/auth';
@@ -91,7 +92,9 @@ export function SetupPage(): JSX.Element {
   const [mappingSiteSelections, setMappingSiteSelections] = useState<Record<string, string>>({});
   const [selectedStep, setSelectedStep] = useState<number | null>(null);
   const [sourceSearch, setSourceSearch] = useState('');
-  const [sourceAvailability, setSourceAvailability] = useState<Record<string, 'available' | 'mapped-here' | 'mapped-elsewhere'> | null>(null);
+  const [sourceAvailability, setSourceAvailability] = useState<Record<string, SourceAvailabilityStatus> | null>(null);
+  const [sourceAvailabilityUnavailableCount, setSourceAvailabilityUnavailableCount] = useState(0);
+  const [isCheckingSourceAvailability, setIsCheckingSourceAvailability] = useState(false);
 
   const loadSourceAvailability = useCallback(async (
     nextGroups: WhatsAppCollectorGroup[],
@@ -100,20 +103,29 @@ export function SetupPage(): JSX.Element {
     const sourceIds = [...nextGroups, ...nextContacts].map((source) => source.id);
     if (sourceIds.length === 0) {
       setSourceAvailability({});
+      setSourceAvailabilityUnavailableCount(0);
       return;
     }
+    setSourceAvailability(null);
+    setIsCheckingSourceAvailability(true);
     try {
-      const result = await apiRequest<Array<{
-        sourceId: string;
-        status: 'available' | 'mapped-here' | 'mapped-elsewhere';
-      }>>('/patrol-groups/source-availability', {
-        method: 'POST',
-        body: JSON.stringify({ sourceIds }),
-      }, token ?? undefined);
-      setSourceAvailability(Object.fromEntries(result.map(({ sourceId, status }) => [sourceId, status])));
+      const result = await loadSourceAvailabilityBatched(sourceIds, (batch) =>
+        apiRequest<SourceAvailabilityEntry[]>('/patrol-groups/source-availability', {
+          method: 'POST',
+          body: JSON.stringify({ sourceIds: batch }),
+        }, token ?? undefined),
+      );
+      setSourceAvailability(result.statuses);
+      setSourceAvailabilityUnavailableCount(result.unavailableCount);
+      setGroupForm((current) => current.externalGroupId && sourceIds.includes(current.externalGroupId)
+        && result.statuses[current.externalGroupId] !== 'available'
+        ? { ...current, groupName: '', externalGroupId: '' } : current);
     } catch {
       // Never describe a source as available when ownership could not be checked.
       setSourceAvailability(null);
+      setSourceAvailabilityUnavailableCount(sourceIds.length);
+    } finally {
+      setIsCheckingSourceAvailability(false);
     }
   }, [token]);
 
@@ -228,11 +240,12 @@ export function SetupPage(): JSX.Element {
   const filteredDiscoveredSources = useMemo(() => {
     const query = sourceSearch.trim().toLowerCase();
     const priority = (sourceId: string): number => {
-      if (sourceAvailability?.[sourceId] === 'mapped-elsewhere') return 1;
+      const availability = sourceAvailability?.[sourceId];
+      if (availability === 'mapped-elsewhere' || availability === 'mapped-here') return 1;
       const sourceMappings = mappingsBySourceId.get(sourceId) ?? [];
       if (sourceMappings.some((mapping) => mapping.active)) return 1;
       if (sourceMappings.length > 0) return 2;
-      return 0;
+      return availability === 'available' ? 0 : 3;
     };
     return discoveredSources
       .filter((source) => !query || source.name.toLowerCase().includes(query))
@@ -340,12 +353,29 @@ export function SetupPage(): JSX.Element {
     event.preventDefault();
     clearMessages();
 
-    if (sourceAvailability === null) {
-      setError('Mapping status could not be checked. Refresh sources and try again.');
+    const selectedSourceId = groupForm.externalGroupId.trim();
+    if (!selectedSourceId) {
+      setError('Choose a WhatsApp source before saving its mapping.');
       return;
     }
-    if (sourceAvailability[groupForm.externalGroupId] === 'mapped-elsewhere') {
+    let currentAvailability: SourceAvailabilityStatus | undefined;
+    try {
+      const latest = await apiRequest<SourceAvailabilityEntry[]>('/patrol-groups/source-availability', {
+        method: 'POST',
+        body: JSON.stringify({ sourceIds: [selectedSourceId] }),
+      }, token ?? undefined);
+      currentAvailability = latest.length === 1 && latest[0]?.sourceId === selectedSourceId
+        ? latest[0].status : undefined;
+    } catch {
+      setError('Mapping status could not be checked. Retry before saving this source.');
+      return;
+    }
+    if (currentAvailability === 'mapped-elsewhere') {
       setError('This WhatsApp group is already mapped in another business workspace. Ask an administrator to release it, or choose another group.');
+      return;
+    }
+    if (currentAvailability !== 'available') {
+      setError('This WhatsApp source is already mapped or its mapping status is unavailable. Refresh mapping status before trying again.');
       return;
     }
 
@@ -472,6 +502,7 @@ export function SetupPage(): JSX.Element {
   }
 
   function handleDiscoveredSourceSelection(selectedSourceId: string): void {
+    if (sourceAvailability?.[selectedSourceId] !== 'available') return;
     const selectedGroup = whatsAppGroups.find((group) => group.id === selectedSourceId);
     const selectedContact = whatsAppContacts.find((contact) => contact.id === selectedSourceId);
 
@@ -830,6 +861,19 @@ export function SetupPage(): JSX.Element {
                   <p className="muted-text setup-source-count">
                     Showing {filteredDiscoveredSources.length} of {discoveredSources.length}. Internal WhatsApp identifiers are hidden.
                   </p>
+                  {sourceAvailabilityUnavailableCount > 0 || (sourceAvailability === null && !isCheckingSourceAvailability) ? (
+                    <div className="setup-source-count" role="status">
+                      <p>Mapping status is unavailable for some sources. They cannot be selected until checked.</p>
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        disabled={isCheckingSourceAvailability}
+                        onClick={() => void loadSourceAvailability(whatsAppGroups, whatsAppContacts)}
+                      >
+                        Refresh mapping status
+                      </button>
+                    </div>
+                  ) : null}
                   <div className="setup-source-table-wrap setup-source-table-scroll">
                     <table className="setup-source-table">
                       <thead>
@@ -862,7 +906,9 @@ export function SetupPage(): JSX.Element {
                                   ? `Mapped to ${mappedSite?.siteName ?? mappedSite?.siteCode ?? 'another site'}`
                                   : pausedMapping
                                     ? 'Paused — administrator review required'
-                                    : availability === 'available' ? 'Available' : 'Mapping status unavailable'}
+                                    : availability === 'mapped-here' ? 'Mapped to another site'
+                                      : availability === 'available' ? 'Available'
+                                        : isCheckingSourceAvailability ? 'Checking mapping status' : 'Mapping status unavailable'}
                               </td>
                               <td className="setup-source-action">
                                 {mappedElsewhere ? (
@@ -877,11 +923,14 @@ export function SetupPage(): JSX.Element {
                                   >
                                     Review
                                   </button>
+                                ) : availability === 'mapped-here' ? (
+                                  <StatusBadge value="MAPPED" />
+                                ) : availability !== 'available' ? (
+                                  <StatusBadge value={isCheckingSourceAvailability ? 'CHECKING' : 'UNAVAILABLE'} />
                                 ) : (
                                   <button
                                     type="button"
                                     className={selected ? 'secondary-button setup-source-map-button' : 'primary-button setup-source-map-button'}
-                                    disabled={availability !== 'available'}
                                     onClick={() => handleDiscoveredSourceSelection(source.id)}
                                   >
                                     {selected ? 'Selected' : 'Select'}
