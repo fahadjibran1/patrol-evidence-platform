@@ -23,6 +23,11 @@ describe('production dependency security policy', () => {
     expect(packageVersion(require.resolve('path-to-regexp/package.json'))).toBe('3.3.0');
   });
 
+  it('resolves Puppeteer browser transport to the reviewed ws security release', () => {
+    const puppeteerRequire = createRequire(require.resolve('puppeteer-core/package.json'));
+    expect(packageVersion(puppeteerRequire.resolve('ws/package.json'))).toBe('8.21.3');
+  });
+
   it('accepts versioned sharp 0.35 Windows native-addon filenames in package verification', () => {
     const verifier = readFileSync('scripts/verify-packaged-app.js', 'utf8');
     expect(verifier).toContain("/^sharp-win32-x64(?:-[0-9.]+)?\\.node$/");
