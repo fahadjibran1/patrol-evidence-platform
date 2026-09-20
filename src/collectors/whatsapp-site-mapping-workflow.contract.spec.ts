@@ -39,7 +39,7 @@ describe('customer site to WhatsApp mapping workflow contract', () => {
   it('uses the existing protected mapping lifecycle instead of duplicating backend writes', () => {
     expect(setupPage).toContain("apiRequest(\n        '/patrol-groups'");
     expect(mappingService).toContain('assertNoDuplicateActiveMapping');
-    expect(mappingService).toContain('This WhatsApp group already has an active site mapping.');
+    expect(mappingService).toContain('This WhatsApp group is already mapped.');
     expect(mappingService).toContain('notifyMappingChanged()');
   });
 

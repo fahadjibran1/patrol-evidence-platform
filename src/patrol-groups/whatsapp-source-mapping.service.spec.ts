@@ -94,6 +94,21 @@ describe('WhatsAppSourceMappingService', () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
+  it('reconciles active monitoring when a site is archived, restored or deleted', () => {
+    let siteLifecycleChanged: (() => void) | undefined;
+    const siteEvents = {
+      subscribeToLifecycleChanges: jest.fn((listener: () => void) => {
+        siteLifecycleChanged = listener;
+        return jest.fn();
+      }),
+    };
+    const mappingService = new WhatsAppSourceMappingService(patrolGroupRepo as never, siteEvents as never);
+    const reconcile = jest.fn();
+    mappingService.subscribeToMappingChanges(reconcile);
+    siteLifecycleChanged?.();
+    expect(reconcile).toHaveBeenCalledTimes(1);
+  });
+
   describe('certification tuple scope', () => {
     const accountId = '447700000001@c.us';
     const sourceId = '120363000000000000@g.us';

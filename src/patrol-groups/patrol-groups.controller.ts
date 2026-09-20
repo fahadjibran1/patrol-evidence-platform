@@ -9,11 +9,18 @@ import { Roles } from '@/auth/decorators/roles.decorator';
 import { UserRole } from '@/common/enums/user-role.enum';
 import { CurrentUser } from '@/auth/decorators/current-user.decorator';
 import { AuthenticatedUser } from '@/auth/interfaces/authenticated-request.interface';
+import { CheckSourceAvailabilityDto } from './dto/check-source-availability.dto';
 
 @Controller('patrol-groups')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class PatrolGroupsController {
   constructor(private readonly groupsService: PatrolGroupsService) {}
+
+  @Post('source-availability')
+  @Roles(UserRole.ADMIN, UserRole.COMPANY_ADMIN)
+  sourceAvailability(@Body() dto: CheckSourceAvailabilityDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.groupsService.getSourceAvailability(dto.sourceIds, user);
+  }
 
   @Post()
   @Roles(UserRole.ADMIN, UserRole.COMPANY_ADMIN)

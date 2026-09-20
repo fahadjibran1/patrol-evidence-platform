@@ -17,6 +17,9 @@ import { PatrolGroup } from '@/patrol-groups/entities/patrol-group.entity';
 import { PatrolSchedule } from '@/patrol-schedules/entities/patrol-schedule.entity';
 import { PatrolImage } from '@/patrol-images/entities/patrol-image.entity';
 import { PatrolSlot } from '@/patrol-slots/entities/patrol-slot.entity';
+import { PatrolAlert } from '@/patrol-alerts/entities/patrol-alert.entity';
+import { Incident } from '@/incidents/entities/incident.entity';
+import { ShiftGuardAssignment } from '@/dashboard/entities/shift-guard-assignment.entity';
 
 export interface SiteArchivePreview {
   siteId: string;
@@ -26,11 +29,17 @@ export interface SiteArchivePreview {
   schedules: number;
   patrolImages: number;
   patrolSlots: number;
+  patrolAlerts: number;
+  incidents: number;
+  shiftAssignments: number;
+  mappingConflictRecords: number;
+  mayDeletePermanently: boolean;
 }
 
 @Injectable()
 export class SitesService {
   private readonly logger = new Logger(SitesService.name);
+  private readonly lifecycleListeners = new Set<() => void>();
 
   constructor(
     @InjectRepository(Site)
@@ -46,6 +55,15 @@ export class SitesService {
     @InjectRepository(PatrolSlot)
     private readonly slotRepo: Repository<PatrolSlot>,
   ) {}
+
+  subscribeToLifecycleChanges(listener: () => void): () => void {
+    this.lifecycleListeners.add(listener);
+    return () => this.lifecycleListeners.delete(listener);
+  }
+
+  private notifyLifecycleChanged(): void {
+    for (const listener of this.lifecycleListeners) listener();
+  }
 
   async create(dto: CreateSiteDto, user: AuthenticatedUser): Promise<Site> {
     const companyId = await this.resolveTargetCompanyId(user, dto.companyId);
@@ -136,7 +154,7 @@ export class SitesService {
     const companyId = dto.companyId ? await this.resolveTargetCompanyId(user, dto.companyId) : site.companyId;
 
     try {
-      return await this.sitesRepo.save({
+      const saved = await this.sitesRepo.save({
         ...site,
         ...dto,
         companyId,
@@ -144,6 +162,8 @@ export class SitesService {
         siteName: dto.siteName ? dto.siteName.trim() : site.siteName,
         clientName: dto.clientName !== undefined ? dto.clientName.trim() || undefined : site.clientName,
       });
+      if (site.active !== saved.active) this.notifyLifecycleChanged();
+      return saved;
     } catch (error) {
       this.rethrowKnownPersistenceError(error, dto.siteCode ?? site.siteCode);
       throw error;
@@ -152,12 +172,22 @@ export class SitesService {
 
   async getArchivePreview(id: string, user: AuthenticatedUser): Promise<SiteArchivePreview> {
     const site = await this.findOne(id, user);
-    const [mappedGroups, schedules, patrolImages, patrolSlots] = await Promise.all([
+    const [mappedGroups, schedules, patrolImages, patrolSlots, patrolAlerts, incidents, shiftAssignments] = await Promise.all([
       this.groupRepo.count({ where: { siteId: site.id, active: true } }),
       this.scheduleRepo.count({ where: { siteId: site.id } }),
       this.imageRepo.count({ where: { siteId: site.id } }),
       this.slotRepo.count({ where: { siteId: site.id } }),
+      this.sitesRepo.manager.getRepository(PatrolAlert).count({ where: { siteId: site.id } }),
+      this.sitesRepo.manager.getRepository(Incident).count({ where: { siteId: site.id } }),
+      this.sitesRepo.manager.getRepository(ShiftGuardAssignment).count({ where: { siteId: site.id } }),
     ]);
+    const groupIds = (await this.groupRepo.find({ where: { siteId: site.id }, select: ['id'] })).map((group) => group.id);
+    const mappingConflictRecords = groupIds.length === 0 ? 0 : Number((await this.sitesRepo.manager
+      .createQueryBuilder()
+      .select('COUNT(*)', 'count')
+      .from('patrol_migration_conflicts', 'conflict')
+      .where('conflict.recordId IN (:...groupIds)', { groupIds })
+      .getRawOne<{ count: string }>())?.count ?? 0);
 
     return {
       siteId: site.id,
@@ -167,6 +197,11 @@ export class SitesService {
       schedules,
       patrolImages,
       patrolSlots,
+      patrolAlerts,
+      incidents,
+      shiftAssignments,
+      mappingConflictRecords,
+      mayDeletePermanently: patrolImages + patrolSlots + patrolAlerts + incidents + shiftAssignments + mappingConflictRecords === 0,
     };
   }
 
@@ -181,13 +216,12 @@ export class SitesService {
         return site;
       }
 
-      await this.scheduleRepo.update({ siteId: site.id, active: true }, { active: false });
-
-      const archived = await this.sitesRepo.save({
-        ...site,
-        active: false,
-        archivedAt: new Date(),
+      const archived = await this.sitesRepo.manager.transaction(async (manager) => {
+        await manager.update(PatrolGroup, { siteId: site.id, active: true }, { active: false });
+        await manager.update(PatrolSchedule, { siteId: site.id, active: true }, { active: false });
+        return manager.save(Site, { ...site, active: false, archivedAt: new Date() });
       });
+      this.notifyLifecycleChanged();
 
       this.logger.log(
         `SITE_ARCHIVED siteId=${archived.id} siteCode=${archived.siteCode} actor=${user.sub} timestamp=${archived.archivedAt?.toISOString()} reason=${reason ?? 'none'}`,
@@ -208,13 +242,13 @@ export class SitesService {
       return site;
     }
 
-    await this.scheduleRepo.update({ siteId: site.id, active: false }, { active: true });
-
     const restored = await this.sitesRepo.save({
       ...site,
       active: true,
       archivedAt: null,
     });
+    // Restoring a site must not reclaim groups that may now belong to another site.
+    this.notifyLifecycleChanged();
 
     this.logger.log(
       `SITE_RESTORED siteId=${restored.id} siteCode=${restored.siteCode} actor=${user.sub} timestamp=${new Date().toISOString()}`,
@@ -223,7 +257,37 @@ export class SitesService {
     return restored;
   }
 
-  /** Soft-archive only — hard deletion is not exposed for v1.0.0. */
+  async deleteEmpty(id: string, user: AuthenticatedUser, confirmSiteCode: string): Promise<void> {
+    const site = await this.findOne(id, user);
+    if (confirmSiteCode.trim().toUpperCase() !== site.siteCode) {
+      throw new ConflictException('Type the site code exactly to confirm permanent deletion.');
+    }
+    await this.sitesRepo.manager.transaction(async (manager) => {
+      for (const entity of [PatrolImage, PatrolSlot, PatrolAlert, Incident, ShiftGuardAssignment]) {
+        if (await manager.getRepository(entity).count({ where: { siteId: site.id } })) {
+          throw new ConflictException('This site has historical records and cannot be permanently deleted. Archive it instead.');
+        }
+      }
+      const groups = await manager.getRepository(PatrolGroup).find({ where: { siteId: site.id }, select: ['id'] });
+      if (groups.length > 0) {
+        const conflicts = await manager.createQueryBuilder()
+          .select('COUNT(*)', 'count')
+          .from('patrol_migration_conflicts', 'conflict')
+          .where('conflict.recordId IN (:...groupIds)', { groupIds: groups.map((group) => group.id) })
+          .getRawOne<{ count: string }>();
+        if (Number(conflicts?.count ?? 0) > 0) {
+          throw new ConflictException('This site has mapping audit history and cannot be permanently deleted. Archive it instead.');
+        }
+      }
+      await manager.delete(PatrolSchedule, { siteId: site.id });
+      await manager.delete(PatrolGroup, { siteId: site.id });
+      const deleted = await manager.delete(Site, { id: site.id });
+      if (deleted.affected !== 1) throw new ConflictException('The site changed during deletion. Try again.');
+    });
+    this.notifyLifecycleChanged();
+  }
+
+  /** Legacy route remains archive-only for existing callers. */
   async remove(id: string, user: AuthenticatedUser): Promise<void> {
     await this.archive(id, user, 'delete-endpoint');
   }

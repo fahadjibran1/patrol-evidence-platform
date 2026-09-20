@@ -71,6 +71,16 @@ export class SitesController {
     return this.sitesService.archive(id, user, dto.reason);
   }
 
+  @Delete(':id/permanent')
+  @Roles(UserRole.ADMIN, UserRole.COMPANY_ADMIN)
+  deleteEmpty(
+    @Param('id') id: string,
+    @Body() dto: ArchiveSiteDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<void> {
+    return this.sitesService.deleteEmpty(id, user, dto.confirmSiteCode ?? '');
+  }
+
   @Post(':id/restore')
   @Roles(UserRole.ADMIN, UserRole.COMPANY_ADMIN)
   restore(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser): Promise<Site> {

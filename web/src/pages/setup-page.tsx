@@ -91,6 +91,31 @@ export function SetupPage(): JSX.Element {
   const [mappingSiteSelections, setMappingSiteSelections] = useState<Record<string, string>>({});
   const [selectedStep, setSelectedStep] = useState<number | null>(null);
   const [sourceSearch, setSourceSearch] = useState('');
+  const [sourceAvailability, setSourceAvailability] = useState<Record<string, 'available' | 'mapped-here' | 'mapped-elsewhere'> | null>(null);
+
+  const loadSourceAvailability = useCallback(async (
+    nextGroups: WhatsAppCollectorGroup[],
+    nextContacts: WhatsAppCollectorContact[],
+  ): Promise<void> => {
+    const sourceIds = [...nextGroups, ...nextContacts].map((source) => source.id);
+    if (sourceIds.length === 0) {
+      setSourceAvailability({});
+      return;
+    }
+    try {
+      const result = await apiRequest<Array<{
+        sourceId: string;
+        status: 'available' | 'mapped-here' | 'mapped-elsewhere';
+      }>>('/patrol-groups/source-availability', {
+        method: 'POST',
+        body: JSON.stringify({ sourceIds }),
+      }, token ?? undefined);
+      setSourceAvailability(Object.fromEntries(result.map(({ sourceId, status }) => [sourceId, status])));
+    } catch {
+      // Never describe a source as available when ownership could not be checked.
+      setSourceAvailability(null);
+    }
+  }, [token]);
 
   const loadData = useCallback(async (): Promise<void> => {
     const [
@@ -114,6 +139,7 @@ export function SetupPage(): JSX.Element {
     setSchedules(nextSchedules);
     setWhatsAppGroups(nextWhatsAppGroups);
     setWhatsAppContacts(nextWhatsAppContacts);
+    await loadSourceAvailability(nextWhatsAppGroups, nextWhatsAppContacts);
     setCollectorStatus(nextCollectorStatus);
     setMappingSiteSelections(Object.fromEntries(nextGroups.map((group) => [group.id, group.siteId])));
 
@@ -123,7 +149,7 @@ export function SetupPage(): JSX.Element {
     setScheduleForm((current) =>
       current.siteId || !nextSites[0] ? current : { ...current, siteId: nextSites[0].id },
     );
-  }, [token]);
+  }, [loadSourceAvailability, token]);
 
   useEffect(() => {
     void loadData().catch((loadError) =>
@@ -202,6 +228,7 @@ export function SetupPage(): JSX.Element {
   const filteredDiscoveredSources = useMemo(() => {
     const query = sourceSearch.trim().toLowerCase();
     const priority = (sourceId: string): number => {
+      if (sourceAvailability?.[sourceId] === 'mapped-elsewhere') return 1;
       const sourceMappings = mappingsBySourceId.get(sourceId) ?? [];
       if (sourceMappings.some((mapping) => mapping.active)) return 1;
       if (sourceMappings.length > 0) return 2;
@@ -210,7 +237,7 @@ export function SetupPage(): JSX.Element {
     return discoveredSources
       .filter((source) => !query || source.name.toLowerCase().includes(query))
       .sort((left, right) => priority(left.id) - priority(right.id) || left.name.localeCompare(right.name));
-  }, [discoveredSources, mappingsBySourceId, sourceSearch]);
+  }, [discoveredSources, mappingsBySourceId, sourceAvailability, sourceSearch]);
 
   const licenceLabel = useMemo(() => {
     const license = bootstrapStatus?.license;
@@ -258,6 +285,7 @@ export function SetupPage(): JSX.Element {
       setCollectorStatus(refreshedStatus);
       setWhatsAppGroups(nextWhatsAppGroups);
       setWhatsAppContacts(nextWhatsAppContacts);
+      await loadSourceAvailability(nextWhatsAppGroups, nextWhatsAppContacts);
       const total = nextWhatsAppGroups.length + nextWhatsAppContacts.length;
       setSuccess(
         total > 0
@@ -311,6 +339,15 @@ export function SetupPage(): JSX.Element {
   async function submitGroup(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     clearMessages();
+
+    if (sourceAvailability === null) {
+      setError('Mapping status could not be checked. Refresh sources and try again.');
+      return;
+    }
+    if (sourceAvailability[groupForm.externalGroupId] === 'mapped-elsewhere') {
+      setError('This WhatsApp group is already mapped in another business workspace. Ask an administrator to release it, or choose another group.');
+      return;
+    }
 
     try {
       await apiRequest(
@@ -378,7 +415,7 @@ export function SetupPage(): JSX.Element {
           )
         : action === 'deactivate'
           ? window.confirm(
-              'Deactivate this mapping? Future images from this source will not be captured. Historical evidence will remain available.',
+              'Unmap this group? Future images from this source will not be captured. Historical evidence will remain available.',
             )
           : true;
     if (!confirmed) return;
@@ -398,7 +435,7 @@ export function SetupPage(): JSX.Element {
         action === 'reassign'
           ? 'Mapping updated. Future evidence will use the new site; historical evidence is unchanged.'
           : action === 'deactivate'
-            ? 'Mapping deactivated. Historical evidence remains available.'
+            ? 'Group unmapped. Historical evidence remains available.'
             : 'Mapping reactivated for future monitoring.',
       );
       await loadData();
@@ -811,20 +848,26 @@ export function SetupPage(): JSX.Element {
                           const sourceMappings = mappingsBySourceId.get(source.id) ?? [];
                           const activeMapping = sourceMappings.find((mapping) => mapping.active);
                           const pausedMapping = sourceMappings.find((mapping) => !mapping.active);
+                          const availability = sourceAvailability?.[source.id];
+                          const mappedElsewhere = availability === 'mapped-elsewhere';
                           const selected = groupForm.externalGroupId === source.id;
                           const mappedSite = activeMapping?.site ?? sites.find((site) => site.id === activeMapping?.siteId);
                           return (
                             <tr key={source.id} className={selected ? 'selected' : undefined}>
                               <td className="setup-source-name">{source.name}</td>
                               <td>
-                                {activeMapping
+                                {mappedElsewhere
+                                  ? 'In use in another business workspace'
+                                  : activeMapping
                                   ? `Mapped to ${mappedSite?.siteName ?? mappedSite?.siteCode ?? 'another site'}`
                                   : pausedMapping
                                     ? 'Paused — administrator review required'
-                                    : 'Available'}
+                                    : availability === 'available' ? 'Available' : 'Mapping status unavailable'}
                               </td>
                               <td className="setup-source-action">
-                                {activeMapping ? (
+                                {mappedElsewhere ? (
+                                  <StatusBadge value="IN USE" />
+                                ) : activeMapping ? (
                                   <StatusBadge value="MAPPED" />
                                 ) : pausedMapping ? (
                                   <button
@@ -838,6 +881,7 @@ export function SetupPage(): JSX.Element {
                                   <button
                                     type="button"
                                     className={selected ? 'secondary-button setup-source-map-button' : 'primary-button setup-source-map-button'}
+                                    disabled={availability !== 'available'}
                                     onClick={() => handleDiscoveredSourceSelection(source.id)}
                                   >
                                     {selected ? 'Selected' : 'Select'}
@@ -949,7 +993,7 @@ export function SetupPage(): JSX.Element {
                               className="secondary-button"
                               onClick={() => void updateMapping(group, 'deactivate')}
                             >
-                              Deactivate mapping
+                              Unmap group
                             </button>
                           </>
                         ) : (

@@ -15,6 +15,11 @@ interface ArchivePreview {
   schedules: number;
   patrolImages: number;
   patrolSlots: number;
+  patrolAlerts: number;
+  incidents: number;
+  shiftAssignments: number;
+  mappingConflictRecords: number;
+  mayDeletePermanently: boolean;
 }
 
 export function SitesPage(): JSX.Element {
@@ -135,7 +140,7 @@ export function SitesPage(): JSX.Element {
     }
   }
 
-  async function confirmArchive(): Promise<void> {
+  async function confirmArchive(permanent = false): Promise<void> {
     if (!archiveTarget || !archivePreview) {
       return;
     }
@@ -144,13 +149,17 @@ export function SitesPage(): JSX.Element {
       setError(`Type ${archivePreview.siteCode} exactly to confirm archive.`);
       return;
     }
+    if (permanent && !archivePreview.mayDeletePermanently) {
+      setError('This site has historical records. Archive it to preserve them.');
+      return;
+    }
 
     setIsSaving(true);
     setError(null);
 
     try {
-      await apiRequest<Site>(
-        `/sites/${archiveTarget.id}`,
+      await apiRequest<Site | void>(
+        permanent ? `/sites/${archiveTarget.id}/permanent` : `/sites/${archiveTarget.id}`,
         {
           method: 'DELETE',
           body: JSON.stringify({
@@ -163,10 +172,10 @@ export function SitesPage(): JSX.Element {
       setArchiveTarget(null);
       setArchivePreview(null);
       setConfirmCode('');
-      setIncludeArchived(true);
+      setIncludeArchived(!permanent);
       await loadSites();
     } catch (archiveError) {
-      setError(customerErrorMessage(archiveError, 'The site could not be archived. No records were removed.'));
+      setError(customerErrorMessage(archiveError, 'The site could not be changed. No historical records were removed.'));
     } finally {
       setIsSaving(false);
     }
@@ -315,7 +324,7 @@ export function SitesPage(): JSX.Element {
                       disabled={isSaving}
                       onClick={() => void openArchiveDialog(site)}
                     >
-                      Archive
+                      Archive / Delete
                     </button>
                   </div>
                 </div>
@@ -326,7 +335,7 @@ export function SitesPage(): JSX.Element {
           {includeArchived && archivedSites.length > 0 ? (
             <div className="stack-list stack-list-spaced">
               <h4>Archived sites</h4>
-              <p className="muted-text">Historical evidence is retained. Monitoring is stopped until restore.</p>
+              <p className="muted-text">Historical evidence is retained. Restoring a site does not automatically reactivate old mappings or schedules.</p>
               {archivedSites.map((site) => (
                 <div key={site.id} className="list-row">
                   <div>
@@ -347,11 +356,11 @@ export function SitesPage(): JSX.Element {
       </div>
 
       {archiveTarget && archivePreview ? (
-        <div className="lightbox-backdrop" role="dialog" aria-modal="true" aria-label="Archive site confirmation">
+        <div className="lightbox-backdrop" role="dialog" aria-modal="true" aria-label="Site lifecycle confirmation">
           <div className="lightbox-panel lightbox-panel-narrow">
             <header className="lightbox-header">
               <div>
-                <h3>Archive site</h3>
+                <h3>Archive or delete site</h3>
                 <p className="muted-text">
                   {archivePreview.siteName} ({archivePreview.siteCode})
                 </p>
@@ -376,11 +385,20 @@ export function SitesPage(): JSX.Element {
                 Schedules: <strong>{archivePreview.schedules}</strong>
               </p>
               <p>
-                Patrol/evidence records: <strong>{archivePreview.patrolImages}</strong> images,{' '}
-                <strong>{archivePreview.patrolSlots}</strong> slots
+                Historical records: <strong>{archivePreview.patrolImages}</strong> images,{' '}
+                <strong>{archivePreview.patrolSlots}</strong> patrol events,{' '}
+                <strong>{archivePreview.patrolAlerts}</strong> alerts,{' '}
+                <strong>{archivePreview.incidents}</strong> incidents,{' '}
+                <strong>{archivePreview.shiftAssignments}</strong> assignments
               </p>
-              <p className="error-text">This site will stop being monitored.</p>
-              <p className="muted-text">Historical evidence will be retained and remains available with Include archived.</p>
+              {archivePreview.mappingConflictRecords > 0 ? <p className="muted-text">Mapping audit records: {archivePreview.mappingConflictRecords}</p> : null}
+              <p className="error-text">Archiving stops monitoring for this site and pauses its mappings and schedules.</p>
+              <p className="muted-text">Archiving preserves historical records. Restore does not automatically reactivate mappings or schedules.</p>
+              {archivePreview.mayDeletePermanently ? (
+                <p className="muted-text">This site has no historical records. Permanent deletion will also remove its mappings and schedules and cannot be undone.</p>
+              ) : (
+                <p className="muted-text">Permanent deletion is unavailable because this site has historical records. Archive it instead.</p>
+              )}
               <label>
                 Reason (optional)
                 <input value={archiveReason} onChange={(event) => setArchiveReason(event.target.value)} maxLength={500} />
@@ -390,9 +408,16 @@ export function SitesPage(): JSX.Element {
                 <input value={confirmCode} onChange={(event) => setConfirmCode(event.target.value)} autoComplete="off" />
               </label>
               {error ? <p className="error-text">{error}</p> : null}
-              <button type="button" className="danger-button" disabled={isSaving} onClick={() => void confirmArchive()}>
-                {isSaving ? 'Archiving...' : 'Archive site'}
-              </button>
+              <div className="button-row">
+                <button type="button" className="secondary-button" disabled={isSaving} onClick={() => void confirmArchive()}>
+                  {isSaving ? 'Working...' : 'Archive site'}
+                </button>
+                {archivePreview.mayDeletePermanently ? (
+                  <button type="button" className="danger-button" disabled={isSaving} onClick={() => void confirmArchive(true)}>
+                    Delete empty site permanently
+                  </button>
+                ) : null}
+              </div>
             </div>
           </div>
         </div>

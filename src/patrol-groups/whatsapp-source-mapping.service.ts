@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { inferPatrolSourceType } from '@/common/utils/patrol-source.util';
@@ -7,6 +7,7 @@ import {
   writeDesktopWorkspaceConfigPatch,
 } from '@/desktop/desktop-config.util';
 import { PatrolGroup } from './entities/patrol-group.entity';
+import { SitesService } from '@/sites/sites.service';
 
 export interface WhatsAppRuntimeGroupMapping {
   externalGroupId: string;
@@ -25,7 +26,10 @@ export class WhatsAppSourceMappingService {
   constructor(
     @InjectRepository(PatrolGroup)
     private readonly patrolGroupRepo: Repository<PatrolGroup>,
-  ) {}
+    @Optional() sitesService?: SitesService,
+  ) {
+    sitesService?.subscribeToLifecycleChanges(() => this.notifyMappingChanged());
+  }
 
   subscribeToMappingChanges(listener: () => void): () => void {
     this.mappingChangeListeners.add(listener);

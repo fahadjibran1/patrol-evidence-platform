@@ -17,7 +17,7 @@ describe('PatrolGroupsService customer mapping lifecycle', () => {
   let found: PatrolGroup | null;
   let query: Record<string, jest.Mock>;
   let repo: Record<string, jest.Mock>;
-  let sites: { findOne: jest.Mock };
+  let sites: { findOne: jest.Mock; findActiveById: jest.Mock };
   let mappings: {
     getConfiguredLinkedAccountId: jest.Mock;
     notifyMappingChanged: jest.Mock;
@@ -54,10 +54,14 @@ describe('PatrolGroupsService customer mapping lifecycle', () => {
       create: jest.fn((value) => value),
       save: jest.fn(async (value) => value),
       remove: jest.fn(),
+      find: jest.fn().mockResolvedValue([]),
     };
     sites = {
       findOne: jest.fn().mockImplementation((siteId: string) =>
         Promise.resolve({ id: siteId, companyId: 'company-1' }),
+      ),
+      findActiveById: jest.fn().mockImplementation((siteId: string) =>
+        Promise.resolve({ id: siteId, companyId: 'company-1', active: true }),
       ),
     };
     mappings = {
@@ -74,7 +78,7 @@ describe('PatrolGroupsService customer mapping lifecycle', () => {
     }, companyAdmin);
 
     expect(saved.linkedAccountId).toBe(currentAccount);
-    expect(sites.findOne).toHaveBeenCalledWith('site-a', companyAdmin);
+    expect(sites.findActiveById).toHaveBeenCalledWith('site-a', companyAdmin);
     expect(mappings.notifyMappingChanged).toHaveBeenCalledTimes(1);
   });
 
@@ -120,11 +124,27 @@ describe('PatrolGroupsService customer mapping lifecycle', () => {
     duplicate = group({ id: 'duplicate' });
     await expect(service.create({
       siteId: 'site-a', groupName: 'Duplicate', externalGroupId: sourceId, active: true,
-    }, companyAdmin)).rejects.toThrow('This WhatsApp group already has an active site mapping.');
+    }, companyAdmin)).rejects.toThrow('This WhatsApp group is already mapped.');
+  });
+
+  it('detects a real-style discovered group already mapped in another company before Save', async () => {
+    const foreignMapping = group({ site: { id: 'historic-site', companyId: 'other-company' } as never });
+    repo.find.mockResolvedValue([foreignMapping]);
+    const availability = await service.getSourceAvailability([sourceId], companyAdmin);
+    expect(availability).toEqual([{ sourceId, status: 'mapped-elsewhere' }]);
+    expect(repo.find).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ linkedAccountId: currentAccount, active: true }),
+      relations: ['site'],
+    }));
+    duplicate = foreignMapping;
+    await expect(service.create({
+      siteId: 'new-site', groupName: 'test1', externalGroupId: sourceId, active: true,
+    }, companyAdmin)).rejects.toThrow('This WhatsApp group is already mapped.');
+    expect(repo.save).not.toHaveBeenCalled();
   });
 
   it('enforces tenant site ownership through SitesService', async () => {
-    sites.findOne.mockRejectedValue(new BadRequestException('Invalid site'));
+    sites.findActiveById.mockRejectedValue(new BadRequestException('Invalid site'));
     await expect(service.update('mapping-1', { siteId: 'other-company-site' }, companyAdmin)).rejects.toThrow(
       'Invalid site',
     );

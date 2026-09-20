@@ -1,5 +1,6 @@
 const customerSafeFragments = [
   'already exists',
+  'already mapped',
   'does not match',
   'must be',
   'is required',

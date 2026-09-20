@@ -84,7 +84,7 @@ describe('production monitoring runtime contract', () => {
 
   it('provides reassignment and non-destructive mapping lifecycle controls', () => {
     expect(setupPage).toContain('Move to selected site');
-    expect(setupPage).toContain('Deactivate mapping');
+    expect(setupPage).toContain('Unmap group');
     expect(setupPage).toContain('Reactivate mapping');
     expect(setupPage).toContain('Historical evidence will not change.');
     expect(mappingService).toContain('assertCustomerAccountScope(group, user)');

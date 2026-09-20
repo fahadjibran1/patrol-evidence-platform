@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { PatrolGroup } from './entities/patrol-group.entity';
 import { CreatePatrolGroupDto } from './dto/create-patrol-group.dto';
 import { UpdatePatrolGroupDto } from './dto/update-patrol-group.dto';
@@ -19,8 +19,33 @@ export class PatrolGroupsService {
     private readonly whatsAppSourceMappingService: WhatsAppSourceMappingService,
   ) {}
 
+  async getSourceAvailability(sourceIds: string[], user: AuthenticatedUser): Promise<Array<{
+    sourceId: string;
+    status: 'available' | 'mapped-here' | 'mapped-elsewhere';
+  }>> {
+    const accountId = this.whatsAppSourceMappingService.getConfiguredLinkedAccountId();
+    if (!accountId) {
+      throw new BadRequestException('Connect WhatsApp before managing group mappings.');
+    }
+    const ids = [...new Set(sourceIds.map((id) => id.trim()).filter(Boolean))];
+    if (ids.length === 0) return [];
+    const existing = await this.groupsRepo.find({
+      where: { linkedAccountId: accountId, externalGroupId: In(ids), active: true },
+      relations: ['site'],
+    });
+    const bySource = new Map(existing.map((group) => [group.externalGroupId?.trim(), group]));
+    return ids.map((sourceId) => {
+      const group = bySource.get(sourceId);
+      return {
+        sourceId,
+        status: !group ? 'available' : user.role === UserRole.ADMIN || group.site.companyId === user.companyId
+          ? 'mapped-here' : 'mapped-elsewhere',
+      };
+    });
+  }
+
   async create(dto: CreatePatrolGroupDto, user: AuthenticatedUser): Promise<PatrolGroup> {
-    await this.sitesService.findOne(dto.siteId, user);
+    await this.sitesService.findActiveById(dto.siteId, user);
     const normalized = this.normalizeSourceMapping(dto);
     const linkedAccountId = this.resolveLinkedAccountIdForWrite(
       dto.linkedAccountId,
@@ -81,7 +106,7 @@ export class PatrolGroupsService {
   }
 
   async update(id: string, dto: UpdatePatrolGroupDto, user: AuthenticatedUser): Promise<PatrolGroup> {
-    const targetSite = dto.siteId ? await this.sitesService.findOne(dto.siteId, user) : undefined;
+    const targetSite = dto.siteId ? await this.sitesService.findActiveById(dto.siteId, user) : undefined;
     const group = await this.findOne(id, user);
     const normalized = this.normalizeSourceMapping({
       externalGroupId: dto.externalGroupId ?? group.externalGroupId ?? undefined,
@@ -93,6 +118,7 @@ export class PatrolGroupsService {
       user,
     );
     const nextActive = dto.active ?? group.active;
+    if (nextActive && !targetSite) await this.sitesService.findActiveById(group.siteId, user);
     if (nextActive && normalized.externalGroupId) {
       await this.assertNoDuplicateActiveMapping(linkedAccountId, normalized.externalGroupId, group.id);
     }
@@ -172,7 +198,7 @@ export class PatrolGroupsService {
     const duplicate = await duplicateQuery.getOne();
     if (duplicate) {
       throw new BadRequestException(
-        'This WhatsApp group already has an active site mapping.',
+        'This WhatsApp group is already mapped. Choose another group or ask an administrator to release it.',
       );
     }
   }
