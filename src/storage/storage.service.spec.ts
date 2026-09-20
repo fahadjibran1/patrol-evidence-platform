@@ -62,7 +62,7 @@ describe('StorageService', () => {
     const savedBuffer = await fs.readFile(stored.filePath);
     const metadata = await sharp(savedBuffer).metadata();
 
-    expect(stored.filePath).toContain(path.join('SWI01', '2026-04-04', '1700'));
+    expect(stored.filePath).toContain(path.join('SWI01', '2026-04-04', '1700', 'MJ'));
     expect(stored.storedFileName).toMatch(/^SWI01_2026-04-04_17-03-22_[0-9a-f-]+\.jpg$/);
     expect(savedBuffer.equals(originalBuffer)).toBe(false);
     expect(stored.fileSize).toBe(savedBuffer.length);
@@ -109,7 +109,7 @@ describe('StorageService', () => {
       mimeType: 'image/jpeg',
     });
 
-    expect(stored.filePath).toContain(path.join('DXB01', '2026-09-14', '0100'));
+    expect(stored.filePath).toContain(path.join('DXB01', '2026-09-14', '0100', 'Unknown Sender'));
   });
 
   it('rejects corrupt image bytes instead of saving them as evidence', async () => {
@@ -162,6 +162,40 @@ describe('StorageService', () => {
     expect(first.filePath).not.toBe(second.filePath);
     expect((await fs.readFile(first.filePath)).length).toBeGreaterThan(0);
     expect((await fs.readFile(second.filePath)).length).toBeGreaterThan(0);
+  });
+
+  it('organises multiple senders and repeat images without using sender identity as a folder', async () => {
+    const image = await sharp({ create: { width: 20, height: 20, channels: 3, background: '#225577' } }).jpeg().toBuffer();
+    const timestamp = new Date('2026-04-04T16:03:22.000Z');
+    const save = (senderName: string) => service.savePatrolEvidence({ siteCode: 'SWI01', senderName, timestamp, buffer: image, mimeType: 'image/jpeg' });
+    const [sidraOne, sidraTwo, other] = await Promise.all([save('Sidra'), save('Sidra'), save('Patrol Team A')]);
+    expect(path.dirname(sidraOne.filePath)).toBe(path.dirname(sidraTwo.filePath));
+    expect(sidraOne.filePath).not.toBe(sidraTwo.filePath);
+    expect(path.dirname(sidraOne.filePath)).toBe(path.join(rootPath, 'SWI01', '2026-04-04', '1700', 'Sidra'));
+    expect(path.dirname(other.filePath)).toBe(path.join(rootPath, 'SWI01', '2026-04-04', '1700', 'Patrol Team A'));
+    for (const stored of [sidraOne, sidraTwo, other]) {
+      expect(createHash('sha256').update(await fs.readFile(stored.filePath)).digest('hex')).toBe(stored.contentSha256);
+    }
+  });
+
+  it('keeps exact duplicate display names safe through unique file names', async () => {
+    const image = await sharp({ create: { width: 20, height: 20, channels: 3, background: '#225577' } }).jpeg().toBuffer();
+    const timestamp = new Date('2026-04-04T16:03:22.000Z');
+    const first = await service.savePatrolEvidence({ siteCode: 'SWI01', senderName: 'Alex', timestamp, buffer: image, mimeType: 'image/jpeg' });
+    const second = await service.savePatrolEvidence({ siteCode: 'SWI01', senderName: 'Alex', timestamp, buffer: image, mimeType: 'image/jpeg' });
+    expect(path.dirname(first.filePath)).toBe(path.dirname(second.filePath));
+    expect(first.filePath).not.toBe(second.filePath);
+    expect(await fs.readdir(path.dirname(first.filePath))).toHaveLength(2);
+  });
+
+  it('uses the capture-time label after a sender rename without moving old evidence', async () => {
+    const image = await sharp({ create: { width: 20, height: 20, channels: 3, background: '#225577' } }).jpeg().toBuffer();
+    const timestamp = new Date('2026-04-04T16:03:22.000Z');
+    const before = await service.savePatrolEvidence({ siteCode: 'SWI01', senderName: 'Sidra', timestamp, buffer: image, mimeType: 'image/jpeg' });
+    const after = await service.savePatrolEvidence({ siteCode: 'SWI01', senderName: 'Sidra Khan', timestamp, buffer: image, mimeType: 'image/jpeg' });
+    expect(path.dirname(before.filePath)).toMatch(/Sidra$/u);
+    expect(path.dirname(after.filePath)).toMatch(/Sidra Khan$/u);
+    expect(await fs.readFile(before.filePath)).toBeTruthy();
   });
 
   it('rejects a path-escaping site code', async () => {

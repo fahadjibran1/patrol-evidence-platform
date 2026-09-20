@@ -95,7 +95,11 @@ function createFixture(root) {
     const siteCode = index === 2 ? 'SITE-B' : 'SITE-A';
     const siteId = index === 2 ? 'site-b' : 'site-a';
     const groupId = index === 2 ? 'group-b' : 'group-a';
-    const relative = path.join(siteCode, '2026-09-11', '1200', `evidence-${index}.png`);
+    // Exercise a mixed historical archive: legacy hour-level files plus the
+    // sender-organised layout for new evidence. Both are referenced by DB path.
+    const relative = index === 2
+      ? path.join(siteCode, '2026-09-11', '1200', 'Synthetic Sender', `evidence-${index}.png`)
+      : path.join(siteCode, '2026-09-11', '1200', `evidence-${index}.png`);
     const filePath = path.join(evidenceRoot, relative);
     const bytes = Buffer.concat([pngBase, Buffer.from([index])]);
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -215,6 +219,8 @@ async function run() {
     const verified = await durability.verifyPatrolSafeBackup(backup.backupPath);
     results.backupManifest = verified.manifest.evidence.rowCount === 3 && verified.manifest.evidence.fileCount === 3 && verified.manifest.configuration.sha256.length === 64;
     results.backupIntegrity = verified.manifest.database.sha256.length === 64 && verified.manifest.evidence.referencedFileCount === 3;
+    results.mixedEvidenceLayoutsBackedUp = verified.manifest.evidence.files.filter((file) => file.path.split('/').length === 4).length === 2 &&
+      verified.manifest.evidence.files.some((file) => file.path.includes('/Synthetic Sender/evidence-2.png'));
     results.desktopSessionExcluded = !fs.existsSync(path.join(backup.backupPath, 'same-machine', 'secure-session', 'desktop-auth-session.secure'));
     const originalStatfs = fs.promises.statfs;
     try {
@@ -253,6 +259,8 @@ async function run() {
       restoredEvidenceValid &&= bytes.length === Number(evidence.fileSize) && sha256(bytes) === evidence.contentSha256;
     }
     results.restoredEvidenceIntegrity = restoredEvidenceValid;
+    results.mixedEvidenceLayoutsRestored = restoredEvidence.some((row) => row.filePath.endsWith(path.join('1200', 'evidence-0.png'))) &&
+      restoredEvidence.some((row) => row.filePath.endsWith(path.join('1200', 'Synthetic Sender', 'evidence-2.png')));
 
     fs.writeFileSync(fixture.configPath, JSON.stringify({ marker: 'current-before-failed-restore' }));
     fs.writeFileSync(path.join(fixture.evidenceRoot, 'current-marker.txt'), 'current');

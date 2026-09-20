@@ -5,6 +5,7 @@ import * as path from 'path';
 import { createHash, randomUUID } from 'crypto';
 const sharp = require('sharp') as typeof import('sharp').default;
 import { getPatrolTimeParts, patrolTimeZone } from '@/common/utils/patrol-time.util';
+import { senderFolderName } from './sender-folder.util';
 
 const STORAGE_HEADROOM_BYTES = 64 * 1024 * 1024;
 
@@ -72,7 +73,7 @@ export class StorageService {
       throw new Error('Evidence image exceeds the 25MB limit');
     }
     const storedFileName = `${siteCode}_${patrolDate}_${timePart}_${randomUUID()}.${extension}`;
-    const targetDir = path.join(this.rootPath, siteCode, patrolDate, patrolHour);
+    const targetDir = path.join(this.rootPath, siteCode, patrolDate, patrolHour, senderFolderName(params.senderName));
     const filePath = path.join(targetDir, storedFileName);
 
     this.assertContained(targetDir);

@@ -198,7 +198,7 @@ export class PatrolImageIngestionService {
       siteCode: event.siteCode.trim().toUpperCase(),
       groupId: event.groupId,
       timestamp,
-      senderName: event.senderName?.trim() || 'manual',
+      senderName: event.senderName?.trim() || (event.collectorType === CollectorType.WHATSAPP ? 'Unknown sender' : 'manual'),
       senderNumber: event.senderNumber?.trim() || undefined,
       senderExternalId: event.senderExternalId?.trim() || undefined,
       messageExternalId: event.messageExternalId?.trim() || undefined,

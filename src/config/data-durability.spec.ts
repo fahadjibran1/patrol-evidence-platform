@@ -38,6 +38,7 @@ describe('PatrolSafe SQLite migration and backup recovery', () => {
   it('does not delete or recreate a corrupt customer database', () => expect(result.corruptDatabase).toBe(true));
   it('writes a versioned and internally consistent backup manifest', () => expect(result.backupManifest).toBe(true));
   it('verifies database and evidence integrity', () => expect(result.backupIntegrity).toBe(true));
+  it('backs up legacy and sender-organised evidence together', () => expect(result.mixedEvidenceLayoutsBackedUp).toBe(true));
   it('excludes the desktop login session from backup data', () => expect(result.desktopSessionExcluded).toBe(true));
   it('fails backup and restore capacity checks with customer-safe storage guidance', () => {
     expect(result.backupDiskFull).toBe(true);
@@ -57,6 +58,7 @@ describe('PatrolSafe SQLite migration and backup recovery', () => {
   });
   it('restores decodable evidence with its original size and SHA-256', () => {
     expect(result.restoredEvidenceIntegrity).toBe(true);
+    expect(result.mixedEvidenceLayoutsRestored).toBe(true);
   });
   it('rolls back all activated state when restore is interrupted', () => expect(result.restoreAtomicity).toBe(true));
   it('rejects a tampered backup', () => expect(result.tamperedBackup).toBe(true));
