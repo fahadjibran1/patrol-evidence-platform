@@ -50,7 +50,8 @@ describe('WhatsApp production network recovery contract', () => {
       helper.indexOf('async function closeBrowserGracefully('),
       helper.indexOf('async function releaseStaleBrowserSession('),
     );
-    expect(close).toContain("const browserRootPid = currentClient.pupBrowser?.process()?.pid ?? null");
+    expect(close).toContain("const browserRootPid = currentClient?.pupBrowser?.process()?.pid ?? null");
+    expect(close).toContain('selectOwnedProfileBrowserProcesses(');
     expect(close).toContain('await terminateBrowserOwners(');
     expect(close).not.toContain('.logout(');
     expect(close).not.toContain('authStrategy.logout');

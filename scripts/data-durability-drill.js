@@ -121,6 +121,24 @@ function createFixture(root) {
   return { userDataRoot, databasePath, evidenceRoot, configPath };
 }
 
+function addHistoricalEvidence(fixture, historicalRoot, id, senderFolder = null) {
+  const image = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
+  const storedFileName = `SITE-A_2026-09-11_12-00-00_${id}.png`;
+  const folder = path.join(historicalRoot, 'SITE-A', '2026-09-11', '1200', ...(senderFolder ? [senderFolder] : []));
+  fs.mkdirSync(folder, { recursive: true });
+  const filePath = path.join(folder, storedFileName);
+  fs.writeFileSync(filePath, image);
+  const database = new Database(fixture.databasePath);
+  database.prepare(`INSERT INTO "patrol_images" (
+    "id", "siteId", "groupId", "collectorType", "messageExternalId", "linkedAccountId",
+    "sentAt", "receivedAt", "patrolDate", "patrolHour", "storedFileName", "filePath",
+    "fileSize", "mimeType", "contentSha256", "integrityStatus", "status"
+  ) VALUES (?, 'site-a', 'group-a', 'WHATSAPP', ?, 'account-synthetic', ?, ?, '2026-09-11', 12, ?, ?, ?, 'image/png', ?, 'FINALIZED', 'RECEIVED')`)
+    .run(id, `message-${id}`, '2026-09-11T12:00:00.000Z', '2026-09-11T12:00:01.000Z', storedFileName, filePath, image.length, sha256(image));
+  database.close();
+  return { filePath, bytes: image };
+}
+
 async function run() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'patrolsafe-phase10f-'));
   const results = {};
@@ -219,8 +237,151 @@ async function run() {
     const verified = await durability.verifyPatrolSafeBackup(backup.backupPath);
     results.backupManifest = verified.manifest.evidence.rowCount === 3 && verified.manifest.evidence.fileCount === 3 && verified.manifest.configuration.sha256.length === 64;
     results.backupIntegrity = verified.manifest.database.sha256.length === 64 && verified.manifest.evidence.referencedFileCount === 3;
-    results.mixedEvidenceLayoutsBackedUp = verified.manifest.evidence.files.filter((file) => file.path.split('/').length === 4).length === 2 &&
-      verified.manifest.evidence.files.some((file) => file.path.includes('/Synthetic Sender/evidence-2.png'));
+    results.mixedEvidenceLayoutsBackedUp = verified.manifest.evidence.files.filter((file) => file.path.split('/').length === 5).length === 2 &&
+      verified.manifest.evidence.files.some((file) => file.path === 'current-root/SITE-B/2026-09-11/1200/Synthetic Sender/evidence-2.png');
+    results.portableBackupIdentity = verified.manifest.formatVersion === 2 &&
+      verified.manifest.evidence.records.length === 3 &&
+      !('rootPathAtBackup' in verified.manifest.evidence) &&
+      !fs.readFileSync(path.join(backup.backupPath, 'database', 'patrol-evidence.db')).includes(Buffer.from(fixture.evidenceRoot));
+
+    const historicalFixture = createFixture(path.join(root, 'historical-fixture'));
+    const historicalA = addHistoricalEvidence(historicalFixture, path.join(root, 'retired-root-a'), 'historical-a');
+    const historicalB = addHistoricalEvidence(historicalFixture, path.join(root, 'retired-root-b'), 'historical-b', 'Synthetic Sender');
+    const historicalBackupOptions = {
+      ...historicalFixture,
+      destinationParent: path.join(root, 'historical-backups'),
+      appVersion: '1.0.2',
+      buildId: 'synthetic-historical-drill',
+      machineBindingHash: 'machine-a',
+    };
+    const historicalBackup = await durability.createPatrolSafeBackup(historicalBackupOptions);
+    const historicalVerified = await durability.verifyPatrolSafeBackup(historicalBackup.backupPath);
+    const historicalPaths = historicalVerified.manifest.evidence.files.map((file) => file.path);
+    const historicalDbBytes = fs.readFileSync(path.join(historicalBackup.backupPath, 'database', 'patrol-evidence.db'));
+    results.multipleHistoricalRootsBackedUp = historicalVerified.manifest.evidence.rowCount === 5 &&
+      historicalPaths.filter((file) => file.startsWith('historical/')).length === 2 &&
+      historicalPaths.filter((file) => file.startsWith('current-root/')).length === 3 &&
+      !historicalDbBytes.includes(Buffer.from(path.join(root, 'retired-root-a'))) &&
+      !historicalDbBytes.includes(Buffer.from(path.join(root, 'retired-root-b'))) &&
+      !JSON.stringify(historicalVerified.manifest).includes(path.join(root, 'retired-root-a'));
+
+    const historicalReplacement = {
+      userDataRoot: path.join(root, 'historical-replacement', 'user-data'),
+      databasePath: path.join(root, 'historical-replacement', 'user-data', 'data', 'patrol-evidence.db'),
+      evidenceRoot: path.join(root, 'historical-replacement', 'new-evidence-root'),
+      configPath: path.join(root, 'historical-replacement', 'user-data', 'workspace-config.json'),
+    };
+    fs.mkdirSync(historicalReplacement.userDataRoot, { recursive: true });
+    await durability.restorePatrolSafeBackup({
+      ...historicalReplacement, backupRoot: historicalBackup.backupPath, machineBindingHash: 'machine-b',
+    });
+    const restoredHistoricalDb = new Database(historicalReplacement.databasePath, { readonly: true });
+    const restoredHistoricalRows = restoredHistoricalDb.prepare('SELECT "id", "filePath", "fileSize", "contentSha256" FROM "patrol_images"').all();
+    restoredHistoricalDb.close();
+    results.historicalRestoreToDifferentRoot = restoredHistoricalRows.length === 5 &&
+      restoredHistoricalRows.every((row) => {
+        const relative = path.relative(historicalReplacement.evidenceRoot, row.filePath);
+        if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return false;
+        const bytes = fs.readFileSync(row.filePath);
+        return bytes.length === Number(row.fileSize) && sha256(bytes) === row.contentSha256;
+      }) &&
+      restoredHistoricalRows.filter((row) => row.filePath.includes('_PatrolSafe_Historical')).length === 2;
+
+    const originalHistoricalDbHash = sha256(fs.readFileSync(historicalFixture.databasePath));
+    const missingPath = `${historicalA.filePath}.temporarily-missing`;
+    fs.renameSync(historicalA.filePath, missingPath);
+    try {
+      await durability.createPatrolSafeBackup({ ...historicalBackupOptions, destinationParent: path.join(root, 'missing-test-backups') });
+      results.missingHistoricalRejected = false;
+    } catch {
+      results.missingHistoricalRejected = sha256(fs.readFileSync(historicalFixture.databasePath)) === originalHistoricalDbHash;
+    } finally {
+      fs.renameSync(missingPath, historicalA.filePath);
+    }
+    fs.appendFileSync(historicalB.filePath, 'synthetic-tamper');
+    const tamperedBytes = fs.readFileSync(historicalB.filePath);
+    try {
+      await durability.createPatrolSafeBackup({ ...historicalBackupOptions, destinationParent: path.join(root, 'tampered-test-backups') });
+      results.tamperedHistoricalRejected = false;
+    } catch {
+      results.tamperedHistoricalRejected = fs.readFileSync(historicalB.filePath).equals(tamperedBytes) &&
+        sha256(fs.readFileSync(historicalFixture.databasePath)) === originalHistoricalDbHash;
+    } finally {
+      fs.writeFileSync(historicalB.filePath, historicalB.bytes);
+    }
+
+    const setHistoricalPath = (nextPath) => {
+      const database = new Database(historicalFixture.databasePath);
+      database.prepare('UPDATE "patrol_images" SET "filePath" = ? WHERE "id" = ?').run(nextPath, 'historical-a');
+      database.close();
+    };
+    const traversalPath = `${path.dirname(historicalA.filePath)}${path.sep}..${path.sep}1200${path.sep}${path.basename(historicalA.filePath)}`;
+    setHistoricalPath(traversalPath);
+    try {
+      await durability.createPatrolSafeBackup({ ...historicalBackupOptions, destinationParent: path.join(root, 'traversal-test-backups') });
+      results.historicalTraversalRejected = false;
+    } catch {
+      results.historicalTraversalRejected = true;
+    } finally {
+      setHistoricalPath(historicalA.filePath);
+    }
+    const linkPath = path.join(path.dirname(historicalA.filePath), `linked-${path.basename(historicalA.filePath)}`);
+    fs.symlinkSync(historicalA.filePath, linkPath, 'file');
+    setHistoricalPath(linkPath);
+    try {
+      await durability.createPatrolSafeBackup({ ...historicalBackupOptions, destinationParent: path.join(root, 'symlink-test-backups') });
+      results.historicalSymlinkRejected = false;
+    } catch {
+      results.historicalSymlinkRejected = true;
+    } finally {
+      setHistoricalPath(historicalA.filePath);
+      fs.unlinkSync(linkPath);
+    }
+
+    const legacyFixture = createFixture(path.join(root, 'legacy-format-fixture'));
+    const legacyV2 = await durability.createPatrolSafeBackup({
+      ...legacyFixture,
+      destinationParent: path.join(root, 'legacy-format-backups'),
+      appVersion: '1.0.2', buildId: 'legacy-format-fixture', machineBindingHash: 'machine-a',
+    });
+    const legacyV1Path = path.join(root, 'synthetic-v1-backup');
+    fs.cpSync(legacyV2.backupPath, legacyV1Path, { recursive: true });
+    const legacyManifestPath = path.join(legacyV1Path, 'manifest.json');
+    const legacyManifest = JSON.parse(fs.readFileSync(legacyManifestPath, 'utf8'));
+    const legacyDbPath = path.join(legacyV1Path, 'database', 'patrol-evidence.db');
+    const legacyDatabase = new Database(legacyDbPath);
+    for (const record of legacyManifest.evidence.records) {
+      const relative = record.path.slice('current-root/'.length).split('/').join(path.sep);
+      legacyDatabase.prepare('UPDATE "patrol_images" SET "filePath" = ? WHERE "id" = ?')
+        .run(path.join(legacyFixture.evidenceRoot, relative), record.id);
+    }
+    legacyDatabase.close();
+    for (const name of fs.readdirSync(path.join(legacyV1Path, 'evidence', 'current-root'))) {
+      fs.renameSync(path.join(legacyV1Path, 'evidence', 'current-root', name), path.join(legacyV1Path, 'evidence', name));
+    }
+    fs.rmdirSync(path.join(legacyV1Path, 'evidence', 'current-root'));
+    legacyManifest.formatVersion = 1;
+    legacyManifest.database.sha256 = sha256(fs.readFileSync(legacyDbPath));
+    legacyManifest.database.bytes = fs.statSync(legacyDbPath).size;
+    legacyManifest.evidence.files = legacyManifest.evidence.files.map((file) => ({
+      ...file, path: file.path.slice('current-root/'.length),
+    }));
+    legacyManifest.evidence.aggregateSha256 = durability.evidenceAggregateHash(legacyManifest.evidence.files);
+    legacyManifest.evidence.rootPathAtBackup = legacyFixture.evidenceRoot;
+    delete legacyManifest.evidence.records;
+    fs.writeFileSync(legacyManifestPath, JSON.stringify(legacyManifest, null, 2));
+    const legacyVerified = await durability.verifyPatrolSafeBackup(legacyV1Path);
+    const legacyReplacement = {
+      userDataRoot: path.join(root, 'legacy-replacement', 'user-data'),
+      databasePath: path.join(root, 'legacy-replacement', 'user-data', 'data', 'patrol-evidence.db'),
+      evidenceRoot: path.join(root, 'legacy-replacement', 'evidence'),
+      configPath: path.join(root, 'legacy-replacement', 'user-data', 'workspace-config.json'),
+    };
+    fs.mkdirSync(legacyReplacement.userDataRoot, { recursive: true });
+    await durability.restorePatrolSafeBackup({ ...legacyReplacement, backupRoot: legacyV1Path, machineBindingHash: 'machine-b' });
+    results.legacyV1BackupStillRestores = legacyVerified.manifest.formatVersion === 1 &&
+      databaseCount(legacyReplacement.databasePath, 'patrol_images') === 3 &&
+      fs.existsSync(path.join(legacyReplacement.evidenceRoot, 'SITE-B', '2026-09-11', '1200', 'Synthetic Sender', 'evidence-2.png'));
     results.desktopSessionExcluded = !fs.existsSync(path.join(backup.backupPath, 'same-machine', 'secure-session', 'desktop-auth-session.secure'));
     const originalStatfs = fs.promises.statfs;
     try {

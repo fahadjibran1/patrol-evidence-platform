@@ -19,6 +19,7 @@ export interface BrowserProcessOwner {
   parentPid?: number;
   name: string;
   commandLine: string;
+  createdAt?: string;
 }
 
 export interface ProfileOwnerClassification {
@@ -213,17 +214,17 @@ export function findBrowserProcessesUsingProfile(userDataDir: string): BrowserPr
     return [];
   }
 
-  const normalizedNeedle = path.normalize(userDataDir).toLowerCase();
+  const normalizedNeedle = path.normalize(userDataDir).toLowerCase().replace(/'/g, "''");
   const script = `
 $ErrorActionPreference = 'SilentlyContinue'
-$needle = ${JSON.stringify(normalizedNeedle)}
+$needle = '${normalizedNeedle}'
 Get-CimInstance Win32_Process |
   Where-Object {
     $_.Name -match '^(msedge|chrome|chromium|opera|brave)\\.exe$' -and
     $_.CommandLine -and
     ($_.CommandLine.ToLower().Contains($needle) -or $_.CommandLine.ToLower().Contains('session-patrol-evidence-platform'))
   } |
-  Select-Object ProcessId, ParentProcessId, Name, CommandLine |
+  Select-Object ProcessId, ParentProcessId, Name, CommandLine, CreationDate |
   ConvertTo-Json -Compress
 `;
 
@@ -239,8 +240,8 @@ Get-CimInstance Win32_Process |
     }
 
     const parsed = JSON.parse(output) as
-      | { ProcessId: number; ParentProcessId?: number; Name: string; CommandLine?: string }
-      | Array<{ ProcessId: number; ParentProcessId?: number; Name: string; CommandLine?: string }>;
+      | { ProcessId: number; ParentProcessId?: number; Name: string; CommandLine?: string; CreationDate?: string }
+      | Array<{ ProcessId: number; ParentProcessId?: number; Name: string; CommandLine?: string; CreationDate?: string }>;
     const rows = Array.isArray(parsed) ? parsed : [parsed];
 
     return rows
@@ -249,11 +250,45 @@ Get-CimInstance Win32_Process |
         parentPid: Number(row.ParentProcessId),
         name: String(row.Name || 'unknown'),
         commandLine: String(row.CommandLine || ''),
+        createdAt: String(row.CreationDate || ''),
       }))
       .filter((row) => Number.isFinite(row.pid) && row.pid > 0);
   } catch {
     return [];
   }
+}
+
+function hasExactManagedProfileArgument(owner: BrowserProcessOwner, userDataDir: string): boolean {
+  const normalized = path.normalize(userDataDir).toLowerCase();
+  const command = owner.commandLine.toLowerCase();
+  const argument = '--user-data-dir=';
+  let offset = command.indexOf(argument);
+  while (offset >= 0) {
+    const value = command.slice(offset + argument.length).replace(/^"/, '');
+    if (value.startsWith(normalized) && /^[\s"']|^$/.test(value.slice(normalized.length))) return true;
+    offset = command.indexOf(argument, offset + argument.length);
+  }
+  return false;
+}
+
+/** Select only the recorded browser generation, never all browsers by name or profile. */
+export function selectOwnedProfileBrowserProcesses(
+  before: BrowserProcessOwner[],
+  after: BrowserProcessOwner[],
+  userDataDir: string,
+  knownRootPids: readonly number[],
+): BrowserProcessOwner[] {
+  const roots = before.filter((owner) =>
+    knownRootPids.includes(owner.pid) && hasExactManagedProfileArgument(owner, userDataDir),
+  );
+  if (roots.length === 0) return [];
+  const ownedBefore = classifyProfileOwners(before, null, roots.map((root) => root.pid)).currentGenerationOwners;
+  const afterByPid = new Map(after.map((owner) => [owner.pid, owner]));
+  return ownedBefore.filter((owner) => {
+    const current = afterByPid.get(owner.pid);
+    return Boolean(owner.createdAt && current?.createdAt === owner.createdAt &&
+      current.name.toLowerCase() === owner.name.toLowerCase());
+  });
 }
 
 /**
@@ -352,12 +387,22 @@ export function buildProfileLockFailureMessage(
 
 export async function terminateBrowserOwners(
   owners: BrowserProcessOwner[],
-  options?: { forceAfterMs?: number },
+  options?: { forceAfterMs?: number; verifiedProfilePath?: string },
 ): Promise<void> {
   const forceAfterMs = options?.forceAfterMs ?? 5_000;
-  const uniquePids = [...new Set(owners.map((owner) => owner.pid).filter((pid) => pid > 0))];
+  const verified = options?.verifiedProfilePath
+    ? selectOwnedProfileBrowserProcesses(
+      owners,
+      findBrowserProcessesUsingProfile(options.verifiedProfilePath),
+      options.verifiedProfilePath,
+      owners.filter((owner) => hasExactManagedProfileArgument(owner, options.verifiedProfilePath!)).map((owner) => owner.pid),
+    )
+    : owners;
+  const uniquePids = [...new Set(verified.map((owner) => owner.pid).filter((pid) => pid > 0))];
+  const ownerPidSet = new Set(uniquePids);
+  const rootPids = verified.filter((owner) => !owner.parentPid || !ownerPidSet.has(owner.parentPid)).map((owner) => owner.pid);
 
-  for (const pid of uniquePids) {
+  for (const pid of rootPids) {
     if (pid === process.pid) {
       continue;
     }
@@ -388,7 +433,16 @@ export async function terminateBrowserOwners(
     await sleep(250);
   }
 
+  const stillVerifiedPids = options?.verifiedProfilePath
+    ? new Set(selectOwnedProfileBrowserProcesses(
+      owners,
+      findBrowserProcessesUsingProfile(options.verifiedProfilePath),
+      options.verifiedProfilePath,
+      owners.filter((owner) => hasExactManagedProfileArgument(owner, options.verifiedProfilePath!)).map((owner) => owner.pid),
+    ).map((owner) => owner.pid))
+    : new Set(uniquePids);
   for (const pid of uniquePids) {
+    if (!stillVerifiedPids.has(pid)) continue;
     if (!isProcessAlive(pid) || pid === process.pid) {
       continue;
     }

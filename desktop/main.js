@@ -135,7 +135,7 @@ const MIN_PACKAGED_BACKEND_HEALTH_TIMEOUT_MS = 90_000;
 const PACKAGED_BACKEND_HEALTH_TIMEOUT_MS = 180_000;
 const RESTART_BACKEND_HEALTH_TIMEOUT_MS = 90_000;
 const BACKEND_LISTENING_GRACE_TIMEOUT_MS = 30_000;
-const BACKEND_STOP_TIMEOUT_MS = 15_000;
+const BACKEND_STOP_TIMEOUT_MS = 30_000;
 const BACKEND_RECOVERY_WINDOW_MS = 120_000;
 const BACKEND_LOG_TAIL_LINES = 80;
 const BACKEND_CHILD_ENV_FLAG = 'PATROL_RUN_BACKEND';
@@ -2689,7 +2689,7 @@ async function startBackend() {
     const child = spawn(process.execPath, getBackendProcessArguments(entryPoint, env, process.argv), {
       cwd,
       env: packagedBackendEnv,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
     });
     backendProcess = child;
@@ -2901,15 +2901,13 @@ function stopBackend() {
     pid: child.pid ?? null,
   };
 
-  const promise = new Promise((resolve) => {
-    let settled = false;
-
-    const finish = () => {
-      if (settled) {
-        return;
-      }
-
-      settled = true;
+  const promise = require('./backend-shutdown').stopSpawnedBackend(child, {
+    sessionId: isProductionDesktopMode() ? backendExpectedSessionId : null,
+    timeoutMs: BACKEND_STOP_TIMEOUT_MS,
+    isCurrent: () => backendProcess === child,
+    forceKillTree: killProcessTree,
+    log: appendDesktopLog,
+  }).then(() => {
       if (backendProcess === child) {
         backendProcess = null;
       }
@@ -2922,23 +2920,6 @@ function stopBackend() {
       if (backendStopOperation?.child === child) {
         backendStopOperation = null;
       }
-      resolve();
-    };
-
-    const forceKillTimer = setTimeout(() => {
-      if (backendProcess === child) {
-        appendDesktopLog('Backend stop timeout reached', `pid=${child.pid ?? 'unknown'} forcing SIGKILL`);
-        child.kill('SIGKILL');
-      }
-      finish();
-    }, BACKEND_STOP_TIMEOUT_MS);
-
-    child.once('exit', () => {
-      clearTimeout(forceKillTimer);
-      finish();
-    });
-
-    child.kill();
   });
   backendStopOperation = { child, promise };
   return promise;

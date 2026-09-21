@@ -10,6 +10,7 @@ import { resolveBackendListenConfig } from './config/backend-listen.config';
 import { createPatrolSafeCorsOriginValidator, DESKTOP_API_TOKEN_HEADER } from './config/cors-origin.util';
 import { resolveDatabaseType, resolveSqliteDatabasePath } from './config/database-settings.util';
 import { WhatsAppCollectorService } from './collectors/whatsapp-collector.service';
+import { installDesktopShutdownControl } from './config/desktop-shutdown-control';
 
 // Shared CommonJS contract is also consumed by Electron before Nest exists.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -140,6 +141,16 @@ async function bootstrap(): Promise<void> {
   app.enableShutdownHooks();
   writeBackendRuntimeLog('bootstrap:pipes-ready');
 
+  // The packaged Electron parent owns this private stdin pipe. Windows
+  // child.kill() terminates the process without running Nest destroy hooks,
+  // which otherwise leaves the WhatsApp helper and its managed Edge tree.
+  const desktopSessionId = process.env.PATROLSAFE_DESKTOP_BACKEND_SESSION?.trim();
+  if (process.env.DESKTOP_CONFIG_PATH?.trim() && desktopSessionId) {
+    installDesktopShutdownControl(
+      process.stdin, desktopSessionId, () => app.close(), (code) => process.exit(code), writeBackendRuntimeLog,
+    );
+  }
+
   const testDelayMs = Number(process.env.PATROLSAFE_TEST_BACKEND_READY_DELAY_MS ?? 0);
   if (
     process.env.PATROLSAFE_STARTUP_TEST_MODE === 'true' &&
@@ -161,7 +172,6 @@ async function bootstrap(): Promise<void> {
   app.get(WhatsAppCollectorService).registerAuthoritativeBackendEndpoint('127.0.0.1', actualPort);
   writeBackendRuntimeLog('bootstrap:listening', `host=${listen.host ?? 'default'} port=${actualPort}`);
 
-  const desktopSessionId = process.env.PATROLSAFE_DESKTOP_BACKEND_SESSION?.trim();
   if (process.env.DESKTOP_CONFIG_PATH?.trim() && desktopSessionId) {
     process.stdout.write(
       `${BACKEND_READY_PREFIX}${JSON.stringify({

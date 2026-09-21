@@ -4,7 +4,9 @@ const path = require('path');
 const os = require('os');
 const { execFileSync } = require('child_process');
 
-const BACKUP_FORMAT_VERSION = 1;
+const BACKUP_FORMAT_VERSION = 2;
+const LEGACY_BACKUP_FORMAT_VERSION = 1;
+const PORTABLE_EVIDENCE_PREFIX = 'patrolsafe-backup:';
 const CURRENT_SQLITE_SCHEMA_VERSION = 2;
 const PRE_UPGRADE_RETENTION = 5;
 const MIN_FREE_SPACE_HEADROOM = 64 * 1024 * 1024;
@@ -531,6 +533,172 @@ function verifyDatabaseEvidenceReferences(databasePath, evidenceRoot, evidenceFi
   }
 }
 
+function evidenceRows(databasePath, options = {}) {
+  const database = openDatabase(databasePath, { ...options, readonly: true });
+  try {
+    return database.prepare(`
+      SELECT image."id", image."filePath", image."fileSize", image."contentSha256",
+             image."storedFileName", image."mimeType", image."patrolDate", image."patrolHour",
+             site."siteCode"
+      FROM "patrol_images" image
+      JOIN "sites" site ON site."id" = image."siteId"
+      ORDER BY image."id"
+    `).all();
+  } finally {
+    database.close();
+  }
+}
+
+function assertNoReparseComponents(filePath) {
+  const absolute = path.resolve(filePath);
+  let component = path.parse(absolute).root;
+  for (const part of path.relative(component, absolute).split(path.sep)) {
+    component = path.join(component, part);
+    const stat = fs.lstatSync(component);
+    if (stat.isSymbolicLink() || (stat.isDirectory() && part === '..')) {
+      throw new Error('Evidence source contains an unsupported link or reparse point');
+    }
+  }
+  const stat = fs.lstatSync(absolute);
+  if (!stat.isFile()) throw new Error('Evidence source is not a regular file');
+  return stat;
+}
+
+function assertHistoricalEvidenceShape(row, filePath) {
+  const parts = path.resolve(filePath).split(path.sep);
+  const filename = parts.at(-1);
+  const date = String(row.patrolDate || '').slice(0, 10);
+  const hour = `${String(row.patrolHour).padStart(2, '0')}00`;
+  const siteCode = String(row.siteCode || '').trim().replace(/[^a-zA-Z0-9._-]/g, '_').replace(/_+/g, '_');
+  const hourIndex = parts.length - (parts.at(-2) === hour ? 2 : 3);
+  if (!/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(date) ||
+      !Number.isInteger(Number(row.patrolHour)) || Number(row.patrolHour) < 0 || Number(row.patrolHour) > 23 ||
+      filename !== row.storedFileName || parts[hourIndex] !== hour ||
+      parts[hourIndex - 1] !== date || parts[hourIndex - 2] !== siteCode ||
+      (parts.length - hourIndex !== 2 && parts.length - hourIndex !== 3)) {
+    throw new Error('Historical evidence path does not match its authoritative site/date/hour record');
+  }
+  const extension = path.extname(filename).toLowerCase();
+  if ((row.mimeType === 'image/jpeg' && !['.jpg', '.jpeg'].includes(extension)) ||
+      (row.mimeType === 'image/png' && extension !== '.png') ||
+      !['image/jpeg', 'image/png'].includes(row.mimeType)) {
+    throw new Error('Historical evidence type does not match its authoritative record');
+  }
+  const header = Buffer.alloc(8);
+  const handle = fs.openSync(filePath, 'r');
+  try {
+    fs.readSync(handle, header, 0, header.length, 0);
+  } finally {
+    fs.closeSync(handle);
+  }
+  if ((row.mimeType === 'image/jpeg' && !header.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))) ||
+      (row.mimeType === 'image/png' && !header.equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])))) {
+    throw new Error('Historical evidence file is not the recorded image type');
+  }
+}
+
+async function copyAuthoritativeEvidence(rows, evidenceRoot, destinationRoot) {
+  const root = path.resolve(evidenceRoot);
+  const realRoot = fs.existsSync(root) ? fs.realpathSync.native(root) : root;
+  const files = new Map();
+  const records = [];
+  await fs.promises.mkdir(destinationRoot, { recursive: true });
+  for (const row of rows) {
+    const rawPath = String(row.filePath || '');
+    if (!path.isAbsolute(rawPath) || rawPath.split(/[\\/]/).includes('..')) {
+      throw new Error('Evidence database record contains an unsafe source path');
+    }
+    if (process.platform === 'win32' && (!/^[a-zA-Z]:[\\/]/.test(rawPath) || rawPath.startsWith('\\\\'))) {
+      throw new Error('Historical evidence must be a local filesystem file');
+    }
+    const source = path.resolve(rawPath);
+    const stat = assertNoReparseComponents(source);
+    const realSource = fs.realpathSync.native(source);
+    if (path.normalize(realSource).toLowerCase() !== path.normalize(source).toLowerCase()) {
+      throw new Error('Evidence source resolves through an unsupported link or reparse point');
+    }
+    const relative = path.relative(realRoot, realSource);
+    const inCurrentRoot = relative && !relative.startsWith('..') && !path.isAbsolute(relative);
+    if (!inCurrentRoot) assertHistoricalEvidenceShape(row, source);
+    if (stat.size !== Number(row.fileSize)) throw new Error('Evidence database file size does not match source');
+    const sourceHash = await hashFile(source);
+    if (row.contentSha256 && sourceHash.toLowerCase() !== String(row.contentSha256).toLowerCase()) {
+      throw new Error('Evidence database hash does not match source');
+    }
+    const extension = row.mimeType === 'image/png' ? '.png' : '.jpg';
+    const archivePath = inCurrentRoot
+      ? `current-root/${normalizeRelativePath(relative).replace(/\\/g, '/')}`
+      : `historical/${sha256(String(row.id))}/evidence${extension}`;
+    const destination = ensureContained(destinationRoot, path.join(destinationRoot, normalizeRelativePath(archivePath)));
+    if (!files.has(archivePath)) {
+      await fs.promises.mkdir(path.dirname(destination), { recursive: true });
+      await fs.promises.copyFile(source, destination, fs.constants.COPYFILE_EXCL);
+      const copiedHash = await hashFile(destination);
+      if (copiedHash !== sourceHash || fs.statSync(destination).size !== stat.size) {
+        throw new Error('Evidence changed while being copied into backup');
+      }
+      files.set(archivePath, { path: archivePath, bytes: stat.size, sha256: copiedHash });
+    } else if (files.get(archivePath).sha256 !== sourceHash || files.get(archivePath).bytes !== stat.size) {
+      throw new Error('Evidence records disagree about a shared physical file');
+    }
+    records.push({ id: String(row.id), path: archivePath });
+  }
+  return { files: [...files.values()].sort((a, b) => a.path.localeCompare(b.path)), records };
+}
+
+function rewriteBackupDatabaseEvidencePaths(databasePath, records, options = {}) {
+  const database = openDatabase(databasePath, options);
+  try {
+    database.pragma('secure_delete = ON');
+    const update = database.prepare('UPDATE "patrol_images" SET "filePath" = ? WHERE "id" = ?');
+    database.transaction(() => {
+      for (const record of records) {
+        if (update.run(`${PORTABLE_EVIDENCE_PREFIX}${record.path}`, record.id).changes !== 1) {
+          throw new Error('Backup evidence identity changed during snapshot');
+        }
+      }
+    })();
+    database.exec('VACUUM');
+  } finally {
+    database.close();
+  }
+}
+
+function verifyPortableEvidenceReferences(databasePath, evidence, options = {}) {
+  const records = Array.isArray(evidence.records) ? evidence.records : [];
+  const files = new Map(evidence.files.map((file) => [file.path, file]));
+  const byId = new Map();
+  for (const record of records) {
+    const id = String(record.id || '');
+    const archivePath = normalizeRelativePath(record.path).replace(/\\/g, '/');
+    if (!id || byId.has(id) || !files.has(archivePath) ||
+        (!archivePath.startsWith('current-root/') && !/^historical\/[a-f0-9]{64}\/evidence\.(jpg|png)$/.test(archivePath)) ||
+        (archivePath.startsWith('historical/') && archivePath.split('/')[1] !== sha256(id))) {
+      throw new Error('Backup contains an invalid evidence identity mapping');
+    }
+    byId.set(id, archivePath);
+  }
+  const database = openDatabase(databasePath, { ...options, readonly: true });
+  try {
+    const rows = database.prepare('SELECT "id", "filePath", "fileSize", "contentSha256" FROM "patrol_images"').all();
+    if (rows.length !== records.length) throw new Error('Backup evidence identity count mismatch');
+    const referenced = new Set();
+    for (const row of rows) {
+      const archivePath = byId.get(String(row.id));
+      const entry = files.get(archivePath);
+      if (!entry || row.filePath !== `${PORTABLE_EVIDENCE_PREFIX}${archivePath}` ||
+          Number(row.fileSize) !== Number(entry.bytes) ||
+          (row.contentSha256 && String(row.contentSha256).toLowerCase() !== entry.sha256.toLowerCase())) {
+        throw new Error('Backup evidence/database identity or integrity mismatch');
+      }
+      referenced.add(archivePath);
+    }
+    return { rowCount: rows.length, referencedFileCount: referenced.size, orphanFileCount: files.size - referenced.size };
+  } finally {
+    database.close();
+  }
+}
+
 function sameMachineFiles(userDataRoot) {
   return [...SAME_MACHINE_COMPONENTS].map((relativePath) => ({
     relativePath,
@@ -546,9 +714,9 @@ async function createPatrolSafeBackup(params) {
   const destinationParent = path.resolve(params.destinationParent);
   if (!fs.existsSync(databasePath)) throw new Error('PatrolSafe database does not exist');
   integrityCheck(databasePath, params);
-  const evidenceSourceFiles = await collectRegularFiles(evidenceRoot);
+  const sourceEvidenceRows = evidenceRows(databasePath, params);
   const machineSources = sameMachineFiles(userDataRoot);
-  let estimatedBytes = fs.statSync(databasePath).size + evidenceSourceFiles.reduce((sum, file) => sum + file.size, 0);
+  let estimatedBytes = fs.statSync(databasePath).size + sourceEvidenceRows.reduce((sum, row) => sum + Number(row.fileSize), 0);
   if (fs.existsSync(configPath)) estimatedBytes += fs.statSync(configPath).size;
   for (const source of machineSources) {
     if (!fs.existsSync(source.sourcePath)) continue;
@@ -570,9 +738,16 @@ async function createPatrolSafeBackup(params) {
   try {
     await fs.promises.mkdir(stagingRoot, { recursive: false });
     const databaseDestination = path.join(stagingRoot, 'database', 'patrol-evidence.db');
-    const databaseSha256 = backupSqliteDatabase(databasePath, databaseDestination, params);
-    const evidenceFiles = await copyDirectoryWithManifest(evidenceRoot, path.join(stagingRoot, 'evidence'));
-    const evidenceDatabase = verifyDatabaseEvidenceReferences(databaseDestination, evidenceRoot, evidenceFiles, params);
+    backupSqliteDatabase(databasePath, databaseDestination, params);
+    const snapshotEvidenceRows = evidenceRows(databaseDestination, params);
+    const { files: evidenceFiles, records: evidenceRecords } = await copyAuthoritativeEvidence(
+      snapshotEvidenceRows, evidenceRoot, path.join(stagingRoot, 'evidence'),
+    );
+    rewriteBackupDatabaseEvidencePaths(databaseDestination, evidenceRecords, params);
+    const databaseSha256 = await hashFile(databaseDestination);
+    const evidenceDatabase = verifyPortableEvidenceReferences(
+      databaseDestination, { files: evidenceFiles, records: evidenceRecords }, params,
+    );
     let configurationManifest = { included: false, path: 'config/workspace-config.json' };
     if (fs.existsSync(configPath)) {
       await fs.promises.mkdir(path.join(stagingRoot, 'config'), { recursive: true });
@@ -627,12 +802,12 @@ async function createPatrolSafeBackup(params) {
         sha256: databaseSha256,
       },
       evidence: {
-        rootPathAtBackup: evidenceRoot,
         fileCount: evidenceFiles.length,
         totalBytes: evidenceFiles.reduce((sum, file) => sum + file.bytes, 0),
         aggregateSha256: evidenceAggregateHash(evidenceFiles),
         ...evidenceDatabase,
         files: evidenceFiles,
+        records: evidenceRecords,
       },
       configuration: configurationManifest,
       sameMachine: {
@@ -668,7 +843,9 @@ async function verifyPatrolSafeBackup(backupRoot, options = {}) {
   const root = path.resolve(backupRoot);
   const manifestPath = ensureContained(root, path.join(root, 'manifest.json'));
   const manifest = safeJsonRead(manifestPath);
-  if (manifest.format !== 'PatrolSafeBackup' || manifest.formatVersion !== BACKUP_FORMAT_VERSION || manifest.complete !== true) {
+  if (manifest.format !== 'PatrolSafeBackup' ||
+      ![LEGACY_BACKUP_FORMAT_VERSION, BACKUP_FORMAT_VERSION].includes(manifest.formatVersion) ||
+      manifest.complete !== true) {
     throw new Error('Unsupported or incomplete PatrolSafe backup');
   }
   if (!Number.isInteger(manifest.schemaVersion) || manifest.schemaVersion > CURRENT_SQLITE_SCHEMA_VERSION) {
@@ -705,12 +882,12 @@ async function verifyPatrolSafeBackup(backupRoot, options = {}) {
   if (manifest.evidence.aggregateSha256 !== evidenceAggregateHash(manifestEvidence)) {
     throw new Error('Backup evidence aggregate checksum mismatch');
   }
-  const evidenceDatabase = verifyDatabaseEvidenceReferences(
-    databasePath,
-    manifest.evidence.rootPathAtBackup,
-    manifestEvidence,
-    options,
-  );
+  const evidenceDatabase = manifest.formatVersion === LEGACY_BACKUP_FORMAT_VERSION
+    ? verifyDatabaseEvidenceReferences(databasePath, manifest.evidence.rootPathAtBackup, manifestEvidence, options)
+    : verifyPortableEvidenceReferences(databasePath, manifest.evidence, options);
+  if (manifest.formatVersion === BACKUP_FORMAT_VERSION && evidenceDatabase.orphanFileCount !== 0) {
+    throw new Error('Portable backup contains evidence not referenced by the database');
+  }
   for (const field of ['rowCount', 'referencedFileCount', 'orphanFileCount']) {
     if (manifest.evidence[field] !== evidenceDatabase[field]) {
       throw new Error('Backup evidence/database accounting is inconsistent');
@@ -789,6 +966,58 @@ function rewriteRestoredEvidencePaths(databasePath, originalEvidenceRoot, target
   }
 }
 
+function portableRestoreRelativePath(archivePath) {
+  const relative = normalizeRelativePath(archivePath).replace(/\\/g, '/');
+  if (relative.startsWith('current-root/')) {
+    return normalizeRelativePath(relative.slice('current-root/'.length));
+  }
+  if (/^historical\/[a-f0-9]{64}\/evidence\.(jpg|png)$/.test(relative)) {
+    return normalizeRelativePath(`_PatrolSafe_Historical/${relative.slice('historical/'.length)}`);
+  }
+  throw new Error('Backup contains an unsupported evidence archive path');
+}
+
+async function stagePortableEvidence(backupRoot, stagedEvidence, manifestEvidence) {
+  await fs.promises.mkdir(stagedEvidence, { recursive: true });
+  const seenDestinations = new Set();
+  const stagedFiles = [];
+  for (const entry of manifestEvidence.files) {
+    const archiveRelative = normalizeRelativePath(entry.path);
+    const destinationRelative = portableRestoreRelativePath(entry.path);
+    const destinationKey = destinationRelative.toLowerCase();
+    if (seenDestinations.has(destinationKey)) throw new Error('Backup evidence restore paths collide');
+    seenDestinations.add(destinationKey);
+    const source = ensureContained(path.join(backupRoot, 'evidence'), path.join(backupRoot, 'evidence', archiveRelative));
+    const destination = ensureContained(stagedEvidence, path.join(stagedEvidence, destinationRelative));
+    await fs.promises.mkdir(path.dirname(destination), { recursive: true });
+    await fs.promises.copyFile(source, destination, fs.constants.COPYFILE_EXCL);
+    const copiedHash = await hashFile(destination);
+    if (copiedHash !== entry.sha256 || fs.statSync(destination).size !== Number(entry.bytes)) {
+      throw new Error('Restored evidence staging integrity check failed');
+    }
+    stagedFiles.push({ path: destinationRelative.replace(/\\/g, '/'), bytes: entry.bytes, sha256: copiedHash });
+  }
+  return stagedFiles;
+}
+
+function rewritePortableRestoredEvidencePaths(databasePath, records, targetEvidenceRoot, options = {}) {
+  const database = openDatabase(databasePath, options);
+  try {
+    const update = database.prepare('UPDATE "patrol_images" SET "filePath" = ? WHERE "id" = ?');
+    database.transaction(() => {
+      for (const record of records) {
+        const relative = portableRestoreRelativePath(record.path);
+        const destination = ensureContained(targetEvidenceRoot, path.join(targetEvidenceRoot, relative));
+        if (update.run(destination, record.id).changes !== 1) {
+          throw new Error('Restored evidence identity is missing from the database');
+        }
+      }
+    })();
+  } finally {
+    database.close();
+  }
+}
+
 async function restorePatrolSafeBackup(params) {
   const verification = await verifyPatrolSafeBackup(params.backupRoot, params);
   const manifest = verification.manifest;
@@ -830,9 +1059,16 @@ async function restorePatrolSafeBackup(params) {
 
     await fs.promises.mkdir(path.dirname(stagedDatabase), { recursive: true });
     await fs.promises.copyFile(verification.databasePath, stagedDatabase, fs.constants.COPYFILE_EXCL);
-    await copyDirectoryWithManifest(path.join(params.backupRoot, 'evidence'), stagedEvidence);
-    rewriteRestoredEvidencePaths(stagedDatabase, manifest.evidence.rootPathAtBackup, evidenceRoot, params);
+    let stagedEvidenceFiles;
+    if (manifest.formatVersion === LEGACY_BACKUP_FORMAT_VERSION) {
+      stagedEvidenceFiles = await copyDirectoryWithManifest(path.join(params.backupRoot, 'evidence'), stagedEvidence);
+      rewriteRestoredEvidencePaths(stagedDatabase, manifest.evidence.rootPathAtBackup, evidenceRoot, params);
+    } else {
+      stagedEvidenceFiles = await stagePortableEvidence(params.backupRoot, stagedEvidence, manifest.evidence);
+      rewritePortableRestoredEvidencePaths(stagedDatabase, manifest.evidence.records, evidenceRoot, params);
+    }
     integrityCheck(stagedDatabase, params);
+    verifyDatabaseEvidenceReferences(stagedDatabase, evidenceRoot, stagedEvidenceFiles, params);
     const stagedConfig = path.join(stagingRoot, 'workspace-config.json');
     const backedConfigPath = path.join(params.backupRoot, 'config', 'workspace-config.json');
     if (fs.existsSync(backedConfigPath)) {

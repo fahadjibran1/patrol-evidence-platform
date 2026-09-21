@@ -105,7 +105,7 @@ export class WhatsAppCollectorService implements OnModuleInit, OnModuleDestroy {
   private readonly helperInternalToken =
     process.env.PATROL_HELPER_INTERNAL_TOKEN?.trim() || randomUUID();
   private readonly startupDelayMs = 1_000;
-  private readonly stopTimeoutMs = 8_000;
+  private readonly stopTimeoutMs = 18_000;
   private readonly monitoringReconciliationTimeoutMs = Math.max(
     1_000,
     Number(process.env.PATROL_HELPER_MONITORING_ACK_TIMEOUT_MS ?? 15_000),

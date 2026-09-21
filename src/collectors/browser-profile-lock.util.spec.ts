@@ -10,6 +10,7 @@ import {
   isProfileLockErrorMessage,
   readHelperMutex,
   releaseProfileOwnership,
+  selectOwnedProfileBrowserProcesses,
 } from './browser-profile-lock.util';
 
 describe('browser-profile-lock.util', () => {
@@ -156,5 +157,38 @@ describe('browser-profile-lock.util', () => {
     );
     expect(handedOff.currentGenerationOwners.map((owner) => owner.pid)).toEqual([401, 402]);
     expect(handedOff.conflictingOwners).toHaveLength(0);
+  });
+
+  it('selects only the exact managed Edge generation, including children after root exit', () => {
+    const profile = 'C:\\PatrolSafe\\session-patrol-evidence-platform';
+    const before = [
+      { pid: 100, parentPid: 10, name: 'msedge.exe', commandLine: `--user-data-dir="${profile}"`, createdAt: 'root-1' },
+      { pid: 101, parentPid: 100, name: 'msedge.exe', commandLine: '--type=renderer', createdAt: 'renderer-1' },
+      { pid: 102, parentPid: 100, name: 'msedge.exe', commandLine: '--type=gpu-process', createdAt: 'gpu-1' },
+      { pid: 200, parentPid: 20, name: 'msedge.exe', commandLine: '--user-data-dir=C:\\Personal', createdAt: 'personal' },
+      { pid: 201, parentPid: 20, name: 'chrome.exe', commandLine: '--user-data-dir=C:\\Personal', createdAt: 'chrome' },
+    ];
+    expect(selectOwnedProfileBrowserProcesses(before, before, profile, [100]).map((owner) => owner.pid))
+      .toEqual([100, 101, 102]);
+    expect(selectOwnedProfileBrowserProcesses(before, before.slice(1), profile, [100]).map((owner) => owner.pid))
+      .toEqual([101, 102]);
+  });
+
+  it('rejects reused PIDs, prefix-matching profiles and unknown browser roots', () => {
+    const profile = 'C:\\PatrolSafe\\session-patrol-evidence-platform';
+    const before = [
+      { pid: 100, parentPid: 10, name: 'msedge.exe', commandLine: `--user-data-dir=${profile}`, createdAt: 'generation-a' },
+      { pid: 101, parentPid: 100, name: 'msedge.exe', commandLine: '--type=renderer', createdAt: 'renderer-a' },
+      { pid: 200, parentPid: 20, name: 'msedge.exe', commandLine: `--user-data-dir=${profile}-other`, createdAt: 'other' },
+    ];
+    const after = [
+      { ...before[0], createdAt: 'generation-b' },
+      before[1],
+      before[2],
+    ];
+    expect(selectOwnedProfileBrowserProcesses(before, after, profile, [100]).map((owner) => owner.pid))
+      .toEqual([101]);
+    expect(selectOwnedProfileBrowserProcesses(before, after, profile, [200])).toEqual([]);
+    expect(selectOwnedProfileBrowserProcesses(before, after, profile, [999])).toEqual([]);
   });
 });

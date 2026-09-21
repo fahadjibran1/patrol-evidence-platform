@@ -75,6 +75,7 @@ import {
   isProfileLockErrorMessage,
   ProfileLockError,
   readHelperMutex,
+  selectOwnedProfileBrowserProcesses,
   terminateBrowserOwners,
   type BrowserProcessOwner,
   type HelperMutexHandle,
@@ -1306,15 +1307,17 @@ async function closeBrowserGracefully(
   currentClient: Client | null,
   reason = 'unspecified',
 ): Promise<void> {
-  if (!currentClient) {
-    return;
-  }
+  const browserRootPid = currentClient?.pupBrowser?.process()?.pid ?? null;
+  const profileDir = sessionProfileDirectory();
+  const knownRootPids = [browserRootPid, ...adoptedEdgeBrowserOwners.map((owner) => owner.pid)]
+    .filter((pid): pid is number => Number.isInteger(pid) && pid !== null && pid > 0);
+  const before = detectProfileLock(profileDir).owners;
+  const ownedBefore = selectOwnedProfileBrowserProcesses(before, before, profileDir, knownRootPids);
+  if (!currentClient && ownedBefore.length === 0) return;
 
-  const browserRootPid = currentClient.pupBrowser?.process()?.pid ?? null;
+  if (currentClient) logDestructiveAction('client.destroy', reason, currentClient);
 
-  logDestructiveAction('client.destroy', reason, currentClient);
-
-  if (hasPassedQrScanPhase() && !isDestructiveLifecycleAllowed()) {
+  if (currentClient && hasPassedQrScanPhase() && !isDestructiveLifecycleAllowed()) {
     appendCollectorLog(
       'client-destroy-blocked',
       `reason=${reason} blocked-after-qr-scan ${describeClientIdentity(currentClient)}`,
@@ -1322,7 +1325,7 @@ async function closeBrowserGracefully(
     return;
   }
 
-  if (isPostAuthStartupProtected(currentClient) && !isDestructiveLifecycleAllowed()) {
+  if (currentClient && isPostAuthStartupProtected(currentClient) && !isDestructiveLifecycleAllowed()) {
     appendCollectorLog(
       'client-destroy-blocked',
       `reason=${reason} ${describeClientIdentity(currentClient)}`,
@@ -1330,50 +1333,49 @@ async function closeBrowserGracefully(
     return;
   }
 
-  try {
-    appendCollectorLog('browser-close-start', `destroy without logout or session delete reason=${reason}`);
-    await currentClient.destroy();
-    logLifecycleEvent('client.destroy', `completed reason=${reason}`, currentClient);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    appendCollectorLog('browser-close-error', message);
-    if (isSessionCorruptionSignal(message)) {
-      reportSessionCorruption('browser-close-error', message);
+  adoptedEdgeBrowserOwners = [];
+
+  if (currentClient) {
+    try {
+      appendCollectorLog('browser-close-start', `destroy without logout or session delete reason=${reason}`);
+      let closeCompleted = false;
+      let closeError: unknown;
+      await Promise.race([
+        currentClient.destroy().then(
+          () => { closeCompleted = true; },
+          (error) => { closeError = error; closeCompleted = true; },
+        ),
+        sleep(8_000),
+      ]);
+      if (!closeCompleted) {
+        appendCollectorLog('browser-close-timeout', `reason=${reason} proceeding-to-owned-process-cleanup`);
+      } else if (closeError) {
+        throw closeError;
+      } else {
+        logLifecycleEvent('client.destroy', `completed reason=${reason}`, currentClient);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      appendCollectorLog('browser-close-error', message);
+      if (isSessionCorruptionSignal(message)) {
+        reportSessionCorruption('browser-close-error', message);
+      }
     }
   }
 
-  // Puppeteer's WebSocket can already be broken after a network/navigation
-  // failure. In that case Client.destroy() may return/throw without reaping the
-  // Edge tree. Enforce ownership release without touching LocalAuth.
-  if (browserRootPid && isProcessAlive(browserRootPid)) {
-    appendCollectorLog('browser-tree-release-start', `pid=${browserRootPid} reason=${reason}`);
-    await terminateBrowserOwners(
-      [{ pid: browserRootPid, name: 'edge-browser-root', commandLine: `pid=${browserRootPid}` }],
-      { forceAfterMs: 3_000 },
+  // Only processes captured before close, descended from the exact managed
+  // profile root, and still matching their Windows creation time may be reaped.
+  // This also handles Chromium children left after the browser root exits.
+  const remaining = selectOwnedProfileBrowserProcesses(
+    ownedBefore, detectProfileLock(profileDir).owners, profileDir, knownRootPids,
+  );
+  if (remaining.length > 0) {
+    appendCollectorLog('browser-tree-release-start', `count=${remaining.length} reason=${reason}`);
+    await terminateBrowserOwners(ownedBefore, { forceAfterMs: 3_000, verifiedProfilePath: profileDir });
+    const after = selectOwnedProfileBrowserProcesses(
+      ownedBefore, detectProfileLock(profileDir).owners, profileDir, knownRootPids,
     );
-    appendCollectorLog(
-      'browser-tree-release-finished',
-      `pid=${browserRootPid} alive=${isProcessAlive(browserRootPid)} reason=${reason}`,
-    );
-  }
-
-  if (!browserRootPid && adoptedEdgeBrowserOwners.length > 0) {
-    const adoptedOwners = adoptedEdgeBrowserOwners;
-    adoptedEdgeBrowserOwners = [];
-    const remaining = detectProfileLock(sessionProfileDirectory()).owners.filter((owner) =>
-      adoptedOwners.some((adopted) => adopted.pid === owner.pid),
-    );
-    if (remaining.length > 0) {
-      appendCollectorLog(
-        'browser-handoff-tree-release-start',
-        `owners=${formatBrowserOwners(remaining)} reason=${reason}`,
-      );
-      await terminateBrowserOwners(remaining, { forceAfterMs: 3_000 });
-      appendCollectorLog(
-        'browser-handoff-tree-release-finished',
-        `owners=${formatBrowserOwners(remaining)} alive=${remaining.some((owner) => isProcessAlive(owner.pid))} reason=${reason}`,
-      );
-    }
+    appendCollectorLog('browser-tree-release-finished', `remaining=${after.length} reason=${reason}`);
   }
 }
 
