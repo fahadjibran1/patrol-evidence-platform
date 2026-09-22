@@ -264,6 +264,7 @@ describe('commercial Phase 1 persistence foundation', () => {
       data: {
         orderId: order.id,
         provider: CommercialProvider.TEST,
+        providerMode: 'TEST',
         providerReference: 'payment-unique-1',
         status: CommercialPaymentStatus.SUCCEEDED,
         amountMinor: 29900,
@@ -274,6 +275,7 @@ describe('commercial Phase 1 persistence foundation', () => {
       data: {
         orderId: order.id,
         provider: CommercialProvider.TEST,
+        providerMode: 'TEST',
         providerReference: 'payment-unique-1',
         amountMinor: 29900,
         currency: 'GBP',
@@ -301,6 +303,7 @@ describe('commercial Phase 1 persistence foundation', () => {
       data: {
         orderId: randomUUID(),
         provider: CommercialProvider.TEST,
+        providerMode: 'TEST',
         providerReference: 'orphan-payment',
         amountMinor: 1,
         currency: 'GBP',
@@ -339,6 +342,7 @@ describe('commercial Phase 1 persistence foundation', () => {
       data: {
         orderId: order.id,
         provider: CommercialProvider.TEST,
+        providerMode: 'TEST',
         providerReference: 'negative-payment',
         amountMinor: -1,
         currency: 'GBP',

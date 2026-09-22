@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { CommercialActorType, CommercialOrderPurpose, CommercialPlan, PurchaseReferenceStatus, PurchaseRequestStatus } from '@prisma/client';
-import { createHash, randomBytes, randomUUID } from 'crypto';
+import { randomBytes, randomUUID } from 'crypto';
 import { PrismaService } from '@/prisma/prisma.service';
 import { EncryptionService } from '@/crypto/encryption.service';
 import { AuditService } from '@/audit/audit.service';
@@ -14,6 +14,7 @@ import {
 } from './commercial.constants';
 import { PurchaseRequestValidator } from './purchase-request.validator';
 import { createCommercialAudit, createCommercialOutboxEvent } from './commercial-persistence.util';
+import { hashPurchaseReference, taggedCommercialHash } from './commercial-hash.util';
 
 export interface PurchaseRequestCreatedResult {
   requestId: string;
@@ -46,9 +47,9 @@ export class CommercialPurchaseService {
   async createPurchaseRequest(input: unknown, now = new Date()): Promise<PurchaseRequestCreatedResult> {
     const validated = await this.validator.validate(input);
     const reference = randomBytes(OPAQUE_REFERENCE_BYTES).toString('base64url');
-    const referenceHash = this.hashOpaqueReference(reference);
-    const nonceHash = this.taggedHash('nonce', validated.request.clientNonce);
-    const machineFingerprintHash = this.taggedHash('machine-fingerprint', validated.request.machineFingerprint);
+    const referenceHash = hashPurchaseReference(reference);
+    const nonceHash = taggedCommercialHash('nonce', validated.request.clientNonce);
+    const machineFingerprintHash = taggedCommercialHash('machine-fingerprint', validated.request.machineFingerprint);
     const machineFingerprintEnc = this.encryption.encrypt(validated.request.machineFingerprint);
     const expiresAt = new Date(now.getTime() + PURCHASE_REFERENCE_TTL_MS);
     const publicOrderId = `ord_${randomUUID()}`;
@@ -151,7 +152,7 @@ export class CommercialPurchaseService {
     if (!/^[A-Za-z0-9_-]{43}$/.test(rawReference)) {
       throw this.invalidReference();
     }
-    const referenceHash = this.hashOpaqueReference(rawReference);
+    const referenceHash = hashPurchaseReference(rawReference);
     const correlationId = randomUUID();
 
     const outcome = await this.prisma.$transaction(async (tx) => {
@@ -265,14 +266,6 @@ export class CommercialPurchaseService {
       throw new ApiException(ERROR_CODES.COMMERCIAL_REFERENCE_REPLAYED, 'Purchase reference has already been used.', 409);
     }
     throw this.invalidReference();
-  }
-
-  private hashOpaqueReference(reference: string): string {
-    return this.taggedHash(PURCHASE_REFERENCE_SCOPE, reference);
-  }
-
-  private taggedHash(tag: string, value: string): string {
-    return createHash('sha256').update(`${tag}\0${value}`, 'utf8').digest('hex');
   }
 
   private invalidReference(): ApiException {

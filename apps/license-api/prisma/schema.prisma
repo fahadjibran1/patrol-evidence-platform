@@ -241,6 +241,11 @@ enum CommercialProvider {
   TEST
 }
 
+enum CommercialProviderMode {
+  TEST
+  LIVE
+}
+
 enum CommercialProviderEventStatus {
   RECEIVED
   PROCESSING
@@ -1017,15 +1022,15 @@ model CommercialPurchaseReference {
   @@index([status, expiresAt])
 }
 
-/// Immutable commercial agreement snapshot. Provider fields remain null until Phase 2.
+/// Immutable commercial agreement snapshot. Server-owned price/provider fields are populated at Checkout.
 model CommercialOrder {
-  id                        String                 @id @default(uuid())
-  publicOrderId             String                 @unique
+  id                        String                  @id @default(uuid())
+  publicOrderId             String                  @unique
   purchaseRequestId         String
   customerId                String?
-  purpose                   CommercialOrderPurpose @default(INITIAL)
-  state                     CommercialOrderState   @default(REQUEST_CREATED)
-  stateVersion              Int                    @default(0)
+  purpose                   CommercialOrderPurpose  @default(INITIAL)
+  state                     CommercialOrderState    @default(REQUEST_CREATED)
+  stateVersion              Int                     @default(0)
   failedFromState           CommercialOrderState?
   heldFromState             CommercialOrderState?
   product                   String
@@ -1035,20 +1040,26 @@ model CommercialOrder {
   taxPolicy                 String?
   termsVersion              String?
   privacyVersion            String?
-  providerCheckoutSessionId String?                @unique
-  providerPaymentIntentId   String?                @unique
+  providerCheckoutSessionId String?                 @unique
+  providerPaymentIntentId   String?                 @unique
+  providerCustomerId        String?
+  providerMode              CommercialProviderMode?
+  checkoutStatus            String?
+  checkoutExpiresAt         DateTime?
+  checkoutGeneration        Int                     @default(0)
   failureCode               String?
   failureMessage            String?
   holdReason                String?
-  createdAt                 DateTime               @default(now())
-  updatedAt                 DateTime               @updatedAt
+  createdAt                 DateTime                @default(now())
+  updatedAt                 DateTime                @updatedAt
   cancelledAt               DateTime?
   refundedAt                DateTime?
 
-  purchaseRequest CommercialPurchaseRequest  @relation(fields: [purchaseRequestId], references: [id], onDelete: Restrict)
-  customer        Customer?                  @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  payments        CommercialPayment[]
-  issuance        CommercialLicenceIssuance?
+  purchaseRequest  CommercialPurchaseRequest   @relation(fields: [purchaseRequestId], references: [id], onDelete: Restrict)
+  customer         Customer?                   @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  payments         CommercialPayment[]
+  checkoutSessions CommercialCheckoutSession[]
+  issuance         CommercialLicenceIssuance?
 
   @@unique([purchaseRequestId, purpose])
   @@index([customerId])
@@ -1056,42 +1067,73 @@ model CommercialOrder {
   @@index([createdAt])
 }
 
+model CommercialCheckoutSession {
+  id                      String                 @id @default(uuid())
+  orderId                 String
+  provider                CommercialProvider
+  providerMode            CommercialProviderMode
+  providerSessionId       String                 @unique
+  providerCustomerId      String?
+  providerPaymentIntentId String?
+  generation              Int
+  status                  String
+  isActive                Boolean                @default(true)
+  amountMinor             Int
+  currency                String
+  expiresAt               DateTime?
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
+  closedAt                DateTime?
+
+  order CommercialOrder @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@unique([orderId, generation])
+  @@index([orderId, isActive])
+  @@index([providerPaymentIntentId])
+}
+
 model CommercialPayment {
-  id                String                  @id @default(uuid())
-  orderId           String
-  provider          CommercialProvider
-  providerReference String
-  status            CommercialPaymentStatus @default(PENDING)
-  amountMinor       Int
-  taxMinor          Int                     @default(0)
-  currency          String
-  paidAt            DateTime?
-  refundedAt        DateTime?
-  createdAt         DateTime                @default(now())
-  updatedAt         DateTime                @updatedAt
+  id                 String                  @id @default(uuid())
+  orderId            String
+  provider           CommercialProvider
+  providerReference  String
+  providerMode       CommercialProviderMode
+  checkoutSessionId  String?
+  providerCustomerId String?
+  status             CommercialPaymentStatus @default(PENDING)
+  amountMinor        Int
+  taxMinor           Int                     @default(0)
+  currency           String
+  paidAt             DateTime?
+  refundedAt         DateTime?
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
 
   order CommercialOrder @relation(fields: [orderId], references: [id], onDelete: Restrict)
 
   @@unique([provider, providerReference])
+  @@unique([provider, checkoutSessionId])
   @@index([orderId])
   @@index([status])
 }
 
 model CommercialProviderEvent {
-  id              String                        @id @default(uuid())
-  provider        CommercialProvider
-  providerEventId String
-  eventType       String
-  payloadHash     String
-  status          CommercialProviderEventStatus @default(RECEIVED)
-  attempts        Int                           @default(0)
-  safeMetadata    Json                          @default("{}")
-  receivedAt      DateTime                      @default(now())
-  processedAt     DateTime?
-  lastError       String?
-  correlationId   String?
-  createdAt       DateTime                      @default(now())
-  updatedAt       DateTime                      @updatedAt
+  id                String                        @id @default(uuid())
+  provider          CommercialProvider
+  providerEventId   String
+  eventType         String
+  payloadHash       String
+  status            CommercialProviderEventStatus @default(RECEIVED)
+  attempts          Int                           @default(0)
+  safeMetadata      Json                          @default("{}")
+  receivedAt        DateTime                      @default(now())
+  processedAt       DateTime?
+  lastError         String?
+  correlationId     String?
+  providerCreatedAt DateTime?
+  livemode          Boolean                       @default(false)
+  createdAt         DateTime                      @default(now())
+  updatedAt         DateTime                      @updatedAt
 
   @@unique([provider, providerEventId])
   @@index([status])

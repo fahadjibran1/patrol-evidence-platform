@@ -109,6 +109,7 @@ export async function resetIntegrationDatabase(prisma: PrismaService): Promise<v
       "CommercialDeliveryAttempt",
       "CommercialLicenceArtifact",
       "CommercialLicenceIssuance",
+      "CommercialCheckoutSession",
       "CommercialPayment",
       "CommercialProviderEvent",
       "CommercialOutboxEvent",

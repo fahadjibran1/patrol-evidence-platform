@@ -188,6 +188,42 @@ class EnvVars {
   @IsOptional()
   @IsString()
   STRIPE_WEBHOOK_MAX_ATTEMPTS?: string;
+
+  @IsOptional()
+  @IsString()
+  COMMERCIAL_STRIPE_ENABLED?: string;
+
+  @IsOptional()
+  @IsString()
+  COMMERCIAL_STRIPE_SECRET_KEY?: string;
+
+  @IsOptional()
+  @IsString()
+  COMMERCIAL_STRIPE_WEBHOOK_SECRET?: string;
+
+  @IsOptional()
+  @IsString()
+  COMMERCIAL_STRIPE_API_VERSION?: string;
+
+  @IsOptional()
+  @IsString()
+  COMMERCIAL_CHECKOUT_SUCCESS_URL?: string;
+
+  @IsOptional()
+  @IsString()
+  COMMERCIAL_CHECKOUT_CANCEL_URL?: string;
+
+  @IsOptional()
+  @IsString()
+  COMMERCIAL_TERMS_VERSION?: string;
+
+  @IsOptional()
+  @IsString()
+  COMMERCIAL_PRIVACY_VERSION?: string;
+
+  @IsOptional()
+  @IsString()
+  COMMERCIAL_OUTBOX_WORKER_ENABLED?: string;
 }
 
 function isTruthy(value: string | undefined): boolean {
@@ -222,6 +258,19 @@ export function validateEnv(config: Record<string, unknown>): EnvVars {
     if (key.startsWith('sk_live_') && validated.NODE_ENV !== 'production') {
       console.warn('[validate-env] Live Stripe secret key detected outside production — refuse to mix modes.');
     }
+  }
+
+  const commercialStripeEnabled = isTruthy(validated.COMMERCIAL_STRIPE_ENABLED);
+  if (commercialStripeEnabled) {
+    if (!validated.COMMERCIAL_STRIPE_SECRET_KEY?.startsWith('sk_test_')) {
+      throw new Error('[validate-env] Commercial payments require an explicit Stripe TEST secret key.');
+    }
+    if (!validated.COMMERCIAL_STRIPE_WEBHOOK_SECRET?.startsWith('whsec_')) {
+      throw new Error('[validate-env] Commercial payments require a Stripe TEST webhook secret.');
+    }
+  }
+  if (validated.COMMERCIAL_STRIPE_SECRET_KEY?.startsWith('sk_live_')) {
+    throw new Error('[validate-env] Live Stripe credentials are not authorized for commercial Phase 2.');
   }
 
   // Optional infrastructure — never fail startup for these, but warn loudly in production
