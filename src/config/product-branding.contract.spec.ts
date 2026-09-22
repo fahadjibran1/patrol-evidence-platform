@@ -45,7 +45,7 @@ describe('PatrolSafe release branding contract', () => {
 
     expect(licencePage).toContain("const PUBLIC_REQUEST_PLAN = 'annual' as const");
     expect(licencePage).toContain('requestedPlan: PUBLIC_REQUEST_PLAN');
-    expect(licencePage).toContain('Annual subscription — £299 plus VAT where applicable');
+    expect(licencePage).toContain('£299 <span>+ VAT where applicable</span>');
     expect(licencePage).not.toContain('<option value="three_year">');
     expect(licencePage).not.toContain('<option value="lifetime">');
     expect(licencePage).not.toContain('setRequestedPlan');

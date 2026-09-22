@@ -5,6 +5,7 @@ import {
   parseSignedCommercialLicenceJson,
   signCommercialLicencePayload,
   verifyCommercialLicence,
+  verifyCommercialLicenceWithTrustRing,
   type CommercialLicencePayload,
 } from './index';
 
@@ -138,5 +139,27 @@ describe('commercial licence crypto', () => {
     const signed = signCommercialLicencePayload(samplePayload(), privatePem);
     const parsed = parseSignedCommercialLicenceJson(JSON.stringify(signed));
     expect(parsed?.payload.licenceId).toBe('lic-test-1');
+  });
+
+  it('keeps legacy v1 licences compatible while enforcing online annual product policy', () => {
+    const onlineKeys = createTestKeys();
+    const onlinePrivate = onlineKeys.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
+    const legacy = signCommercialLicencePayload(samplePayload({ product: 'Legacy PatrolSafe Product', plan: 'three_year', expiresAt: '2029-07-01' }), privatePem);
+    const online = signCommercialLicencePayload(samplePayload(), onlinePrivate);
+    const ring = [
+      { keyId: 'legacy', publicKey, policy: 'legacy-v1' as const },
+      { keyId: 'online', publicKey: onlineKeys.publicKey, policy: 'online-annual-v1' as const },
+    ];
+    expect(verifyCommercialLicenceWithTrustRing({ licence: legacy, trustedKeys: ring, installationId: 'inst-1', machineFingerprint: 'a'.repeat(64), today: '2026-08-01' })).toMatchObject({ valid: true, signingKeyId: 'legacy' });
+    expect(verifyCommercialLicenceWithTrustRing({ licence: online, trustedKeys: ring, installationId: 'inst-1', machineFingerprint: 'a'.repeat(64), today: '2026-08-01' })).toMatchObject({ valid: true, signingKeyId: 'online' });
+    const wrongProduct = signCommercialLicencePayload(samplePayload({ product: 'Another Product' }), onlinePrivate);
+    expect(verifyCommercialLicenceWithTrustRing({ licence: wrongProduct, trustedKeys: ring, installationId: 'inst-1', machineFingerprint: 'a'.repeat(64), today: '2026-08-01' })).toMatchObject({ valid: false, signatureValid: true, signingKeyId: 'online' });
+  });
+
+  it('rejects unknown and unsigned signer material without fallback', () => {
+    const unknown = createTestKeys();
+    const signed = signCommercialLicencePayload(samplePayload(), unknown.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString());
+    expect(verifyCommercialLicenceWithTrustRing({ licence: signed, trustedKeys: [{ keyId: 'legacy', publicKey, policy: 'legacy-v1' }], installationId: 'inst-1', machineFingerprint: 'a'.repeat(64), today: '2026-08-01' })).toMatchObject({ valid: false, signatureValid: false });
+    expect(verifyCommercialLicenceWithTrustRing({ licence: { ...signed, signature: '' }, trustedKeys: [{ keyId: 'legacy', publicKey, policy: 'legacy-v1' }], installationId: 'inst-1', machineFingerprint: 'a'.repeat(64), today: '2026-08-01' })).toMatchObject({ valid: false, signatureValid: false });
   });
 });

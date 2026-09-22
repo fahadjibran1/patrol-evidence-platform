@@ -5,7 +5,7 @@ import {
   LICENCE_REQUEST_FILE_VERSION,
   canonicalizeJson,
   parseSignedCommercialLicenceJson,
-  verifyCommercialLicence,
+  verifyCommercialLicenceWithTrustRing,
   type LicenceEvaluation,
   type LicenceFeatures,
   type LicencePlan,
@@ -20,7 +20,7 @@ import {
 import { InstallationIdentityService } from './installation-identity.service';
 import { LicenceEvaluationService } from './licence-evaluation.service';
 import { LocalTrialService, type TrialBootstrapDiagnostics } from './local-trial.service';
-import { loadLicensePublicKey } from './license-public-key.util';
+import { loadLicensePublicKeyRing } from './license-public-key.util';
 import {
   clearActivatedLicense,
   ensureInstallationId,
@@ -118,11 +118,12 @@ export class LicenseService {
     }
 
     const identity = this.identityService.getOrCreateIdentity();
-    const verification = verifyCommercialLicence({
+    const verification = verifyCommercialLicenceWithTrustRing({
       licence,
-      publicKey: loadLicensePublicKey(),
+      trustedKeys: loadLicensePublicKeyRing(),
       installationId: identity.installationId,
       machineFingerprint: identity.machineFingerprint,
+      expectedProduct: LICENCE_PRODUCT_NAME,
     });
 
     if (!verification.valid || !verification.payload) {

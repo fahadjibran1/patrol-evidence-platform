@@ -5,6 +5,7 @@ import {
   getPublicKeyCandidatePathsForTests,
   isPackagedProductionMode,
   loadLicensePublicKey,
+  loadLicensePublicKeyRing,
   readPublicKeyFile,
   resolveLicensePublicKeyFilePath,
   resolveLicensePublicKeyPem,
@@ -23,6 +24,8 @@ describe('license-public-key.util', () => {
   const originalEnv = {
     LICENSE_PUBLIC_KEY: process.env.LICENSE_PUBLIC_KEY,
     LICENSE_PUBLIC_KEY_FILE: process.env.LICENSE_PUBLIC_KEY_FILE,
+    LICENSE_ONLINE_PUBLIC_KEY: process.env.LICENSE_ONLINE_PUBLIC_KEY,
+    LICENSE_ONLINE_PUBLIC_KEY_ID: process.env.LICENSE_ONLINE_PUBLIC_KEY_ID,
     PATROL_DESKTOP_PACKAGED: process.env.PATROL_DESKTOP_PACKAGED,
     PATROL_RESOURCES_PATH: process.env.PATROL_RESOURCES_PATH,
     PATROL_APP_PATH: process.env.PATROL_APP_PATH,
@@ -41,6 +44,8 @@ describe('license-public-key.util', () => {
   beforeEach(() => {
     delete process.env.LICENSE_PUBLIC_KEY;
     delete process.env.LICENSE_PUBLIC_KEY_FILE;
+    delete process.env.LICENSE_ONLINE_PUBLIC_KEY;
+    delete process.env.LICENSE_ONLINE_PUBLIC_KEY_ID;
     delete process.env.PATROL_DESKTOP_PACKAGED;
     delete process.env.PATROL_RESOURCES_PATH;
     delete process.env.PATROL_APP_PATH;
@@ -106,6 +111,17 @@ describe('license-public-key.util', () => {
 
     expect(resolveLicensePublicKeyFilePath()).toBe(packagedPublicPath);
     expect(resolveLicensePublicKeyPem()?.trim()).toBe(publicPem.trim());
+  });
+
+  it('adds an explicitly configured online public key without replacing legacy trust', () => {
+    process.env.LICENSE_PUBLIC_KEY = publicPem;
+    const online = generateKeyPairSync('ed25519');
+    process.env.LICENSE_ONLINE_PUBLIC_KEY = online.publicKey.export({ type: 'spki', format: 'pem' }).toString();
+    process.env.LICENSE_ONLINE_PUBLIC_KEY_ID = 'managed-online-v1';
+    expect(loadLicensePublicKeyRing().map((entry) => [entry.keyId, entry.policy])).toEqual([
+      ['vesoft-offline-v1', 'legacy-v1'],
+      ['managed-online-v1', 'online-annual-v1'],
+    ]);
   });
 
   it('detects private key material during packaging safety scans', () => {

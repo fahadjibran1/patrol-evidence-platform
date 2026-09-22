@@ -7,6 +7,7 @@ const policy = require('../../desktop/security-policy') as {
   isTrustedRendererNavigation: (value: string, input: { packagedEntryUrl: string; developmentUrl: string }) => boolean;
   sanitizeDesktopConfigPatch: (value: unknown) => Record<string, unknown>;
   validateExternalUrl: (value: string) => string;
+  validateCommercialPurchaseUrl: (value: string, approvedOrigin: string) => string;
   validateOpenPath: (value: string, roots: string[]) => string;
 };
 
@@ -24,6 +25,18 @@ describe('Electron trust boundary contract', () => {
     'rejects unsafe external destination %s',
     (url) => expect(() => policy.validateExternalUrl(url)).toThrow(),
   );
+
+  it('opens only an opaque purchase reference beneath the configured HTTPS S4 origin', () => {
+    const ref = 'A'.repeat(43);
+    expect(policy.validateCommercialPurchaseUrl(`https://www.sfour.co.uk/patrolsafe/buy/${ref}`, 'https://www.sfour.co.uk/'))
+      .toBe(`https://www.sfour.co.uk/patrolsafe/buy/${ref}`);
+    for (const value of [
+      `http://www.sfour.co.uk/patrolsafe/buy/${ref}`,
+      `https://attacker.example/patrolsafe/buy/${ref}`,
+      `https://www.sfour.co.uk/patrolsafe/buy/${ref}?redirect=https://attacker.example`,
+      'javascript:alert(1)',
+    ]) expect(() => policy.validateCommercialPurchaseUrl(value, 'https://www.sfour.co.uk/')).toThrow();
+  });
 
   it('allows only managed paths', () => {
     const root = join(process.cwd(), `tmp-desktop-shell-${process.pid}`);
@@ -72,7 +85,7 @@ describe('Electron trust boundary contract', () => {
     expect(desktop).toContain('@UseGuards(DesktopInitializedMutationGuard)');
     expect(desktop).toContain('desktopRecoveryService.consume(recoveryToken)');
     expect(licence).toContain('@UseGuards(DesktopApiGuard)');
-    expect(licence.match(/@UseGuards\(JwtAuthGuard\)/g)).toHaveLength(4);
+    expect(licence.match(/@UseGuards\(JwtAuthGuard\)/g)).toHaveLength(6);
   });
 
   it('keeps mapping, WhatsApp controls, and evidence behind bearer authentication', () => {

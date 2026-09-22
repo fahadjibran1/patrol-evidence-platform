@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { InstallationIdentityService } from './installation-identity.service';
-import { LocalTrialService, TRIAL_LAST_SEEN_PERSIST_INTERVAL_MS } from './local-trial.service';
+import { LocalTrialService, NEW_TRIAL_DURATION_MS, TRIAL_LAST_SEEN_PERSIST_INTERVAL_MS } from './local-trial.service';
 
 describe('LocalTrialService bounded persistence', () => {
   const previousEnv = { ...process.env };
@@ -58,6 +58,19 @@ describe('LocalTrialService bounded persistence', () => {
     const restarted = service().getOrCreateTrial({ hasCommercialLicence: false })!;
     expect(restarted.installationId).toBe(created.installationId);
     expect(restarted.startedAt).toBe(created.startedAt);
+  });
+
+  it('creates new v1.0.3 trials for exactly 720 hours', () => {
+    const created = service().getOrCreateTrial({ hasCommercialLicence: false })!;
+    expect(Date.parse(created.expiresAt) - Date.parse(created.startedAt)).toBe(NEW_TRIAL_DURATION_MS);
+  });
+
+  it('does not recalculate a previously persisted v1.0.2 expiry', () => {
+    const trial = service();
+    const created = trial.getOrCreateTrial({ hasCommercialLicence: false })!;
+    const legacyExpiry = '2026-10-04T23:59:59.000Z';
+    (trial as unknown as { persistTrialRecord(record: typeof created): void }).persistTrialRecord({ ...created, expiresAt: legacyExpiry });
+    expect(service().getOrCreateTrial({ hasCommercialLicence: false })!.expiresAt).toBe(legacyExpiry);
   });
 
   it('retains expiry and backward-clock protection', () => {

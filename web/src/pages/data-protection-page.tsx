@@ -32,9 +32,11 @@ export function DataProtectionPage(): JSX.Element {
       const result = await restoreDesktopDataBackup();
       if (result) {
         setMessage(
-          result.requiresWhatsAppRelink
-            ? `Backup restored with ${result.evidenceFileCount} evidence files. Relink WhatsApp before restarting monitoring.`
-            : `Backup restored with ${result.evidenceFileCount} evidence files. PatrolSafe has safely restarted.`,
+          result.requiresLicenceRecovery
+            ? `Backup restored with ${result.evidenceFileCount} evidence files. This workstation needs licence recovery before monitoring can resume.`
+            : result.requiresWhatsAppRelink
+              ? `Backup restored with ${result.evidenceFileCount} evidence files. Relink WhatsApp and recover the licence before restarting monitoring.`
+              : `Backup restored with ${result.evidenceFileCount} evidence files. PatrolSafe has safely restarted.`,
         );
       }
     } catch {

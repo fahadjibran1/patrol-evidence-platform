@@ -141,6 +141,75 @@ export interface CommercialLicenceVerificationResult {
   reason?: string;
   payload?: CommercialLicencePayload;
   signatureValid?: boolean;
+  signingKeyId?: string;
+}
+
+export interface CommercialLicenceTrustEntry {
+  keyId: string;
+  publicKey: KeyObject;
+  /** New online issuers are deliberately narrower than the legacy offline issuer. */
+  policy: 'legacy-v1' | 'online-annual-v1';
+}
+
+export interface VerifyCommercialLicenceWithTrustRingInput {
+  licence: SignedCommercialLicence;
+  trustedKeys: readonly CommercialLicenceTrustEntry[];
+  installationId: string;
+  machineFingerprint: string;
+  today?: string;
+  clockToleranceHours?: number;
+  expectedProduct?: string;
+}
+
+export function verifyCommercialLicenceWithTrustRing(
+  input: VerifyCommercialLicenceWithTrustRingInput,
+): CommercialLicenceVerificationResult {
+  if (!input.trustedKeys.length) {
+    return { valid: false, reason: 'Licence public key is not configured on this installation.', signatureValid: false };
+  }
+
+  const matching = input.trustedKeys.filter((entry) =>
+    verifyCommercialLicenceSignature(input.licence, entry.publicKey),
+  );
+  if (matching.length !== 1) {
+    return { valid: false, reason: 'Licence signature is not trusted.', signatureValid: false };
+  }
+
+  const trusted = matching[0];
+  const verification = verifyCommercialLicence({
+    licence: input.licence,
+    publicKey: trusted.publicKey,
+    installationId: input.installationId,
+    machineFingerprint: input.machineFingerprint,
+    today: input.today,
+    clockToleranceHours: input.clockToleranceHours,
+  });
+  if (!verification.valid || !verification.payload) {
+    return { ...verification, signingKeyId: trusted.keyId };
+  }
+
+  if (trusted.policy === 'online-annual-v1') {
+    if (verification.payload.product !== (input.expectedProduct ?? 'Patrol Evidence Platform')) {
+      return {
+        valid: false,
+        reason: 'Licence product is not valid for PatrolSafe.',
+        signatureValid: true,
+        payload: verification.payload,
+        signingKeyId: trusted.keyId,
+      };
+    }
+    if (verification.payload.plan !== 'annual') {
+      return {
+        valid: false,
+        reason: 'Online PatrolSafe licences must use the annual plan.',
+        signatureValid: true,
+        payload: verification.payload,
+        signingKeyId: trusted.keyId,
+      };
+    }
+  }
+
+  return { ...verification, signingKeyId: trusted.keyId };
 }
 
 export function verifyCommercialLicence(

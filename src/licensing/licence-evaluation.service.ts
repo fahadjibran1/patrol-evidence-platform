@@ -8,12 +8,13 @@ import {
   type LicenceFeatures,
   type LocalTrialRecord,
   type SignedCommercialLicence,
+  verifyCommercialLicenceWithTrustRing,
+  LICENCE_PRODUCT_NAME,
 } from '@patrol/license-core';
 import { InstallationIdentityService } from './installation-identity.service';
 import { LocalTrialService } from './local-trial.service';
 import { getStoredCommercialLicence } from './commercial-licence-store.util';
-import { loadLicensePublicKey } from './license-public-key.util';
-import { verifyCommercialLicence } from '@patrol/license-core';
+import { loadLicensePublicKeyRing } from './license-public-key.util';
 
 @Injectable()
 export class LicenceEvaluationService {
@@ -75,12 +76,13 @@ export class LicenceEvaluationService {
     const commercial = options?.commercial ?? getStoredCommercialLicence();
 
     if (commercial) {
-      const verification = verifyCommercialLicence({
+      const verification = verifyCommercialLicenceWithTrustRing({
         licence: commercial,
-        publicKey: loadLicensePublicKey(),
+        trustedKeys: loadLicensePublicKeyRing(),
         installationId: identity.installationId,
         machineFingerprint: identity.machineFingerprint,
         today: todayUtcDate(),
+        expectedProduct: LICENCE_PRODUCT_NAME,
       });
 
       if (verification.valid && verification.payload) {
@@ -208,8 +210,7 @@ export class LicenceEvaluationService {
       }
 
       if (this.trialService.isTrialActive(trial)) {
-        const expiresDate = trial.expiresAt.slice(0, 10);
-        const remaining = daysRemainingUntil(expiresDate) ?? 0;
+        const remaining = Math.max(0, Math.ceil((Date.parse(trial.expiresAt) - Date.now()) / 86_400_000));
         return this.buildEvaluation({
           mode: 'trial',
           status: 'active',

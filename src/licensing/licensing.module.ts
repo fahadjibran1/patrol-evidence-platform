@@ -7,6 +7,7 @@ import { LicenseController } from './license.controller';
 import { LicenseService } from './license.service';
 import { LicensingService } from './licensing.service';
 import { LocalTrialService } from './local-trial.service';
+import { CommercialPurchaseClientService } from './commercial-purchase-client.service';
 
 @Global()
 @Module({
@@ -19,6 +20,7 @@ import { LocalTrialService } from './local-trial.service';
     LicenceFeatureGuard,
     LicenseService,
     LicensingService,
+    CommercialPurchaseClientService,
   ],
   exports: [
     InstallationIdentityService,

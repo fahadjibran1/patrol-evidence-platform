@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('desktopBridge', {
   startBackend: () => ipcRenderer.invoke('desktop:start-backend'),
   stopBackend: () => ipcRenderer.invoke('desktop:stop-backend'),
   openExternal: (targetUrl) => ipcRenderer.invoke('desktop:open-external', targetUrl),
+  openCommercialPurchase: (targetUrl) => ipcRenderer.invoke('desktop:open-commercial-purchase', targetUrl),
   openPath: (targetPath) => ipcRenderer.invoke('desktop:open-path', targetPath),
   secureStoreGet: (key) => ipcRenderer.invoke('desktop:secure-store-get', key),
   secureStoreSet: (key, value) => ipcRenderer.invoke('desktop:secure-store-set', key, value),

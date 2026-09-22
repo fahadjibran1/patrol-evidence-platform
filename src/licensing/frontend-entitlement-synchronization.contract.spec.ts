@@ -39,10 +39,16 @@ describe('frontend entitlement synchronization contract', () => {
   });
 
   it('separates licence request and activation file types', () => {
-    expect(licencePage).toContain('Step 1');
+    expect(licencePage).toContain('Manual / Offline activation');
     expect(licencePage).toContain('Create licence request (.tgreq)');
-    expect(licencePage).toContain('Step 2');
-    expect(licencePage).toContain('Choose licence file (.tglic)');
+    expect(licencePage).toContain('Activate supplied licence (.tglic)');
     expect(fileImport).toContain("LICENCE_IMPORT_ACCEPT = '.tglic'");
+  });
+
+  it('keeps online purchase subordinate to the shared local entitlement authority', () => {
+    expect(licencePage).toContain("'/license/commercial/purchase'");
+    expect(licencePage).toContain("'/license/commercial/status'");
+    expect(licencePage).toContain('await reconcileEntitlement(next);');
+    expect(licencePage).not.toContain('stripePriceId');
   });
 });

@@ -2,6 +2,7 @@ import { createPublicKey, type KeyObject } from 'crypto';
 import { existsSync, readFileSync } from 'fs';
 import * as path from 'path';
 import { loadPublicKeyFromPem } from './license-crypto.util';
+import type { CommercialLicenceTrustEntry } from '@patrol/license-core';
 
 const PUBLIC_KEY_FILE_NAMES = ['license-public.pem', 'license-public.key'];
 const PRIVATE_KEY_MARKERS = [/PRIVATE KEY/i, /BEGIN ED25519 PRIVATE KEY/i];
@@ -144,6 +145,37 @@ export function loadLicensePublicKey(): KeyObject | null {
   } catch {
     return null;
   }
+}
+
+function resolveOnlineLicensePublicKeyPem(): string | null {
+  const envValue = process.env.LICENSE_ONLINE_PUBLIC_KEY?.trim();
+  if (envValue) {
+    const normalized = envValue.includes('\\n') ? envValue.replace(/\\n/g, '\n') : envValue;
+    assertNotPrivateKeyMaterial(normalized, 'LICENSE_ONLINE_PUBLIC_KEY');
+    validatePublicKeyPemContents(normalized, 'LICENSE_ONLINE_PUBLIC_KEY');
+    return normalized;
+  }
+
+  const explicitFile = process.env.LICENSE_ONLINE_PUBLIC_KEY_FILE?.trim();
+  if (!explicitFile) return null;
+  return readPublicKeyFile(explicitFile);
+}
+
+export function loadLicensePublicKeyRing(): CommercialLicenceTrustEntry[] {
+  const entries: CommercialLicenceTrustEntry[] = [];
+  const legacy = loadLicensePublicKey();
+  if (legacy) {
+    entries.push({ keyId: 'vesoft-offline-v1', publicKey: legacy, policy: 'legacy-v1' });
+  }
+  const onlinePem = resolveOnlineLicensePublicKeyPem();
+  if (onlinePem) {
+    entries.push({
+      keyId: process.env.LICENSE_ONLINE_PUBLIC_KEY_ID?.trim() || 'vesoft-online-v1',
+      publicKey: loadPublicKeyFromPem(onlinePem),
+      policy: 'online-annual-v1',
+    });
+  }
+  return entries;
 }
 
 export function isLicensePublicKeyConfigured(): boolean {

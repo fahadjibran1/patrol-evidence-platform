@@ -118,6 +118,8 @@ function createFixture(root) {
   fs.mkdirSync(path.join(userDataRoot, 'secure-session'), { recursive: true });
   fs.writeFileSync(path.join(userDataRoot, 'secure-session', 'desktop-auth-session.secure'), 'synthetic-encrypted-session');
   fs.writeFileSync(path.join(userDataRoot, 'license-store.json'), '{"synthetic":true}');
+  fs.writeFileSync(path.join(userDataRoot, 'installation-identity.json'), JSON.stringify({ installationId: '00000000-0000-4000-8000-000000000001', machineFingerprint: 'a'.repeat(64), createdAt: '2026-09-22T00:00:00.000Z' }));
+  fs.writeFileSync(path.join(userDataRoot, 'commercial-licence.tglic'), '{"syntheticCommercialLicence":true}');
   return { userDataRoot, databasePath, evidenceRoot, configPath };
 }
 
@@ -402,13 +404,14 @@ async function run() {
     mutated.close();
     fs.writeFileSync(fixture.configPath, JSON.stringify({ autoStartCollector: false }));
     fs.writeFileSync(path.join(fixture.userDataRoot, 'data', 'whatsapp-session', 'session.marker'), 'changed-session');
-    const restored = await durability.restorePatrolSafeBackup({ ...fixture, backupRoot: backup.backupPath, machineBindingHash: 'machine-a' });
+    const restored = await durability.restorePatrolSafeBackup({ ...fixture, backupRoot: backup.backupPath, machineBindingHash: 'machine-a', validateCommercialLicenceRestore: () => true });
     const restoredConfig = JSON.parse(fs.readFileSync(fixture.configPath, 'utf8'));
     results.sameMachineRestore = restored.sameMachine && !restored.requiresWhatsAppRelink && databaseCount(fixture.databasePath, 'patrol_images') === 3 && restoredConfig.autoStartCollector === true;
     results.monitoringPreferencePreserved = restoredConfig.autoStartCollector === true;
     results.workspaceTimeZonePreserved = restoredConfig.appTimeZone === 'Asia/Dubai';
     results.sameMachineLocalAuth = fs.readFileSync(path.join(fixture.userDataRoot, 'data', 'whatsapp-session', 'session.marker'), 'utf8') === 'same-machine-session';
     results.sameMachineLicenceState = fs.readFileSync(path.join(fixture.userDataRoot, 'license-store.json'), 'utf8') === '{"synthetic":true}';
+    results.sameMachineCommercialLicence = !restored.requiresLicenceRecovery && fs.readFileSync(path.join(fixture.userDataRoot, 'commercial-licence.tglic'), 'utf8') === '{"syntheticCommercialLicence":true}';
     results.mappingEvidencePreserved = databaseCount(fixture.databasePath, 'sites') === 2 && databaseCount(fixture.databasePath, 'patrol_groups') === 2 && databaseCount(fixture.databasePath, 'patrol_images') === 3;
     const restoredDatabase = new Database(fixture.databasePath, { readonly: true });
     const restoredEvidence = restoredDatabase.prepare('SELECT "filePath", "fileSize", "contentSha256" FROM "patrol_images" ORDER BY "id"').all();
@@ -479,7 +482,22 @@ async function run() {
     fs.mkdirSync(replacement.userDataRoot, { recursive: true });
     const replacementResult = await durability.restorePatrolSafeBackup({ ...replacement, backupRoot: backup.backupPath, machineBindingHash: 'machine-b' });
     const replacementConfig = JSON.parse(fs.readFileSync(replacement.configPath, 'utf8'));
-    results.replacementMachine = replacementResult.requiresWhatsAppRelink && replacementConfig.autoStartCollector === false && replacementConfig.appTimeZone === 'Asia/Dubai' && !fs.existsSync(path.join(replacement.userDataRoot, 'data', 'whatsapp-session')) && databaseCount(replacement.databasePath, 'patrol_images') === 3;
+    results.replacementMachine = replacementResult.requiresWhatsAppRelink && replacementResult.requiresLicenceRecovery && replacementConfig.autoStartCollector === false && replacementConfig.appTimeZone === 'Asia/Dubai' && !fs.existsSync(path.join(replacement.userDataRoot, 'data', 'whatsapp-session')) && !fs.existsSync(path.join(replacement.userDataRoot, 'commercial-licence.tglic')) && databaseCount(replacement.databasePath, 'patrol_images') === 3;
+
+    const corruptLicenceBackup = path.join(root, 'corrupt-commercial-licence-backup');
+    fs.cpSync(backup.backupPath, corruptLicenceBackup, { recursive: true });
+    const corruptLicencePath = path.join(corruptLicenceBackup, 'same-machine', 'commercial-licence.tglic');
+    fs.writeFileSync(corruptLicencePath, '{"corrupt":true}');
+    const corruptManifestPath = path.join(corruptLicenceBackup, 'manifest.json');
+    const corruptManifest = JSON.parse(fs.readFileSync(corruptManifestPath, 'utf8'));
+    const corruptComponent = corruptManifest.sameMachine.components.find((component) => component.path === 'commercial-licence.tglic');
+    corruptComponent.bytes = fs.statSync(corruptLicencePath).size;
+    corruptComponent.sha256 = sha256(fs.readFileSync(corruptLicencePath));
+    fs.writeFileSync(corruptManifestPath, JSON.stringify(corruptManifest, null, 2));
+    const corruptTarget = { userDataRoot: path.join(root, 'corrupt-licence-target', 'user-data'), databasePath: path.join(root, 'corrupt-licence-target', 'user-data', 'data', 'patrol-evidence.db'), evidenceRoot: path.join(root, 'corrupt-licence-target', 'evidence'), configPath: path.join(root, 'corrupt-licence-target', 'user-data', 'workspace-config.json') };
+    fs.mkdirSync(corruptTarget.userDataRoot, { recursive: true });
+    const corruptRestore = await durability.restorePatrolSafeBackup({ ...corruptTarget, backupRoot: corruptLicenceBackup, machineBindingHash: 'machine-a', validateCommercialLicenceRestore: () => false });
+    results.corruptCommercialLicenceFailsClosed = corruptRestore.requiresLicenceRecovery && !fs.existsSync(path.join(corruptTarget.userDataRoot, 'commercial-licence.tglic')) && databaseCount(corruptTarget.databasePath, 'patrol_images') === 3;
 
     if (process.env.PATROLSAFE_ADOPTION_SOURCE) {
       const adoptionCopy = path.join(root, 'preserved-certified-copy.db');

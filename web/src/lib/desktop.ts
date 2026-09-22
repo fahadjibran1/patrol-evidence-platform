@@ -19,6 +19,7 @@ declare global {
       startBackend: () => Promise<DesktopState>;
       stopBackend: () => Promise<DesktopState>;
       openExternal: (targetUrl: string) => Promise<boolean>;
+      openCommercialPurchase: (targetUrl: string) => Promise<boolean>;
       openPath: (targetPath: string) => Promise<string>;
       onBackendStatus?: (callback: (payload: DesktopState) => void) => () => void;
       secureStoreGet?: (key: string) => Promise<string | null>;
@@ -120,6 +121,23 @@ export async function openDesktopExternal(targetUrl: string): Promise<boolean> {
   }
 
   return window.desktopBridge.openExternal(targetUrl);
+}
+
+export async function openCommercialPurchase(targetUrl: string): Promise<boolean> {
+  if (!window.desktopBridge?.openCommercialPurchase) return false;
+  return window.desktopBridge.openCommercialPurchase(targetUrl);
+}
+
+export async function readCommercialPurchaseSession(): Promise<string | null> {
+  return window.desktopBridge?.secureStoreGet?.('commercial-purchase-session') ?? null;
+}
+
+export async function writeCommercialPurchaseSession(value: string): Promise<boolean> {
+  return window.desktopBridge?.secureStoreSet?.('commercial-purchase-session', value) ?? false;
+}
+
+export async function clearCommercialPurchaseSession(): Promise<boolean> {
+  return window.desktopBridge?.secureStoreClear?.('commercial-purchase-session') ?? false;
 }
 
 export async function openDesktopPath(targetPath: string): Promise<string | null> {

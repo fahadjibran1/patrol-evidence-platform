@@ -423,6 +423,7 @@ export interface DesktopRestoreResult {
   restored: true;
   sameMachine: boolean;
   requiresWhatsAppRelink: boolean;
+  requiresLicenceRecovery?: boolean;
   recoveryBackupPath: string;
   schemaVersion: number;
   evidenceFileCount: number;

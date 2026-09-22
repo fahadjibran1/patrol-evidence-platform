@@ -29,6 +29,7 @@ const {
   sanitizeDesktopConfigPatch,
   sanitizePostgresConfig,
   validateExternalUrl,
+  validateCommercialPurchaseUrl,
   validateOpenPath,
   validateSecureStoreKey,
   validateSecureStoreValue,
@@ -39,6 +40,7 @@ const {
   restorePatrolSafeBackup,
   verifyPatrolSafeBackup,
 } = require('./data-durability');
+const { validateBackedUpCommercialLicence } = require('./commercial-licence-backup');
 
 const packageMetadata = require('../package.json');
 const {
@@ -576,6 +578,10 @@ function readSecureStoreValue(key) {
     if (safeStorage.isEncryptionAvailable()) {
       return safeStorage.decryptString(payload);
     }
+    if (key === 'commercial-purchase-session' && isProductionDesktopMode()) {
+      appendDesktopLog('commercial-purchase-session-unavailable', 'reason=os-encryption-unavailable');
+      return null;
+    }
   } catch (error) {
     appendDesktopLog('secure-store-decrypt-failed', error instanceof Error ? error.message : String(error));
     return null;
@@ -588,8 +594,12 @@ function writeSecureStoreValue(key, value) {
   const directory = getSecureStoreDirectory();
   fs.mkdirSync(directory, { recursive: true });
   const filePath = getSecureStoreFilePath(key);
-  const payload =
-    safeStorage.isEncryptionAvailable() ? safeStorage.encryptString(String(value)) : Buffer.from(String(value), 'utf8');
+  if (key === 'commercial-purchase-session' && isProductionDesktopMode() && !safeStorage.isEncryptionAvailable()) {
+    throw new Error('Secure purchase recovery storage is unavailable.');
+  }
+  const payload = safeStorage.isEncryptionAvailable()
+    ? safeStorage.encryptString(String(value))
+    : Buffer.from(String(value), 'utf8');
   fs.writeFileSync(filePath, payload);
 }
 
@@ -819,6 +829,13 @@ function resolvePackagedLicensePublicKeyPath() {
   return null;
 }
 
+function resolvePackagedOnlineLicensePublicKeyPath() {
+  const explicit = process.env.LICENSE_ONLINE_PUBLIC_KEY_FILE?.trim();
+  if (explicit && fs.existsSync(explicit)) return explicit;
+  const roots = app.isPackaged ? [process.resourcesPath] : [path.join(process.cwd(), 'resources'), path.join(process.cwd(), '.license-keys')];
+  return roots.map((root) => path.join(root, 'license-online-public.pem')).find((candidate) => fs.existsSync(candidate)) || null;
+}
+
 function applyLicensePublicKeyRuntimeEnv(env) {
   env.PATROL_DESKTOP_PACKAGED = app.isPackaged ? 'true' : 'false';
 
@@ -833,6 +850,10 @@ function applyLicensePublicKeyRuntimeEnv(env) {
   const publicKeyPath = resolvePackagedLicensePublicKeyPath();
   if (publicKeyPath) {
     env.LICENSE_PUBLIC_KEY_FILE = publicKeyPath;
+  }
+  const onlinePublicKeyPath = resolvePackagedOnlineLicensePublicKeyPath();
+  if (onlinePublicKeyPath) {
+    env.LICENSE_ONLINE_PUBLIC_KEY_FILE = onlinePublicKeyPath;
   }
 
   return env;
@@ -2140,7 +2161,16 @@ async function restoreCustomerBackup(backupRoot) {
       if (error?.code !== 'PATROLSAFE_DATABASE_CORRUPT') throw error;
       appendDesktopLog('DATA_RESTORE_RECOVERY_BACKUP_SKIPPED', 'reason=active-database-corrupt');
     }
-    const result = await restorePatrolSafeBackup({ ...paths, backupRoot: path.resolve(backupRoot) });
+    const result = await restorePatrolSafeBackup({
+      ...paths,
+      backupRoot: path.resolve(backupRoot),
+      validateCommercialLicenceRestore: ({ licencePath, identityPath }) => validateBackedUpCommercialLicence({
+        licencePath,
+        identityPath,
+        legacyPublicKeyPath: resolvePackagedLicensePublicKeyPath(),
+        onlinePublicKeyPath: resolvePackagedOnlineLicensePublicKeyPath(),
+      }),
+    });
     appendDesktopLog(
       'DATA_RESTORE_COMPLETE',
       `backup=${path.resolve(backupRoot)} recovery=${recovery?.backupPath || result.rollbackPath} sameMachine=${result.sameMachine} relinkRequired=${result.requiresWhatsAppRelink}`,
@@ -2149,6 +2179,7 @@ async function restoreCustomerBackup(backupRoot) {
       restored: true,
       sameMachine: result.sameMachine,
       requiresWhatsAppRelink: result.requiresWhatsAppRelink,
+      requiresLicenceRecovery: result.requiresLicenceRecovery,
       recoveryBackupPath: recovery?.backupPath || result.rollbackPath,
       schemaVersion: verification.manifest.schemaVersion,
       evidenceFileCount: verification.evidenceFileCount,
@@ -3312,6 +3343,12 @@ if (handleSquirrelEvent()) {
   });
   handleTrusted('desktop:open-external', async (targetUrl) => {
     await shell.openExternal(validateExternalUrl(targetUrl));
+    return true;
+  });
+  handleTrusted('desktop:open-commercial-purchase', async (targetUrl) => {
+    const approvedOrigin = process.env.PATROLSAFE_COMMERCIAL_PURCHASE_ORIGIN?.trim();
+    if (!approvedOrigin) throw new Error('Online purchasing is not configured in this build.');
+    await shell.openExternal(validateCommercialPurchaseUrl(targetUrl, approvedOrigin));
     return true;
   });
   handleTrusted('desktop:open-path', async (targetPath) => {

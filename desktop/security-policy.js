@@ -7,9 +7,11 @@ const ALLOWED_EXTERNAL_HOSTS = new Set([
   'www.techguardsecurity.com',
   'techguards.co.uk',
   'www.techguards.co.uk',
+  'sfour.co.uk',
+  'www.sfour.co.uk',
 ]);
-const ALLOWED_MAIL_DOMAINS = new Set(['techguardsecurity.com', 'techguards.co.uk']);
-const ALLOWED_SECURE_STORE_KEYS = new Set(['desktop-auth-session']);
+const ALLOWED_MAIL_DOMAINS = new Set(['techguardsecurity.com', 'techguards.co.uk', 'sfour.co.uk']);
+const ALLOWED_SECURE_STORE_KEYS = new Set(['desktop-auth-session', 'commercial-purchase-session']);
 const ALLOWED_CONFIG_KEYS = new Set([
   'workspaceName', 'companyName', 'localAdminEmail', 'localAdminFirstName', 'localAdminLastName',
   'storageRootPath', 'autoLaunchApp', 'autoStartCollector', 'whatsappAllowFromMe', 'setupCompleted', 'setupStage',
@@ -43,6 +45,28 @@ function validateExternalUrl(value) {
     if (domain && ALLOWED_MAIL_DOMAINS.has(domain)) return parsed.toString();
   }
   throw new Error('This external destination is not allowed.');
+}
+
+function validateCommercialPurchaseUrl(value, approvedOrigin) {
+  if (typeof value !== 'string' || value.length > 2048) throw new Error('Commercial purchase URL is invalid.');
+  let target;
+  let approved;
+  try {
+    target = new URL(value);
+    approved = new URL(approvedOrigin);
+  } catch {
+    throw new Error('Commercial purchase URL is invalid.');
+  }
+  if (approved.protocol !== 'https:' || approved.username || approved.password || approved.search || approved.hash || approved.pathname !== '/') {
+    throw new Error('Approved commercial purchase origin is invalid.');
+  }
+  if (target.protocol !== 'https:' || target.origin !== approved.origin || target.username || target.password) {
+    throw new Error('Commercial purchase destination is not allowed.');
+  }
+  if (!/^\/patrolsafe\/buy\/[A-Za-z0-9_-]{43}$/.test(target.pathname) || target.search || target.hash) {
+    throw new Error('Commercial purchase URL is invalid.');
+  }
+  return target.toString();
 }
 
 function isTrustedRendererNavigation(value, { packagedEntryUrl, developmentUrl }) {
@@ -135,6 +159,7 @@ module.exports = {
   sanitizeDesktopConfigPatch,
   sanitizePostgresConfig,
   validateExternalUrl,
+  validateCommercialPurchaseUrl,
   validateOpenPath,
   validateSecureStoreKey,
   validateSecureStoreValue,

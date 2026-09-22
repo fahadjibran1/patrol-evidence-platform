@@ -1008,6 +1008,11 @@ input, select, textarea {
 .customer-details > summary, .advanced-inline-details > summary { cursor: pointer; color: var(--accent); font-weight: 700; }
 .customer-details[open] > summary, .advanced-inline-details[open] > summary { margin-bottom: 1rem; }
 .advanced-inline-details { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+.licence-price { font-size: 1.65rem; font-weight: 800; margin: 0; }
+.licence-price span { font-size: 0.9rem; font-weight: 500; color: var(--muted); }
+.plain-list { margin: 0; padding-left: 1.2rem; color: var(--muted); display: grid; gap: 0.35rem; }
+.purchase-status-panel { display: grid; gap: 0.65rem; padding: 0.9rem; border: 1px solid var(--border); border-radius: 0.65rem; background: rgba(15, 23, 42, 0.45); }
+.purchase-status-panel p { margin: 0; color: var(--muted); }
 .breakable-value { word-break: break-all; }
 
 @media (max-width: 1250px) {

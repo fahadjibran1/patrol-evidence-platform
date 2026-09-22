@@ -3,12 +3,17 @@ import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
 import { DesktopApiGuard } from '@/security/desktop-api.guard';
 import { ActivateLicenseDto } from './dto/activate-license.dto';
 import { CreateLicenceRequestFileDto, ImportLicenceDto } from './dto/commercial-licence.dto';
+import { CommercialPurchaseStatusDto, StartCommercialPurchaseDto } from './dto/commercial-purchase.dto';
+import { CommercialPurchaseClientService } from './commercial-purchase-client.service';
 import { LicenseService } from './license.service';
 
 @Controller('license')
 @UseGuards(DesktopApiGuard)
 export class LicenseController {
-  constructor(private readonly licenseService: LicenseService) {}
+  constructor(
+    private readonly licenseService: LicenseService,
+    private readonly commercialPurchase: CommercialPurchaseClientService,
+  ) {}
 
   @Get('status')
   getStatus() {
@@ -36,6 +41,18 @@ export class LicenseController {
     } catch (error) {
       throw new BadRequestException(error instanceof Error ? error.message : 'Licence import failed.');
     }
+  }
+
+  @Post('commercial/purchase')
+  @UseGuards(JwtAuthGuard)
+  startCommercialPurchase(@Body() dto: StartCommercialPurchaseDto) {
+    return this.commercialPurchase.start(dto);
+  }
+
+  @Post('commercial/status')
+  @UseGuards(JwtAuthGuard)
+  commercialPurchaseStatus(@Body() dto: CommercialPurchaseStatusDto) {
+    return this.commercialPurchase.status(dto.purchaseReference);
   }
 
   @Post('activate')

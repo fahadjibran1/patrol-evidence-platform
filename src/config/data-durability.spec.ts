@@ -50,7 +50,13 @@ describe('PatrolSafe SQLite migration and backup recovery', () => {
   it('preserves same-machine LocalAuth state', () => expect(result.sameMachineLocalAuth).toBe(true));
   it('preserves same-machine licence and monitoring state', () => {
     expect(result.sameMachineLicenceState).toBe(true);
+    expect(result.sameMachineCommercialLicence).toBe(true);
     expect(result.monitoringPreferencePreserved).toBe(true);
+  });
+  it('restores a commercial licence only after same-machine validation', () => {
+    expect(result.sameMachineCommercialLicence).toBe(true);
+    expect(result.corruptCommercialLicenceFailsClosed).toBe(true);
+    expect(result.replacementMachine).toBe(true);
   });
   it('preserves the workspace timezone on same- and replacement-machine restores', () => {
     expect(result.workspaceTimeZonePreserved).toBe(true);

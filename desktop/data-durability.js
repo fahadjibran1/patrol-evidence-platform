@@ -17,6 +17,7 @@ const SAME_MACHINE_COMPONENTS = new Set([
   'installation-identity.json',
   'trial.dpapi',
   'trial-marker.txt',
+  'commercial-licence.tglic',
 ]);
 
 const BASELINE_MIGRATION_ID = 'desktop-sqlite-baseline-v1';
@@ -1026,6 +1027,24 @@ async function restorePatrolSafeBackup(params) {
   const evidenceRoot = path.resolve(params.evidenceRoot);
   const configPath = path.resolve(params.configPath);
   const sameMachine = manifest.sameMachine?.machineBindingHash === (params.machineBindingHash || getMachineBindingHash());
+  const backedCommercialLicence = (manifest.sameMachine?.components || []).find(
+    (component) => String(component.path).replace(/\\/g, '/') === 'commercial-licence.tglic',
+  );
+  let restoreCommercialLicence = false;
+  let requiresLicenceRecovery = Boolean(backedCommercialLicence);
+  if (sameMachine && backedCommercialLicence && typeof params.validateCommercialLicenceRestore === 'function') {
+    try {
+      const sameMachineRoot = path.join(params.backupRoot, 'same-machine');
+      restoreCommercialLicence = await params.validateCommercialLicenceRestore({
+        licencePath: ensureContained(sameMachineRoot, path.join(sameMachineRoot, 'commercial-licence.tglic')),
+        identityPath: ensureContained(sameMachineRoot, path.join(sameMachineRoot, 'installation-identity.json')),
+      });
+      requiresLicenceRecovery = !restoreCommercialLicence;
+    } catch {
+      restoreCommercialLicence = false;
+      requiresLicenceRecovery = true;
+    }
+  }
   const restoreId = crypto.randomUUID();
   const stagingRoot = ensureContained(userDataRoot, path.join(userDataRoot, `.restore-staging-${restoreId}`));
   const rollbackRoot = ensureContained(userDataRoot, path.join(userDataRoot, `restore-rollback-${timestampForPath()}`));
@@ -1124,6 +1143,7 @@ async function restorePatrolSafeBackup(params) {
         const sameMachineRoot = path.join(params.backupRoot, 'same-machine');
         for (const component of manifest.sameMachine.components || []) {
           const relative = normalizeRelativePath(component.path);
+          if (relative.replace(/\\/g, '/') === 'commercial-licence.tglic' && !restoreCommercialLicence) continue;
           const source = ensureContained(sameMachineRoot, path.join(sameMachineRoot, relative));
           const target = ensureContained(userDataRoot, path.join(userDataRoot, relative));
           const componentRollback = ensureContained(rollbackRoot, path.join(rollbackRoot, 'same-machine', relative));
@@ -1145,7 +1165,7 @@ async function restorePatrolSafeBackup(params) {
         evidence: evidenceMoved ? rollbackEvidence : null,
         configuration: configMoved ? rollbackConfig : null,
       }, null, 2));
-      return { restored: true, sameMachine, requiresWhatsAppRelink: !sameMachine, rollbackPath: rollbackRoot };
+      return { restored: true, sameMachine, requiresWhatsAppRelink: !sameMachine, requiresLicenceRecovery, rollbackPath: rollbackRoot };
     } catch (error) {
       for (const action of sameMachineActions.reverse()) {
         await fs.promises.rm(action.target, { recursive: true, force: true }).catch(() => undefined);

@@ -4,11 +4,10 @@ import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from '
 import * as path from 'path';
 import { Injectable, Logger } from '@nestjs/common';
 import type { LocalTrialRecord } from '@patrol/license-core';
-import { addDays, todayUtcDate } from '@patrol/license-core';
 import { InstallationIdentityService } from './installation-identity.service';
 
 const TRIAL_FILE_NAME = 'trial.dpapi';
-const TRIAL_DAYS = 30;
+export const NEW_TRIAL_DURATION_MS = 720 * 60 * 60 * 1000;
 const CLOCK_ROLLBACK_MS = 24 * 60 * 60 * 1000;
 /** Limits disk/DPAPI writes while losing at most five minutes of rollback history on abrupt shutdown. */
 export const TRIAL_LAST_SEEN_PERSIST_INTERVAL_MS = 5 * 60 * 1000;
@@ -136,7 +135,9 @@ export class LocalTrialService {
 
       const identity = this.identityService.getOrCreateIdentity();
       const startedAt = new Date().toISOString();
-      const expiresAt = `${addDays(todayUtcDate(), TRIAL_DAYS)}T23:59:59.000Z`;
+      // v1.0.3 policy: new trials are exactly 720 hours from first creation.
+      // Existing records are never recalculated and retain their historical expiry.
+      const expiresAt = new Date(Date.parse(startedAt) + NEW_TRIAL_DURATION_MS).toISOString();
       const record: LocalTrialRecord = {
         installationId: identity.installationId,
         machineFingerprint: identity.machineFingerprint,
