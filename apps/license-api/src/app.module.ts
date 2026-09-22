@@ -33,6 +33,7 @@ import { CustomerOrgModule } from './customer-org/customer-org.module';
 import { BillingModule } from './billing/billing.module';
 import { ErrorReportingModule } from './error-reporting/error-reporting.module';
 import { SupportOpsModule } from './support-ops/support-ops.module';
+import { CommercialFoundationModule } from './commercial-foundation/commercial-foundation.module';
 
 @Module({
   imports: [
@@ -56,6 +57,7 @@ import { SupportOpsModule } from './support-ops/support-ops.module';
     PaymentsModule,
     BillingModule,
     SupportOpsModule,
+    CommercialFoundationModule,
     DashboardModule,
     SettingsModule,
     NotificationsModule,

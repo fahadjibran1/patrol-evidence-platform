@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '@/prisma/prisma.service';
 
 const SENSITIVE_KEY_PATTERN =
-  /password|token|secret|signedLicense|fullLicense|licenseKey|privateKey|authorization|refresh|smtp/i;
+  /password|token|secret|signedLicense|fullLicense|licenseKey|privateKey|authorization|refresh|smtp|fingerprint|bearer|artifactContent|paymentSecret/i;
 
 @Injectable()
 export class AuditService {
@@ -12,6 +12,8 @@ export class AuditService {
   async record(input: {
     actorAdminId?: string | null;
     actorCustomerUserId?: string | null;
+    actorId?: string | null;
+    actorType?: 'SYSTEM' | 'DESKTOP' | 'CUSTOMER' | 'OPERATOR' | 'PROVIDER' | null;
     action: string;
     entityType: string;
     entityId?: string | null;
@@ -20,11 +22,14 @@ export class AuditService {
     metadata?: Record<string, unknown> | null;
     ipAddress?: string | null;
     userAgent?: string | null;
+    correlationId?: string | null;
   }): Promise<void> {
     await this.prisma.auditLog.create({
       data: {
         actorAdminId: input.actorAdminId ?? null,
         actorCustomerUserId: input.actorCustomerUserId ?? null,
+        actorId: input.actorId ?? null,
+        actorType: input.actorType ?? null,
         action: input.action,
         entityType: input.entityType,
         entityId: input.entityId ?? null,
@@ -33,6 +38,7 @@ export class AuditService {
         metadata: this.sanitizeMetadata(input.metadata) as Prisma.InputJsonValue | undefined,
         ipAddress: input.ipAddress ?? null,
         userAgent: input.userAgent ?? null,
+        correlationId: input.correlationId ?? null,
       },
     });
   }
