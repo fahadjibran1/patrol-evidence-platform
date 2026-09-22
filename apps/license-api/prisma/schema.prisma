@@ -282,6 +282,8 @@ enum CommercialDeliveryStatus {
   QUEUED
   SENT
   DELIVERED
+  BOUNCED
+  COMPLAINED
   FAILED
   REVOKED
   EXPIRED
@@ -399,6 +401,7 @@ model Customer {
   commercialPurchaseRequests CommercialPurchaseRequest[]
   commercialOrders           CommercialOrder[]
   commercialIssuances        CommercialLicenceIssuance[]
+  commercialDeliveryAttempts CommercialDeliveryAttempt[]
 
   @@index([companyName])
   @@index([email])
@@ -1206,6 +1209,9 @@ model CommercialLicenceArtifact {
   sha256      String
   byteSize    BigInt
   contentType String
+  deliveryRecipient   String?
+  deliveryGeneration  Int      @default(0)
+  lastDeliveryQueuedAt DateTime?
   createdAt   DateTime                 @default(now())
   availableAt DateTime?
   revokedAt   DateTime?
@@ -1220,10 +1226,15 @@ model CommercialLicenceArtifact {
 model CommercialDeliveryAttempt {
   id                String                   @id @default(uuid())
   artifactId        String
+  customerId        String
   idempotencyKey    String                   @unique
+  requestKey        String                   @unique
+  generation        Int
   status            CommercialDeliveryStatus @default(PENDING)
   channel           String
+  provider          String
   recipient         String
+  tokenPurpose      String
   tokenHash         String?                  @unique
   tokenExpiresAt    DateTime?
   providerMessageId String?                  @unique
@@ -1233,11 +1244,39 @@ model CommercialDeliveryAttempt {
   updatedAt         DateTime                 @updatedAt
   sentAt            DateTime?
   deliveredAt       DateTime?
+  bouncedAt         DateTime?
+  complainedAt      DateTime?
+  firstDownloadedAt DateTime?
+  lastDownloadedAt  DateTime?
+  downloadCount     Int                      @default(0)
   revokedAt         DateTime?
 
   artifact CommercialLicenceArtifact @relation(fields: [artifactId], references: [id], onDelete: Restrict)
+  customer Customer                  @relation(fields: [customerId], references: [id], onDelete: Restrict)
 
+  @@unique([artifactId, generation])
   @@index([artifactId])
+  @@index([customerId])
+  @@index([status])
+  @@index([tokenExpiresAt])
+}
+
+model CommercialDeliveryProviderEvent {
+  id                String                        @id @default(uuid())
+  providerEventId   String                        @unique
+  providerMessageId String?
+  eventType         String
+  payloadHash       String
+  status            CommercialProviderEventStatus @default(RECEIVED)
+  safeMetadata      Json                          @default("{}")
+  correlationId     String
+  receivedAt        DateTime                      @default(now())
+  processedAt       DateTime?
+  lastError         String?
+  createdAt         DateTime                      @default(now())
+  updatedAt         DateTime                      @updatedAt
+
+  @@index([providerMessageId])
   @@index([status])
 }
 

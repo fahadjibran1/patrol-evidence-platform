@@ -12,4 +12,9 @@ export interface CommercialArtifactStore {
     fileName: string;
     bytes: Buffer;
   }): Promise<StoredCommercialArtifact>;
+  readVerified(input: {
+    storageKey: string;
+    sha256: string;
+    byteSize: bigint;
+  }): Promise<Buffer>;
 }

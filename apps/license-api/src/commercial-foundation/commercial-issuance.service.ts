@@ -177,6 +177,7 @@ export class CommercialIssuanceService {
         await tx.commercialOrder.update({ where: { id: current.orderId }, data: { state: CommercialOrderState.ISSUED, stateVersion: { increment: 1 } } });
         await createCommercialAudit(tx, this.auditService, { actorType: CommercialActorType.SYSTEM, action: 'commercial.issuance.completed', entityType: 'CommercialLicenceIssuance', entityId: issuance.id, customerId: issuance.customerId, correlationId, metadata: { publicOrderId: current.order.publicOrderId, licenceId: result.licenceId, payloadHash: result.payloadHash, signingKeyId: result.signingKeyId, artifactId: artifact.artifactId } });
         await createCommercialOutboxEvent(tx, { idempotencyKey: `commercial-issuance:${issuance.id}:completed`, aggregateType: 'CommercialLicenceIssuance', aggregateId: issuance.id, eventType: 'commercial.issuance.completed', correlationId, payload: { issuanceId: issuance.id, artifactId: artifact.artifactId } });
+        await createCommercialOutboxEvent(tx, { idempotencyKey: `commercial-delivery:${artifact.id}:initial`, aggregateType: 'CommercialLicenceArtifact', aggregateId: artifact.id, eventType: 'commercial.delivery.requested', correlationId, payload: { artifactId: artifact.id, kind: 'initial' } });
         return { issuance, artifact, idempotent: false };
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     } catch (error) {

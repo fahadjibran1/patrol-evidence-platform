@@ -53,6 +53,11 @@ class Phase3Store implements CommercialArtifactStore {
     this.values.set(key, input.bytes);
     return { storageKey: key, byteSize: BigInt(input.bytes.length) };
   }
+  async readVerified(input: { storageKey: string; sha256: string; byteSize: bigint }) {
+    const bytes = this.values.get(input.storageKey);
+    if (!bytes || BigInt(bytes.length) !== input.byteSize || createHash('sha256').update(bytes).digest('hex') !== input.sha256) throw new Error('integrity failure');
+    return bytes;
+  }
 }
 
 describe('commercial Phase 3 operator approval and isolated issuer', () => {

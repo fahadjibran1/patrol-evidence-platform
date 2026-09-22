@@ -38,6 +38,11 @@ class MemoryStore implements CommercialArtifactStore {
     this.values.set(key, input.bytes);
     return { storageKey: key, byteSize: BigInt(input.bytes.byteLength) };
   }
+  async readVerified(input: { storageKey: string }) {
+    const bytes = this.values.get(input.storageKey);
+    if (!bytes) throw new Error('missing');
+    return bytes;
+  }
 }
 
 describe('current-format commercial .tglic issuer', () => {

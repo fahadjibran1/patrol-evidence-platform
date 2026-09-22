@@ -24,6 +24,11 @@ import { CommercialOperatorPermissionGuard } from './guards/commercial-operator-
 import { CurrentFormatCommercialLicenceIssuer } from './current-format-commercial-licence.issuer';
 import { TestFileEd25519SigningProvider } from './test-file-ed25519-signing.provider';
 import { PrivateTestArtifactStore } from './private-test-artifact.store';
+import { COMMERCIAL_ARTIFACT_STORE, type CommercialArtifactStore } from './commercial-artifact-store.port';
+import { COMMERCIAL_DELIVERY_PROVIDER } from './commercial-delivery-provider.port';
+import { ResendCommercialDeliveryProvider } from './resend-commercial-delivery.provider';
+import { CommercialDeliveryTokenService } from './commercial-delivery-token.service';
+import { CommercialDeliveryService } from './commercial-delivery.service';
 
 @Module({
   imports: [AuthModule],
@@ -35,6 +40,8 @@ import { PrivateTestArtifactStore } from './private-test-artifact.store';
     CommercialIssuanceService,
     CommercialStepUpService,
     CommercialApprovalPreconditionsService,
+    CommercialDeliveryTokenService,
+    CommercialDeliveryService,
     CommercialOperatorPermissionGuard,
     CommercialConfigService,
     CommercialCheckoutService,
@@ -43,11 +50,21 @@ import { PrivateTestArtifactStore } from './private-test-artifact.store';
     CommercialOutboxWorkerService,
     StripeCommercialPaymentProvider,
     {
-      provide: COMMERCIAL_LICENCE_ISSUER,
+      provide: COMMERCIAL_ARTIFACT_STORE,
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => new CurrentFormatCommercialLicenceIssuer(
+      useFactory: (config: ConfigService) => new PrivateTestArtifactStore(config),
+    },
+    {
+      provide: COMMERCIAL_DELIVERY_PROVIDER,
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => new ResendCommercialDeliveryProvider(config),
+    },
+    {
+      provide: COMMERCIAL_LICENCE_ISSUER,
+      inject: [ConfigService, COMMERCIAL_ARTIFACT_STORE],
+      useFactory: (config: ConfigService, artifacts: CommercialArtifactStore) => new CurrentFormatCommercialLicenceIssuer(
         new TestFileEd25519SigningProvider(config),
-        new PrivateTestArtifactStore(config),
+        artifacts,
       ),
     },
     {
@@ -62,6 +79,10 @@ import { PrivateTestArtifactStore } from './private-test-artifact.store';
     CommercialIssuanceService,
     CommercialStepUpService,
     CommercialApprovalPreconditionsService,
+    CommercialDeliveryTokenService,
+    CommercialDeliveryService,
+    COMMERCIAL_ARTIFACT_STORE,
+    COMMERCIAL_DELIVERY_PROVIDER,
     COMMERCIAL_LICENCE_ISSUER,
     CommercialConfigService,
     CommercialCheckoutService,

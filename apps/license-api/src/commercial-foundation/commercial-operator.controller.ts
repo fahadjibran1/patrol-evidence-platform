@@ -10,6 +10,7 @@ import { CommercialOperatorPermissionGuard } from './guards/commercial-operator-
 import { RequireCommercialPermission } from './decorators/require-commercial-permission.decorator';
 import { CommercialOperatorPermission } from './commercial-operator-permissions';
 import { CommercialDecisionDto, CommercialStepUpDto } from './dto/commercial-operator.dto';
+import { CommercialDeliveryService } from './commercial-delivery.service';
 
 @ApiTags('commercial-operator')
 @ApiBearerAuth()
@@ -19,6 +20,7 @@ export class CommercialOperatorController {
   constructor(
     private readonly issuance: CommercialIssuanceService,
     private readonly stepUp: CommercialStepUpService,
+    private readonly delivery: CommercialDeliveryService,
   ) {}
 
   @Post('step-up')
@@ -62,5 +64,12 @@ export class CommercialOperatorController {
   @RequireCommercialPermission(CommercialOperatorPermission.RELEASE_HOLD)
   releaseHold(@Param('publicOrderId') publicOrderId: string, @CurrentAdmin() admin: AuthenticatedAdmin, @Body() dto: CommercialDecisionDto, @Headers('x-commercial-step-up') stepUpToken?: string) {
     return this.issuance.releaseHold(publicOrderId, dto.reason, admin, stepUpToken);
+  }
+
+  @Post('orders/:publicOrderId/resend-licence')
+  @Throttle({ default: { limit: 3, ttl: 60 * 60_000 } })
+  @RequireCommercialPermission(CommercialOperatorPermission.RESEND_LICENCE)
+  resendLicence(@Param('publicOrderId') publicOrderId: string, @CurrentAdmin() admin: AuthenticatedAdmin, @Body() dto: CommercialDecisionDto, @Headers('x-commercial-step-up') stepUpToken?: string, @Headers('idempotency-key') idempotencyKey?: string) {
+    return this.delivery.queueSupportResend({ publicOrderId, admin, stepUpToken, idempotencyKey: idempotencyKey ?? '', reason: dto.reason });
   }
 }

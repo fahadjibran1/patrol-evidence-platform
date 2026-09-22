@@ -106,6 +106,7 @@ export async function createIntegrationContext(): Promise<IntegrationContext> {
 export async function resetIntegrationDatabase(prisma: PrismaService): Promise<void> {
   await prisma.$executeRawUnsafe(`
     TRUNCATE TABLE
+      "CommercialDeliveryProviderEvent",
       "CommercialDeliveryAttempt",
       "CommercialLicenceArtifact",
       "CommercialLicenceIssuance",

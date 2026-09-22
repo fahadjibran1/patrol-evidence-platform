@@ -1,6 +1,6 @@
 import { ConfigService } from '@nestjs/config';
 import { createHash, randomUUID } from 'crypto';
-import { mkdir, open, readFile, rename, unlink } from 'fs/promises';
+import { lstat, mkdir, open, readFile, realpath, rename, unlink } from 'fs/promises';
 import { dirname, isAbsolute, relative, resolve, sep } from 'path';
 import type { CommercialArtifactStore, StoredCommercialArtifact } from './commercial-artifact-store.port';
 import { ApiException } from '@/common/exceptions/api.exception';
@@ -61,6 +61,29 @@ export class PrivateTestArtifactStore implements CommercialArtifactStore {
       throw new ApiException(ERROR_CODES.COMMERCIAL_ARTIFACT_STORAGE_FAILED, 'Private artifact storage failed.', 503);
     }
     return { storageKey, byteSize: BigInt(input.bytes.byteLength) };
+  }
+
+  async readVerified(input: { storageKey: string; sha256: string; byteSize: bigint }): Promise<Buffer> {
+    const root = this.root();
+    if (!/^[a-f0-9]{64}$/.test(input.sha256) || !/^[A-Za-z0-9._/-]+$/.test(input.storageKey)) {
+      throw new ApiException(ERROR_CODES.COMMERCIAL_ARTIFACT_INTEGRITY_FAILED, 'Licence artifact identity is invalid.', 409);
+    }
+    const target = resolve(root, ...input.storageKey.split('/'));
+    if (!target.startsWith(`${root}${sep}`)) {
+      throw new ApiException(ERROR_CODES.COMMERCIAL_ARTIFACT_INTEGRITY_FAILED, 'Licence artifact path is invalid.', 409);
+    }
+    try {
+      const metadata = await lstat(target);
+      if (!metadata.isFile() || metadata.isSymbolicLink()) throw new Error('not a regular file');
+      const resolvedRoot = await realpath(root);
+      const resolvedTarget = await realpath(target);
+      if (!resolvedTarget.startsWith(`${resolvedRoot}${sep}`)) throw new Error('artifact escaped private root');
+      const bytes = await readFile(resolvedTarget);
+      if (BigInt(bytes.byteLength) !== input.byteSize || this.hash(bytes) !== input.sha256) throw new Error('artifact integrity mismatch');
+      return bytes;
+    } catch {
+      throw new ApiException(ERROR_CODES.COMMERCIAL_ARTIFACT_INTEGRITY_FAILED, 'Licence artifact is unavailable or failed integrity verification.', 409);
+    }
   }
 
   private root(): string {

@@ -7,6 +7,7 @@ import { ERROR_CODES } from '@/common/constants/error-codes';
 import { CommercialConfigService } from './commercial-config.service';
 import { CommercialPaymentReconciliationService } from './commercial-payment-reconciliation.service';
 import { CommercialIssuanceService } from './commercial-issuance.service';
+import { CommercialDeliveryService } from './commercial-delivery.service';
 
 @Injectable()
 export class CommercialOutboxWorkerService implements OnModuleInit, OnModuleDestroy {
@@ -19,6 +20,7 @@ export class CommercialOutboxWorkerService implements OnModuleInit, OnModuleDest
     private readonly config: CommercialConfigService,
     private readonly reconciliation: CommercialPaymentReconciliationService,
     @Optional() private readonly issuance?: CommercialIssuanceService,
+    @Optional() private readonly delivery?: CommercialDeliveryService,
   ) {}
 
   onModuleInit(): void {
@@ -58,7 +60,7 @@ export class CommercialOutboxWorkerService implements OnModuleInit, OnModuleDest
     for (let attempts = 0; attempts < 5; attempts += 1) {
       const candidate = await this.prisma.commercialOutboxEvent.findFirst({
         where: {
-          eventType: { in: ['commercial.provider_event.received', 'commercial.issuance.requested'] },
+          eventType: { in: ['commercial.provider_event.received', 'commercial.issuance.requested', 'commercial.delivery.requested', 'commercial.delivery.provider_event.received'] },
           availableAt: { lte: now },
           OR: [
             { status: { in: [OutboxEventStatus.PENDING, OutboxEventStatus.FAILED] } },
@@ -134,6 +136,16 @@ export class CommercialOutboxWorkerService implements OnModuleInit, OnModuleDest
         where: { id: event.id },
         data: { status: OutboxEventStatus.PUBLISHED, publishedAt: new Date(), lockedAt: null, lockedBy: null, lastError: null },
       });
+      return;
+    }
+    if (event.eventType === 'commercial.delivery.requested') {
+      if (!this.delivery) throw new ApiException(ERROR_CODES.COMMERCIAL_DELIVERY_PROVIDER_DISABLED, 'Commercial delivery worker is disabled.', 503);
+      await this.delivery.processDeliveryOutbox(event.id);
+      return;
+    }
+    if (event.eventType === 'commercial.delivery.provider_event.received') {
+      if (!this.delivery) throw new ApiException(ERROR_CODES.COMMERCIAL_DELIVERY_PROVIDER_DISABLED, 'Commercial delivery worker is disabled.', 503);
+      await this.delivery.processProviderEventOutbox(event.id);
       return;
     }
     throw new ApiException(ERROR_CODES.COMMERCIAL_OUTBOX_INVALID, 'Commercial outbox event type is not supported.', 409);

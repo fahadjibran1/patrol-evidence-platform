@@ -6,6 +6,7 @@ export enum CommercialOperatorPermission {
   HOLD_ORDER = 'commercial.approval.hold',
   REJECT_ORDER = 'commercial.approval.reject',
   RELEASE_HOLD = 'commercial.approval.release_hold',
+  RESEND_LICENCE = 'commercial.delivery.resend',
 }
 
 const PERMISSIONS: Readonly<Record<AdminRole, ReadonlySet<CommercialOperatorPermission>>> = {
