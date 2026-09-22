@@ -137,6 +137,12 @@ export class CommercialPaymentReconciliationService {
           checkoutExpiresAt: checkout?.expiresAt ?? undefined,
         },
       });
+      if (protectionReason === 'refund_after_issuance_requires_manual_action' && current.issuance) {
+        await tx.commercialLicenceIssuance.update({
+          where: { id: current.issuance.id },
+          data: { commercialReviewRequired: true, postIssuanceRefundAt: new Date() },
+        });
+      }
       await tx.commercialProviderEvent.update({
         where: { id: providerEvent.id },
         data: { status: CommercialProviderEventStatus.PROCESSED, processedAt: new Date(), lastError: null },
@@ -264,7 +270,7 @@ export class CommercialPaymentReconciliationService {
     proposed: CommercialOrderState,
     issuanceExists: boolean,
   ): CommercialOrderState {
-    if (current === CommercialOrderState.REFUNDED || current === CommercialOrderState.HELD) return current;
+    if (current === CommercialOrderState.REFUNDED || current === CommercialOrderState.HELD || current === CommercialOrderState.REJECTED) return current;
     if (proposed === CommercialOrderState.REFUNDED && issuanceExists) return CommercialOrderState.HELD;
     if (current === CommercialOrderState.CANCELLED && proposed === CommercialOrderState.PAID_AWAITING_APPROVAL) {
       return CommercialOrderState.HELD;

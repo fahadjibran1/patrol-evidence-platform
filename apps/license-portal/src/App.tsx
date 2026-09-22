@@ -24,6 +24,7 @@ import { BillingSelfServiceReportPage } from './pages/billing-self-service-repor
 import { StripeOperationsPage } from './pages/stripe-operations-page';
 import { SupportOpsPage } from './pages/support-ops-page';
 import { canManageBilling } from './lib/roles';
+import { CommercialApprovalsPage } from './pages/commercial-approvals-page';
 
 function IssueRoute({ children }: { children: JSX.Element }): JSX.Element {
   const { admin } = useAuth();
@@ -110,6 +111,7 @@ function AppRoutes(): JSX.Element {
         <Route path="billing/manual-payment" element={<BillingManualPaymentRoute />} />
         <Route path="billing/self-service-report" element={<BillingSelfServiceReportPage />} />
         <Route path="stripe" element={<StripeOperationsPage />} />
+        <Route path="commercial/approvals" element={<CommercialApprovalsPage />} />
         <Route path="support" element={<SupportOpsPage />} />
         <Route path="audit" element={<AuditPage />} />
         <Route path="admins" element={<AdminsRoute />} />

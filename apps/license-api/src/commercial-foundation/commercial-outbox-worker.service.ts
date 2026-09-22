@@ -1,10 +1,12 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit, Optional } from '@nestjs/common';
 import { CommercialProviderEventStatus, OutboxEventStatus, Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '@/prisma/prisma.service';
 import { ApiException } from '@/common/exceptions/api.exception';
+import { ERROR_CODES } from '@/common/constants/error-codes';
 import { CommercialConfigService } from './commercial-config.service';
 import { CommercialPaymentReconciliationService } from './commercial-payment-reconciliation.service';
+import { CommercialIssuanceService } from './commercial-issuance.service';
 
 @Injectable()
 export class CommercialOutboxWorkerService implements OnModuleInit, OnModuleDestroy {
@@ -16,6 +18,7 @@ export class CommercialOutboxWorkerService implements OnModuleInit, OnModuleDest
     private readonly prisma: PrismaService,
     private readonly config: CommercialConfigService,
     private readonly reconciliation: CommercialPaymentReconciliationService,
+    @Optional() private readonly issuance?: CommercialIssuanceService,
   ) {}
 
   onModuleInit(): void {
@@ -40,11 +43,11 @@ export class CommercialOutboxWorkerService implements OnModuleInit, OnModuleDest
       const event = await this.claimNext(now);
       if (!event) break;
       try {
-        await this.reconciliation.reconcileOutboxEvent(event.id);
+        await this.processEvent(event);
         processed += 1;
       } catch (error) {
         failed += 1;
-        await this.recordFailure(event.id, event.aggregateId, event.attempts, error, now);
+        await this.recordFailure(event.id, event.aggregateId, event.eventType, event.attempts, error, now);
       }
     }
     return { processed, failed };
@@ -55,7 +58,7 @@ export class CommercialOutboxWorkerService implements OnModuleInit, OnModuleDest
     for (let attempts = 0; attempts < 5; attempts += 1) {
       const candidate = await this.prisma.commercialOutboxEvent.findFirst({
         where: {
-          eventType: 'commercial.provider_event.received',
+          eventType: { in: ['commercial.provider_event.received', 'commercial.issuance.requested'] },
           availableAt: { lte: now },
           OR: [
             { status: { in: [OutboxEventStatus.PENDING, OutboxEventStatus.FAILED] } },
@@ -77,10 +80,12 @@ export class CommercialOutboxWorkerService implements OnModuleInit, OnModuleDest
       });
       if (claimed.count === 1) {
         const event = await this.prisma.commercialOutboxEvent.findUniqueOrThrow({ where: { id: candidate.id } });
-        await this.prisma.commercialProviderEvent.updateMany({
-          where: { id: event.aggregateId },
-          data: { status: CommercialProviderEventStatus.PROCESSING },
-        });
+        if (event.eventType === 'commercial.provider_event.received') {
+          await this.prisma.commercialProviderEvent.updateMany({
+            where: { id: event.aggregateId },
+            data: { status: CommercialProviderEventStatus.PROCESSING },
+          });
+        }
         return event;
       }
     }
@@ -90,6 +95,7 @@ export class CommercialOutboxWorkerService implements OnModuleInit, OnModuleDest
   private async recordFailure(
     outboxId: string,
     providerEventId: string,
+    eventType: string,
     attempts: number,
     error: unknown,
     now: Date,
@@ -107,15 +113,30 @@ export class CommercialOutboxWorkerService implements OnModuleInit, OnModuleDest
           lastError: safeError,
         },
       });
-      await tx.commercialProviderEvent.updateMany({
-        where: { id: providerEventId },
-        data: {
-          status: CommercialProviderEventStatus.FAILED,
-          attempts: { increment: 1 },
-          lastError: safeError,
-        },
-      });
+      if (eventType === 'commercial.provider_event.received') {
+        await tx.commercialProviderEvent.updateMany({
+          where: { id: providerEventId },
+          data: { status: CommercialProviderEventStatus.FAILED, attempts: { increment: 1 }, lastError: safeError },
+        });
+      }
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }
+
+  private async processEvent(event: { id: string; aggregateId: string; eventType: string; correlationId: string }): Promise<void> {
+    if (event.eventType === 'commercial.provider_event.received') {
+      await this.reconciliation.reconcileOutboxEvent(event.id);
+      return;
+    }
+    if (event.eventType === 'commercial.issuance.requested') {
+      if (!this.issuance) throw new ApiException(ERROR_CODES.COMMERCIAL_ISSUER_DISABLED, 'Commercial issuance worker is disabled.', 503);
+      await this.issuance.processApprovedIssuance(event.aggregateId, event.correlationId);
+      await this.prisma.commercialOutboxEvent.update({
+        where: { id: event.id },
+        data: { status: OutboxEventStatus.PUBLISHED, publishedAt: new Date(), lockedAt: null, lockedBy: null, lastError: null },
+      });
+      return;
+    }
+    throw new ApiException(ERROR_CODES.COMMERCIAL_OUTBOX_INVALID, 'Commercial outbox event type is not supported.', 409);
   }
 
   private safeError(error: unknown): string {

@@ -1,5 +1,24 @@
 export type AdminRole = 'SUPER_ADMIN' | 'ADMIN' | 'SUPPORT';
 
+export interface CommercialApprovalReview {
+  publicOrderId: string;
+  state: 'PAID_AWAITING_APPROVAL' | 'HELD' | 'ISSUANCE_PENDING' | 'ISSUED' | 'REJECTED';
+  customer: { id: string; companyName: string; email: string } | null;
+  companyName: string;
+  product: string;
+  plan: 'annual';
+  amountMinor: number;
+  currency: string;
+  payment: { status: string; paidAt: string | null } | null;
+  requestAgeSeconds: number;
+  appVersion: string;
+  buildId: string;
+  workstationSummary: string;
+  previousLicenceId: string | null;
+  holdReason: string | null;
+  issuance: { status: string; licenceId: string | null } | null;
+}
+
 export type CustomerStatus = 'PROSPECT' | 'TRIAL' | 'ACTIVE' | 'SUSPENDED' | 'CLOSED';
 
 export type LicensePlan = 'TRIAL' | 'MONTHLY' | 'ANNUAL';

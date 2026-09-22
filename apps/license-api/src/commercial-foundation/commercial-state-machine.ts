@@ -4,7 +4,7 @@ const NORMAL_TRANSITIONS: Readonly<Record<CommercialOrderState, ReadonlySet<Comm
   REQUEST_CREATED: new Set(['CHECKOUT_PENDING', 'HELD', 'CANCELLED', 'FAILED']),
   CHECKOUT_PENDING: new Set(['PAYMENT_PENDING', 'PAID_AWAITING_APPROVAL', 'HELD', 'CANCELLED', 'FAILED']),
   PAYMENT_PENDING: new Set(['PAID_AWAITING_APPROVAL', 'HELD', 'CANCELLED', 'FAILED', 'REFUNDED']),
-  PAID_AWAITING_APPROVAL: new Set(['ISSUANCE_PENDING', 'HELD', 'FAILED', 'REFUNDED']),
+  PAID_AWAITING_APPROVAL: new Set(['ISSUANCE_PENDING', 'HELD', 'REJECTED', 'FAILED', 'REFUNDED']),
   ISSUANCE_PENDING: new Set(['ISSUED', 'HELD', 'FAILED', 'REFUNDED']),
   ISSUED: new Set(['DELIVERY_PENDING', 'REFUNDED']),
   DELIVERY_PENDING: new Set(['DELIVERED', 'FAILED', 'REFUNDED']),
@@ -12,6 +12,7 @@ const NORMAL_TRANSITIONS: Readonly<Record<CommercialOrderState, ReadonlySet<Comm
   FAILED: new Set(),
   HELD: new Set(),
   CANCELLED: new Set(),
+  REJECTED: new Set(),
   REFUNDED: new Set(),
 };
 
@@ -27,5 +28,5 @@ export function allowedCommercialTransitions(from: CommercialOrderState): Commer
 }
 
 export function isTerminalCommercialState(state: CommercialOrderState): boolean {
-  return state === CommercialOrderState.CANCELLED || state === CommercialOrderState.REFUNDED;
+  return state === CommercialOrderState.CANCELLED || state === CommercialOrderState.REJECTED || state === CommercialOrderState.REFUNDED;
 }

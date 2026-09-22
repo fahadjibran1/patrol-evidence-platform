@@ -225,6 +225,7 @@ enum CommercialOrderState {
   FAILED
   HELD
   CANCELLED
+  REJECTED
   REFUNDED
 }
 
@@ -324,6 +325,25 @@ model Admin {
   subscriptionsCreated    Subscription[]    @relation("SubscriptionCreatedBy")
   billingPaymentsRecorded BillingPayment[]  @relation("BillingPaymentRecordedBy")
   billingCreditsIssued    BillingCredit[]   @relation("BillingCreditIssuedBy")
+  commercialStepUps       CommercialOperatorStepUp[]
+  commercialApprovals     CommercialLicenceIssuance[] @relation("CommercialIssuanceApprovedBy")
+}
+
+/// One-time recent-password-verification credential for commercial approval actions.
+/// Only a SHA-256 digest of the credential is persisted.
+model CommercialOperatorStepUp {
+  id         String   @id @default(uuid())
+  adminId    String
+  tokenHash  String   @unique
+  purpose    String
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime
+  consumedAt DateTime?
+  revokedAt  DateTime?
+
+  admin Admin @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([adminId, purpose, expiresAt])
 }
 
 model RefreshToken {
@@ -1027,6 +1047,7 @@ model CommercialOrder {
   id                        String                  @id @default(uuid())
   publicOrderId             String                  @unique
   purchaseRequestId         String
+  requestHashSnapshot       String
   customerId                String?
   purpose                   CommercialOrderPurpose  @default(INITIAL)
   state                     CommercialOrderState    @default(REQUEST_CREATED)
@@ -1154,14 +1175,20 @@ model CommercialLicenceIssuance {
   signingKeyId         String?
   startsAt             DateTime?                @db.Date
   expiresAt            DateTime?                @db.Date
+  issuedAt             DateTime?
+  featuresSnapshot     Json?
+  maxDevices           Int?
   approvedByAdminId    String?
   approvedAt           DateTime?
+  commercialReviewRequired Boolean              @default(false)
+  postIssuanceRefundAt DateTime?
   failureCode          String?
   createdAt            DateTime                 @default(now())
   updatedAt            DateTime                 @updatedAt
 
   order     CommercialOrder             @relation(fields: [orderId], references: [id], onDelete: Restrict)
   customer  Customer?                   @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  approvedBy Admin?                     @relation("CommercialIssuanceApprovedBy", fields: [approvedByAdminId], references: [id], onDelete: SetNull)
   artifacts CommercialLicenceArtifact[]
 
   @@index([customerId])

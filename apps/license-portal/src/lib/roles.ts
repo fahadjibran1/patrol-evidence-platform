@@ -58,3 +58,11 @@ export function canEditCustomers(_role: AdminRole | undefined): boolean {
 export function canManageInstallations(role: AdminRole | undefined): boolean {
   return role === 'SUPER_ADMIN' || role === 'ADMIN' || role === 'SUPPORT';
 }
+
+export function canViewCommercialApprovals(role: AdminRole | undefined): boolean {
+  return role === 'SUPER_ADMIN' || role === 'ADMIN';
+}
+
+export function canApproveCommercialIssuance(role: AdminRole | undefined): boolean {
+  return role === 'SUPER_ADMIN';
+}

@@ -85,6 +85,7 @@ export class CommercialPurchaseService {
             orders: {
               create: {
                 publicOrderId,
+                requestHashSnapshot: validated.canonicalHash,
                 purpose: validated.request.previousLicenceId
                   ? CommercialOrderPurpose.RENEWAL
                   : CommercialOrderPurpose.INITIAL,

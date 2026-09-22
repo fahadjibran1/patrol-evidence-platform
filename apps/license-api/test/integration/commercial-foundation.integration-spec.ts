@@ -6,15 +6,9 @@ import {
   CustomerStatus,
 } from '@prisma/client';
 import { randomUUID } from 'crypto';
-import { AuditService } from '@/audit/audit.service';
-import { EncryptionService } from '@/crypto/encryption.service';
 import { CommercialPurchaseService } from '@/commercial-foundation/commercial-purchase.service';
 import { CommercialOrderService } from '@/commercial-foundation/commercial-order.service';
 import { CommercialIssuanceService } from '@/commercial-foundation/commercial-issuance.service';
-import type {
-  CommercialLicenceIssuer,
-  IssueCommercialLicenceCommand,
-} from '@/commercial-foundation/commercial-issuer.port';
 import {
   closeIntegrationContext,
   createIntegrationContext,
@@ -35,27 +29,6 @@ function request(overrides: Record<string, unknown> = {}) {
     clientNonce: `nonce_${randomUUID().replace(/-/g, '')}`,
     ...overrides,
   };
-}
-
-class RecordingFakeIssuer implements CommercialLicenceIssuer {
-  commands: Readonly<IssueCommercialLicenceCommand>[] = [];
-
-  async issue(command: Readonly<IssueCommercialLicenceCommand>) {
-    this.commands.push(command);
-    return {
-      licenceId: `lic-${randomUUID()}`,
-      payloadHash: 'c'.repeat(64),
-      signingKeyId: 'phase1-fake-key',
-      artifact: {
-        artifactId: randomUUID(),
-        fileName: 'PatrolSafe-test.tglic',
-        storageKey: `phase1-test/${command.commandId}.tglic`,
-        sha256: 'd'.repeat(64),
-        byteSize: 512n,
-        contentType: 'application/json' as const,
-      },
-    };
-  }
 }
 
 describe('commercial Phase 1 persistence foundation', () => {
@@ -120,7 +93,7 @@ describe('commercial Phase 1 persistence foundation', () => {
     });
   });
 
-  it('moves through paid approval and invokes only the isolated fake issuer once', async () => {
+  it('moves through the Phase 1 paid boundary without invoking issuance', async () => {
     const created = await purchase.createPurchaseRequest(request());
     const customer = await context.prisma.customer.create({
       data: {
@@ -147,53 +120,10 @@ describe('commercial Phase 1 persistence foundation', () => {
       where: { aggregateId: (await context.prisma.commercialOrder.findUniqueOrThrow({ where: { publicOrderId: created.publicOrderId } })).id },
     })).toBe(3);
 
-    const fake = new RecordingFakeIssuer();
-    const issuance = new CommercialIssuanceService(
-      context.prisma,
-      context.module.get(EncryptionService),
-      context.module.get(AuditService),
-      fake,
-    );
-    await issuance.approve({
-      publicOrderId: created.publicOrderId,
-      startsAt: '2026-10-01',
-      expiresAt: '2027-10-01',
-      actor: { actorType: CommercialActorType.OPERATOR, actorAdminId: context.admin.id },
-    });
-    const issued = await issuance.processApproved(created.publicOrderId);
-    const repeated = await issuance.processApproved(created.publicOrderId);
-
-    expect(issued.idempotent).toBe(false);
-    expect(repeated.idempotent).toBe(true);
-    expect(fake.commands).toHaveLength(1);
-    expect(fake.commands[0]).toMatchObject({
-      product: 'Patrol Evidence Platform',
-      plan: 'annual',
-      companyName: 'Northstar Security Ltd',
-      maxDevices: 1,
-    });
-    expect(Object.keys(fake.commands[0]).sort()).toEqual([
-      'commandId', 'companyName', 'correlationId', 'expiresAt', 'installationId',
-      'machineFingerprint', 'maxDevices', 'plan', 'predecessorLicenceId', 'product',
-      'publicOrderId', 'requestHash', 'startsAt',
-    ]);
-
-    await context.prisma.commercialDeliveryAttempt.create({
-      data: {
-        artifactId: issued.artifact.id,
-        idempotencyKey: `deliver:${issued.artifact.artifactId}:initial`,
-        channel: 'TEST',
-        recipient: 'customer@example.test',
-      },
-    });
-    await expect(context.prisma.commercialDeliveryAttempt.create({
-      data: {
-        artifactId: issued.artifact.id,
-        idempotencyKey: `deliver:${issued.artifact.artifactId}:initial`,
-        channel: 'TEST',
-        recipient: 'customer@example.test',
-      },
-    })).rejects.toMatchObject({ code: 'P2002' });
+    const storedOrder = await context.prisma.commercialOrder.findUniqueOrThrow({ where: { publicOrderId: created.publicOrderId } });
+    expect(storedOrder.state).toBe(CommercialOrderState.PAID_AWAITING_APPROVAL);
+    expect(await context.prisma.commercialLicenceIssuance.count({ where: { orderId: storedOrder.id } })).toBe(0);
+    expect(await context.prisma.commercialOutboxEvent.count({ where: { eventType: 'commercial.issuance.requested' } })).toBe(0);
   });
 
   it('uses explicit recovery for FAILED and HELD and keeps terminal states closed', async () => {
@@ -236,14 +166,8 @@ describe('commercial Phase 1 persistence foundation', () => {
 
   it('fails closed before payment/approval and audits prohibited transitions', async () => {
     const created = await purchase.createPurchaseRequest(request());
-    const fake = new RecordingFakeIssuer();
-    const issuance = new CommercialIssuanceService(
-      context.prisma,
-      context.module.get(EncryptionService),
-      context.module.get(AuditService),
-      fake,
-    );
-    await expect(issuance.processApproved(created.publicOrderId)).rejects.toMatchObject({
+    const issuance = context.module.get(CommercialIssuanceService);
+    await expect(issuance.processApprovedIssuance(randomUUID())).rejects.toMatchObject({
       code: 'COMMERCIAL_ISSUANCE_NOT_ALLOWED',
     });
     await expect(orders.transition({
@@ -251,7 +175,6 @@ describe('commercial Phase 1 persistence foundation', () => {
       to: CommercialOrderState.ISSUED,
       actor: { actorType: CommercialActorType.SYSTEM },
     })).rejects.toMatchObject({ code: 'COMMERCIAL_TRANSITION_INVALID' });
-    expect(fake.commands).toHaveLength(0);
     expect(await context.prisma.auditLog.count({
       where: { entityType: 'CommercialOrder', action: 'commercial.order.transition_rejected' },
     })).toBeGreaterThan(0);
@@ -294,6 +217,7 @@ describe('commercial Phase 1 persistence foundation', () => {
       data: {
         publicOrderId: `ord_${randomUUID()}`,
         purchaseRequestId: requestRow.id,
+        requestHashSnapshot: requestRow.canonicalRequestHash,
         purpose: order.purpose,
         product: order.product,
         plan: order.plan,

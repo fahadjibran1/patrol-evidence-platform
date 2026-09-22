@@ -14,6 +14,7 @@ const navItems: Array<{ to: string; label: string; roles?: AdminRole[] }> = [
   { to: '/billing/payments', label: 'Billing payments' },
   { to: '/billing/self-service-report', label: 'Self-service report' },
   { to: '/stripe', label: 'Stripe operations' },
+  { to: '/commercial/approvals', label: 'Commercial approvals', roles: ['SUPER_ADMIN', 'ADMIN'] },
   { to: '/support', label: 'Support ops', roles: ['SUPER_ADMIN', 'ADMIN', 'SUPPORT'] },
   { to: '/audit', label: 'Audit log' },
   { to: '/admins', label: 'Admin users', roles: ['SUPER_ADMIN'] },
@@ -39,7 +40,7 @@ export function AppLayout(): JSX.Element {
         <div>
           <p className="eyebrow">Patrol · Internal</p>
           <h1>Licence Portal</h1>
-          <p className="sidebar-copy">TG1 signing administration</p>
+          <p className="sidebar-copy">Licence administration</p>
         </div>
 
         <nav className="nav" aria-label="Primary">

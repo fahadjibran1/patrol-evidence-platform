@@ -14,8 +14,18 @@ export interface IssueCommercialLicenceCommand {
   installationId: string;
   machineFingerprint: string;
   companyName: string;
+  licenceId: string;
+  issuedAt: string;
   startsAt: string;
   expiresAt: string;
+  features: Readonly<{
+    whatsappMonitoring: boolean;
+    guardSafe: boolean;
+    evidence: boolean;
+    alerts: boolean;
+    incidents: boolean;
+    exports: boolean;
+  }>;
   maxDevices: 1;
   predecessorLicenceId: string | null;
 }
@@ -38,14 +48,14 @@ export interface CommercialLicenceIssuer {
   issue(command: Readonly<IssueCommercialLicenceCommand>): Promise<IssueCommercialLicenceResult>;
 }
 
-/** Phase 1 production binding: deliberately incapable of loading a key or signing. */
+/** Production-safe fallback: deliberately incapable of loading a key or signing. */
 @Injectable()
 export class DisabledCommercialLicenceIssuer implements CommercialLicenceIssuer {
   async issue(_command: Readonly<IssueCommercialLicenceCommand>): Promise<IssueCommercialLicenceResult> {
     void _command;
     throw new ApiException(
       ERROR_CODES.COMMERCIAL_ISSUER_DISABLED,
-      'Commercial licence issuance is disabled in Phase 1.',
+      'Commercial licence issuance is disabled for this environment.',
       503,
     );
   }
