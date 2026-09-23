@@ -26,6 +26,48 @@ export class StripeCommercialPaymentProvider implements CommercialPaymentProvide
 
   async createCheckout(command: Readonly<CreateCommercialCheckoutCommand>): Promise<CommercialCheckoutSnapshot> {
     const stripe = this.getStripe();
+    const config = this.commercialConfig.assertStripeTestReady();
+    const policy = this.commercialConfig.getPolicy();
+    if (
+      command.productDisplayName !== policy.displayName
+      || command.amountMinor !== policy.amountMinor
+      || command.currency !== policy.currency
+    ) {
+      throw new ApiException(
+        ERROR_CODES.COMMERCIAL_CHECKOUT_FAILED,
+        'Commercial Checkout does not match the server-owned product policy.',
+        409,
+      );
+    }
+
+    const price = await stripe.prices.retrieve(config.priceId!, { expand: ['product'] });
+    const productId = typeof price.product === 'string' ? price.product : price.product.id;
+    const productActive = typeof price.product !== 'string'
+      && !('deleted' in price.product)
+      && price.product.active;
+    const productName = typeof price.product !== 'string' && !('deleted' in price.product)
+      ? price.product.name
+      : null;
+    if (
+      price.livemode
+      || !price.active
+      || !productActive
+      || price.type !== 'one_time'
+      || price.recurring !== null
+      || price.currency.toUpperCase() !== policy.currency
+      || price.unit_amount !== policy.amountMinor
+      || price.tax_behavior !== config.priceTaxBehavior
+      || price.lookup_key !== config.priceLookupKey
+      || productId !== config.productId
+      || productName !== policy.displayName
+    ) {
+      throw new ApiException(
+        ERROR_CODES.COMMERCIAL_STRIPE_NOT_CONFIGURED,
+        'Configured Stripe sandbox Product/Price does not match the server-owned commercial policy.',
+        503,
+      );
+    }
+
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       customer_creation: 'always',
@@ -42,11 +84,7 @@ export class StripeCommercialPaymentProvider implements CommercialPaymentProvide
       payment_intent_data: { metadata: { ...command.metadata } },
       line_items: [{
         quantity: 1,
-        price_data: {
-          currency: command.currency.toLowerCase(),
-          unit_amount: command.amountMinor,
-          product_data: { name: command.productDisplayName },
-        },
+        price: config.priceId!,
       }],
     }, { idempotencyKey: command.commandId });
     if (!session.url) {

@@ -9,6 +9,10 @@ describe('StripeCommercialPaymentProvider webhook boundary', () => {
     COMMERCIAL_STRIPE_ENABLED: 'true',
     COMMERCIAL_STRIPE_SECRET_KEY: 'sk_test_phase2_not_a_real_key',
     COMMERCIAL_STRIPE_WEBHOOK_SECRET: secret,
+    COMMERCIAL_STRIPE_PRODUCT_ID: 'prod_phase2_test',
+    COMMERCIAL_STRIPE_PRICE_ID: 'price_phase2_test',
+    COMMERCIAL_STRIPE_PRICE_LOOKUP_KEY: 'patrolsafe_annual_gbp_v1',
+    COMMERCIAL_STRIPE_PRICE_TAX_BEHAVIOR: 'inclusive',
     COMMERCIAL_CHECKOUT_SUCCESS_URL: 'https://test.sfour.co.uk/patrolsafe/licence/status/{ORDER_REFERENCE}',
     COMMERCIAL_CHECKOUT_CANCEL_URL: 'https://test.sfour.co.uk/patrolsafe/licence/status/{ORDER_REFERENCE}',
   }));
@@ -73,7 +77,22 @@ describe('StripeCommercialPaymentProvider webhook boundary', () => {
       client_reference_id: 'ord_public',
       metadata: { commercial_order_ref: 'ord_public' },
     });
-    (provider as unknown as { client: unknown }).client = { checkout: { sessions: { create } } };
+    const retrievePrice = jest.fn().mockResolvedValue({
+      id: 'price_phase2_test',
+      active: true,
+      livemode: false,
+      type: 'one_time',
+      recurring: null,
+      currency: 'gbp',
+      unit_amount: 29900,
+      tax_behavior: 'inclusive',
+      lookup_key: 'patrolsafe_annual_gbp_v1',
+      product: { id: 'prod_phase2_test', active: true, name: 'PatrolSafe Annual Licence' },
+    });
+    (provider as unknown as { client: unknown }).client = {
+      prices: { retrieve: retrievePrice },
+      checkout: { sessions: { create } },
+    };
     await provider.createCheckout({
       commandId: 'checkout:order:1',
       publicOrderId: 'ord_public',
@@ -93,12 +112,39 @@ describe('StripeCommercialPaymentProvider webhook boundary', () => {
       invoice_creation: { enabled: false },
       line_items: [{
         quantity: 1,
-        price_data: {
-          currency: 'gbp',
-          unit_amount: 29900,
-          product_data: { name: 'PatrolSafe Annual Licence' },
-        },
+        price: 'price_phase2_test',
       }],
     }), { idempotencyKey: 'checkout:order:1' });
+    expect(retrievePrice).toHaveBeenCalledWith('price_phase2_test', { expand: ['product'] });
+  });
+
+  it('fails closed when the configured sandbox Price does not match policy', async () => {
+    const provider = new StripeCommercialPaymentProvider(config);
+    (provider as unknown as { client: unknown }).client = {
+      prices: { retrieve: jest.fn().mockResolvedValue({
+        active: true,
+        livemode: false,
+        type: 'one_time',
+        recurring: null,
+        currency: 'gbp',
+        unit_amount: 100,
+        tax_behavior: 'inclusive',
+        lookup_key: 'patrolsafe_annual_gbp_v1',
+        product: { id: 'prod_phase2_test', active: true, name: 'PatrolSafe Annual Licence' },
+      }) },
+      checkout: { sessions: { create: jest.fn() } },
+    };
+    await expect(provider.createCheckout({
+      commandId: 'checkout:order:mismatch',
+      publicOrderId: 'ord_mismatch',
+      customerEmail: 'buyer@example.test',
+      customerName: 'Mismatch Ltd',
+      productDisplayName: 'PatrolSafe Annual Licence',
+      amountMinor: 29900,
+      currency: 'GBP',
+      successUrl: 'https://test.sfour.co.uk/success',
+      cancelUrl: 'https://test.sfour.co.uk/cancel',
+      metadata: { commercial_order_ref: 'ord_mismatch' },
+    })).rejects.toThrow('does not match the server-owned commercial policy');
   });
 });

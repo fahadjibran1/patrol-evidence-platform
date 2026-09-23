@@ -203,6 +203,22 @@ class EnvVars {
 
   @IsOptional()
   @IsString()
+  COMMERCIAL_STRIPE_PRODUCT_ID?: string;
+
+  @IsOptional()
+  @IsString()
+  COMMERCIAL_STRIPE_PRICE_ID?: string;
+
+  @IsOptional()
+  @IsString()
+  COMMERCIAL_STRIPE_PRICE_LOOKUP_KEY?: string;
+
+  @IsOptional()
+  @IsString()
+  COMMERCIAL_STRIPE_PRICE_TAX_BEHAVIOR?: string;
+
+  @IsOptional()
+  @IsString()
   COMMERCIAL_STRIPE_API_VERSION?: string;
 
   @IsOptional()
@@ -267,6 +283,18 @@ export function validateEnv(config: Record<string, unknown>): EnvVars {
     }
     if (!validated.COMMERCIAL_STRIPE_WEBHOOK_SECRET?.startsWith('whsec_')) {
       throw new Error('[validate-env] Commercial payments require a Stripe TEST webhook secret.');
+    }
+    if (!validated.COMMERCIAL_STRIPE_PRODUCT_ID?.startsWith('prod_')) {
+      throw new Error('[validate-env] Commercial payments require a configured Stripe sandbox Product ID.');
+    }
+    if (!validated.COMMERCIAL_STRIPE_PRICE_ID?.startsWith('price_')) {
+      throw new Error('[validate-env] Commercial payments require a configured Stripe sandbox Price ID.');
+    }
+    if (!validated.COMMERCIAL_STRIPE_PRICE_LOOKUP_KEY) {
+      throw new Error('[validate-env] Commercial payments require a configured Stripe Price lookup key.');
+    }
+    if (validated.COMMERCIAL_STRIPE_PRICE_TAX_BEHAVIOR !== 'inclusive') {
+      throw new Error('[validate-env] Commercial Stripe Price tax behaviour must be explicitly inclusive.');
     }
   }
   if (validated.COMMERCIAL_STRIPE_SECRET_KEY?.startsWith('sk_live_')) {

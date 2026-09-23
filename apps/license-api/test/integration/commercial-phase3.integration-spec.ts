@@ -80,6 +80,8 @@ describe('commercial Phase 3 operator approval and isolated issuer', () => {
     const auth = context.module.get(AuthService);
     config = new CommercialConfigService(new ConfigService({
       COMMERCIAL_STRIPE_ENABLED: 'true', COMMERCIAL_STRIPE_SECRET_KEY: 'sk_test_phase3', COMMERCIAL_STRIPE_WEBHOOK_SECRET: 'whsec_phase3',
+      COMMERCIAL_STRIPE_PRODUCT_ID: 'prod_phase3_test', COMMERCIAL_STRIPE_PRICE_ID: 'price_phase3_test',
+      COMMERCIAL_STRIPE_PRICE_LOOKUP_KEY: 'patrolsafe_annual_gbp_v1', COMMERCIAL_STRIPE_PRICE_TAX_BEHAVIOR: 'inclusive',
       COMMERCIAL_CHECKOUT_SUCCESS_URL: 'https://test.sfour.co.uk/patrolsafe/licence/status/{ORDER_REFERENCE}?checkout=success',
       COMMERCIAL_CHECKOUT_CANCEL_URL: 'https://test.sfour.co.uk/patrolsafe/licence/status/{ORDER_REFERENCE}?checkout=cancelled',
     }));
@@ -101,6 +103,8 @@ describe('commercial Phase 3 operator approval and isolated issuer', () => {
     const purchases = context.module.get(CommercialPurchaseService);
     const config = new CommercialConfigService(new ConfigService({
       COMMERCIAL_STRIPE_ENABLED: 'true', COMMERCIAL_STRIPE_SECRET_KEY: 'sk_test_phase3', COMMERCIAL_STRIPE_WEBHOOK_SECRET: 'whsec_phase3',
+      COMMERCIAL_STRIPE_PRODUCT_ID: 'prod_phase3_test', COMMERCIAL_STRIPE_PRICE_ID: 'price_phase3_test',
+      COMMERCIAL_STRIPE_PRICE_LOOKUP_KEY: 'patrolsafe_annual_gbp_v1', COMMERCIAL_STRIPE_PRICE_TAX_BEHAVIOR: 'inclusive',
       COMMERCIAL_CHECKOUT_SUCCESS_URL: 'https://test.sfour.co.uk/patrolsafe/licence/status/{ORDER_REFERENCE}?checkout=success',
       COMMERCIAL_CHECKOUT_CANCEL_URL: 'https://test.sfour.co.uk/patrolsafe/licence/status/{ORDER_REFERENCE}?checkout=cancelled',
     }));

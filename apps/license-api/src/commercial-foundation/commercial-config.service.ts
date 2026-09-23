@@ -32,6 +32,10 @@ export interface CommercialStripeTestConfig {
   enabled: boolean;
   secretKey: string | null;
   webhookSecret: string | null;
+  productId: string | null;
+  priceId: string | null;
+  priceLookupKey: string | null;
+  priceTaxBehavior: 'inclusive' | null;
   apiVersion: string;
   successUrlTemplate: string;
   cancelUrlTemplate: string;
@@ -64,6 +68,12 @@ export class CommercialConfigService {
       enabled: this.parseBool(this.config.get<string>('COMMERCIAL_STRIPE_ENABLED')),
       secretKey: this.config.get<string>('COMMERCIAL_STRIPE_SECRET_KEY') ?? null,
       webhookSecret: this.config.get<string>('COMMERCIAL_STRIPE_WEBHOOK_SECRET') ?? null,
+      productId: this.config.get<string>('COMMERCIAL_STRIPE_PRODUCT_ID') ?? null,
+      priceId: this.config.get<string>('COMMERCIAL_STRIPE_PRICE_ID') ?? null,
+      priceLookupKey: this.config.get<string>('COMMERCIAL_STRIPE_PRICE_LOOKUP_KEY') ?? null,
+      priceTaxBehavior: this.config.get<string>('COMMERCIAL_STRIPE_PRICE_TAX_BEHAVIOR') === 'inclusive'
+        ? 'inclusive'
+        : null,
       apiVersion: this.config.get<string>('COMMERCIAL_STRIPE_API_VERSION') ?? '2024-11-20.acacia',
       successUrlTemplate:
         this.config.get<string>('COMMERCIAL_CHECKOUT_SUCCESS_URL')
@@ -83,6 +93,18 @@ export class CommercialConfigService {
       throw new ApiException(
         ERROR_CODES.COMMERCIAL_STRIPE_NOT_CONFIGURED,
         'Commercial Stripe test configuration is incomplete or not test mode.',
+        503,
+      );
+    }
+    if (
+      !stripe.productId?.startsWith('prod_')
+      || !stripe.priceId?.startsWith('price_')
+      || !stripe.priceLookupKey
+      || stripe.priceTaxBehavior !== 'inclusive'
+    ) {
+      throw new ApiException(
+        ERROR_CODES.COMMERCIAL_STRIPE_NOT_CONFIGURED,
+        'Commercial Stripe Product/Price binding is incomplete or invalid.',
         503,
       );
     }

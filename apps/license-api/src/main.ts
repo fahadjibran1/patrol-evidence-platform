@@ -38,7 +38,7 @@ async function bootstrap(): Promise<void> {
   const nodeEnv = configService.get<string>('NODE_ENV') ?? 'development';
   const swaggerExplicitlyEnabled =
     String(configService.get<string | boolean>('LICENSE_API_ENABLE_SWAGGER') ?? '').toLowerCase() === 'true';
-  const swaggerEnabled = nodeEnv !== 'production' || swaggerExplicitlyEnabled;
+  const swaggerEnabled = nodeEnv === 'development' || swaggerExplicitlyEnabled;
 
   if (swaggerEnabled) {
     const swaggerConfig = new DocumentBuilder()
