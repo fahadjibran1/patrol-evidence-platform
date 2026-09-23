@@ -228,6 +228,8 @@ export class CommercialDeliveryService {
 
   private async authoritativeRecipient(context: Awaited<ReturnType<CommercialDeliveryService['loadEligibleArtifact']>>) {
     const frozen = context.artifact.deliveryRecipient?.trim().toLowerCase();
+    const approved = context.issuance.deliveryRecipient?.trim().toLowerCase();
+    if (approved && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(approved)) return approved;
     const candidates = context.customer.users.filter((user) => user.isActive && user.emailVerifiedAt && user.notifyLicence && (user.role === 'OWNER' || user.role === 'ADMINISTRATOR'));
     const selected = frozen ? candidates.find((user) => user.email.toLowerCase() === frozen) : candidates.find((user) => user.email.toLowerCase() === context.customer.email.toLowerCase()) ?? candidates[0];
     if (!selected || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(selected.email)) throw new ApiException(ERROR_CODES.COMMERCIAL_DELIVERY_RECIPIENT_UNVERIFIED, 'A verified licence recipient is required.', 409);

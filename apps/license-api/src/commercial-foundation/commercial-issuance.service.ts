@@ -69,7 +69,7 @@ export class CommercialIssuanceService {
     try {
       return await this.prisma.$transaction(async (tx) => {
         await this.stepUp.consume(tx, input.admin, input.stepUpToken, correlationId);
-        const order = await tx.commercialOrder.findUniqueOrThrow({ where: { id: verified.id }, include: { purchaseRequest: true, payments: true, issuance: true } });
+        const order = await tx.commercialOrder.findUniqueOrThrow({ where: { id: verified.id }, include: { purchaseRequest: true, payments: true, issuance: true, customer: true } });
         if (order.issuance) return order.issuance;
         this.assertTransactionalApprovalState(order);
         const changed = await tx.commercialOrder.updateMany({
@@ -93,9 +93,10 @@ export class CommercialIssuanceService {
             maxDevices: 1,
             approvedByAdminId: input.admin.sub,
             approvedAt: issuedAt,
+            deliveryRecipient: order.customer!.email.trim().toLowerCase(),
           },
         });
-        await createCommercialAudit(tx, this.auditService, { actorType: CommercialActorType.OPERATOR, actorAdminId: input.admin.sub, action: 'commercial.approval.succeeded', entityType: 'CommercialLicenceIssuance', entityId: issuance.id, customerId: order.customerId, correlationId, metadata: { publicOrderId: order.publicOrderId, issuanceType: issuance.issuanceType, startsAt: this.date(policy.startsAt), expiresAt: this.date(policy.expiresAt) } });
+        await createCommercialAudit(tx, this.auditService, { actorType: CommercialActorType.OPERATOR, actorAdminId: input.admin.sub, action: 'commercial.approval.succeeded', entityType: 'CommercialLicenceIssuance', entityId: issuance.id, customerId: order.customerId, correlationId, metadata: { publicOrderId: order.publicOrderId, issuanceType: issuance.issuanceType, startsAt: this.date(policy.startsAt), expiresAt: this.date(policy.expiresAt), deliveryRecipientApproved: true } });
         await createCommercialAudit(tx, this.auditService, { actorType: CommercialActorType.OPERATOR, actorAdminId: input.admin.sub, action: 'commercial.issuance.queued', entityType: 'CommercialLicenceIssuance', entityId: issuance.id, customerId: order.customerId, correlationId, metadata: { publicOrderId: order.publicOrderId } });
         await createCommercialOutboxEvent(tx, { idempotencyKey: `commercial-issuance:${issuance.id}:requested`, aggregateType: 'CommercialLicenceIssuance', aggregateId: issuance.id, eventType: 'commercial.issuance.requested', correlationId, payload: { issuanceId: issuance.id, publicOrderId: order.publicOrderId } });
         return issuance;
@@ -201,7 +202,7 @@ export class CommercialIssuanceService {
   }
 
   private assertTransactionalApprovalState(order: any) {
-    if (order.state !== CommercialOrderState.PAID_AWAITING_APPROVAL || order.refundedAt || order.cancelledAt || order.holdReason || !order.customerId || order.product !== 'Patrol Evidence Platform' || order.purchaseRequest.product !== 'Patrol Evidence Platform' || order.requestHashSnapshot !== order.purchaseRequest.canonicalRequestHash || order.plan !== 'ANNUAL' || order.purchaseRequest.plan !== 'ANNUAL' || order.amountMinor !== 29900 || order.currency !== 'GBP' || !order.payments.some((p: any) => p.status === 'SUCCEEDED' && p.amountMinor === 29900 && p.currency === 'GBP')) throw new ApiException(ERROR_CODES.COMMERCIAL_APPROVAL_PRECONDITION_FAILED, 'Commercial order changed before approval completed.', 409);
+    if (order.state !== CommercialOrderState.PAID_AWAITING_APPROVAL || order.refundedAt || order.cancelledAt || order.holdReason || !order.customerId || !order.customer || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(order.customer.email) || order.product !== 'Patrol Evidence Platform' || order.purchaseRequest.product !== 'Patrol Evidence Platform' || order.requestHashSnapshot !== order.purchaseRequest.canonicalRequestHash || order.plan !== 'ANNUAL' || order.purchaseRequest.plan !== 'ANNUAL' || order.amountMinor !== 29900 || order.currency !== 'GBP' || !order.payments.some((p: any) => p.status === 'SUCCEEDED' && p.amountMinor === 29900 && p.currency === 'GBP')) throw new ApiException(ERROR_CODES.COMMERCIAL_APPROVAL_PRECONDITION_FAILED, 'Commercial order changed before approval completed.', 409);
   }
 
   private async licenceWindow(previousLicenceId: string | null, issuedAt: Date) {

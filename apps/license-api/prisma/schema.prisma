@@ -1183,6 +1183,7 @@ model CommercialLicenceIssuance {
   maxDevices           Int?
   approvedByAdminId    String?
   approvedAt           DateTime?
+  deliveryRecipient    String?
   commercialReviewRequired Boolean              @default(false)
   postIssuanceRefundAt DateTime?
   failureCode          String?

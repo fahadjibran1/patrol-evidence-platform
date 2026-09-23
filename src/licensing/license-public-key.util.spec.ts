@@ -26,6 +26,7 @@ describe('license-public-key.util', () => {
     LICENSE_PUBLIC_KEY_FILE: process.env.LICENSE_PUBLIC_KEY_FILE,
     LICENSE_ONLINE_PUBLIC_KEY: process.env.LICENSE_ONLINE_PUBLIC_KEY,
     LICENSE_ONLINE_PUBLIC_KEY_ID: process.env.LICENSE_ONLINE_PUBLIC_KEY_ID,
+    PATROLSAFE_COMMERCIAL_STAGING: process.env.PATROLSAFE_COMMERCIAL_STAGING,
     PATROL_DESKTOP_PACKAGED: process.env.PATROL_DESKTOP_PACKAGED,
     PATROL_RESOURCES_PATH: process.env.PATROL_RESOURCES_PATH,
     PATROL_APP_PATH: process.env.PATROL_APP_PATH,
@@ -46,6 +47,7 @@ describe('license-public-key.util', () => {
     delete process.env.LICENSE_PUBLIC_KEY_FILE;
     delete process.env.LICENSE_ONLINE_PUBLIC_KEY;
     delete process.env.LICENSE_ONLINE_PUBLIC_KEY_ID;
+    delete process.env.PATROLSAFE_COMMERCIAL_STAGING;
     delete process.env.PATROL_DESKTOP_PACKAGED;
     delete process.env.PATROL_RESOURCES_PATH;
     delete process.env.PATROL_APP_PATH;
@@ -122,6 +124,16 @@ describe('license-public-key.util', () => {
       ['vesoft-offline-v1', 'legacy-v1'],
       ['managed-online-v1', 'online-annual-v1'],
     ]);
+  });
+
+  it('accepts a test online key only when the desktop configuration is explicitly staging', () => {
+    process.env.LICENSE_PUBLIC_KEY = publicPem;
+    const online = generateKeyPairSync('ed25519');
+    process.env.LICENSE_ONLINE_PUBLIC_KEY = online.publicKey.export({ type: 'spki', format: 'pem' }).toString();
+    process.env.LICENSE_ONLINE_PUBLIC_KEY_ID = 'test-phase6-online-key';
+    expect(() => loadLicensePublicKeyRing()).toThrow(/explicitly marked commercial staging/i);
+    process.env.PATROLSAFE_COMMERCIAL_STAGING = 'true';
+    expect(loadLicensePublicKeyRing().map((entry) => entry.keyId)).toContain('test-phase6-online-key');
   });
 
   it('detects private key material during packaging safety scans', () => {

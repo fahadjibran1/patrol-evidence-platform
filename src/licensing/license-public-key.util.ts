@@ -169,8 +169,12 @@ export function loadLicensePublicKeyRing(): CommercialLicenceTrustEntry[] {
   }
   const onlinePem = resolveOnlineLicensePublicKeyPem();
   if (onlinePem) {
+    const keyId = process.env.LICENSE_ONLINE_PUBLIC_KEY_ID?.trim() || 'vesoft-online-v1';
+    if (keyId.startsWith('test-') && process.env.PATROLSAFE_COMMERCIAL_STAGING !== 'true') {
+      throw new Error('A test online licence key is permitted only in an explicitly marked commercial staging build.');
+    }
     entries.push({
-      keyId: process.env.LICENSE_ONLINE_PUBLIC_KEY_ID?.trim() || 'vesoft-online-v1',
+      keyId,
       publicKey: loadPublicKeyFromPem(onlinePem),
       policy: 'online-annual-v1',
     });

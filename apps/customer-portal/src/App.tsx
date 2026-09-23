@@ -20,6 +20,8 @@ import { BillingPlansComparePage } from './pages/billing-plans-compare-page';
 import { BillingSettingsPage } from './pages/billing-settings-page';
 import { CheckoutSuccessPage } from './pages/checkout-success-page';
 import { CheckoutCancelledPage } from './pages/checkout-cancelled-page';
+import { CommercialPurchasePage } from './pages/commercial-purchase-page';
+import { CommercialStatusPage } from './pages/commercial-status-page';
 
 function RequirePermission({
   allowed,
@@ -51,6 +53,8 @@ function AppRoutes(): JSX.Element {
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/accept-invitation" element={<AcceptInvitationPage />} />
+      <Route path="/patrolsafe/buy/:reference" element={<CommercialPurchasePage />} />
+      <Route path="/patrolsafe/licence/status/:publicOrderId" element={<CommercialStatusPage />} />
       <Route
         path="/"
         element={
