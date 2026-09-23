@@ -31,6 +31,19 @@ describe('CommercialConfigService', () => {
     }));
     expect(enabled.assertStripeTestReady().enabled).toBe(true);
 
+    const restricted = new CommercialConfigService(new ConfigService({
+      COMMERCIAL_STRIPE_ENABLED: 'true',
+      COMMERCIAL_STRIPE_SECRET_KEY: 'rk_test_restricted_not_a_real_key',
+      COMMERCIAL_STRIPE_WEBHOOK_SECRET: 'whsec_phase2_not_a_real_secret',
+      COMMERCIAL_STRIPE_PRODUCT_ID: 'prod_phase2_test',
+      COMMERCIAL_STRIPE_PRICE_ID: 'price_phase2_test',
+      COMMERCIAL_STRIPE_PRICE_LOOKUP_KEY: 'patrolsafe_annual_gbp_v1',
+      COMMERCIAL_STRIPE_PRICE_TAX_BEHAVIOR: 'inclusive',
+      COMMERCIAL_CHECKOUT_SUCCESS_URL: 'https://test.sfour.co.uk/patrolsafe/licence/status/{ORDER_REFERENCE}',
+      COMMERCIAL_CHECKOUT_CANCEL_URL: 'https://test.sfour.co.uk/patrolsafe/licence/status/{ORDER_REFERENCE}',
+    }));
+    expect(restricted.assertStripeTestReady().secretKey).toBe('rk_test_restricted_not_a_real_key');
+
     const unbound = new CommercialConfigService(new ConfigService({
       COMMERCIAL_STRIPE_ENABLED: 'true',
       COMMERCIAL_STRIPE_SECRET_KEY: 'sk_test_phase2_not_a_real_key',

@@ -21,7 +21,7 @@ export class StripeCommercialPaymentProvider implements CommercialPaymentProvide
 
   getMode(): 'TEST' | 'DISABLED' {
     const config = this.commercialConfig.getStripeTestConfig();
-    return config.enabled && config.secretKey?.startsWith('sk_test_') ? 'TEST' : 'DISABLED';
+    return config.enabled && /^(?:sk|rk)_test_/.test(config.secretKey ?? '') ? 'TEST' : 'DISABLED';
   }
 
   async createCheckout(command: Readonly<CreateCommercialCheckoutCommand>): Promise<CommercialCheckoutSnapshot> {

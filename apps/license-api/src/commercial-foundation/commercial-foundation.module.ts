@@ -29,6 +29,9 @@ import { COMMERCIAL_DELIVERY_PROVIDER } from './commercial-delivery-provider.por
 import { ResendCommercialDeliveryProvider } from './resend-commercial-delivery.provider';
 import { CommercialDeliveryTokenService } from './commercial-delivery-token.service';
 import { CommercialDeliveryService } from './commercial-delivery.service';
+import { PrismaService } from '@/prisma/prisma.service';
+import { EncryptionService } from '@/crypto/encryption.service';
+import { DatabaseCommercialArtifactStore } from './database-commercial-artifact.store';
 
 @Module({
   imports: [AuthModule],
@@ -51,8 +54,11 @@ import { CommercialDeliveryService } from './commercial-delivery.service';
     StripeCommercialPaymentProvider,
     {
       provide: COMMERCIAL_ARTIFACT_STORE,
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => new PrivateTestArtifactStore(config),
+      inject: [ConfigService, PrismaService, EncryptionService],
+      useFactory: (config: ConfigService, prisma: PrismaService, encryption: EncryptionService) =>
+        config.get<string>('COMMERCIAL_ARTIFACT_STORE') === 'database'
+          ? new DatabaseCommercialArtifactStore(prisma, encryption)
+          : new PrivateTestArtifactStore(config),
     },
     {
       provide: COMMERCIAL_DELIVERY_PROVIDER,

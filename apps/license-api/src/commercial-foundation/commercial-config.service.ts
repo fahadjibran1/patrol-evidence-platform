@@ -89,7 +89,7 @@ export class CommercialConfigService {
     if (!stripe.enabled) {
       throw new ApiException(ERROR_CODES.COMMERCIAL_STRIPE_DISABLED, 'Commercial Stripe test mode is disabled.', 503);
     }
-    if (!stripe.secretKey?.startsWith('sk_test_') || !stripe.webhookSecret?.startsWith('whsec_')) {
+    if (!/^(?:sk|rk)_test_/.test(stripe.secretKey ?? '') || !stripe.webhookSecret?.startsWith('whsec_')) {
       throw new ApiException(
         ERROR_CODES.COMMERCIAL_STRIPE_NOT_CONFIGURED,
         'Commercial Stripe test configuration is incomplete or not test mode.',

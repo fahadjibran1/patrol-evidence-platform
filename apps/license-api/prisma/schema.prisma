@@ -1224,6 +1224,16 @@ model CommercialLicenceArtifact {
   @@index([sha256])
 }
 
+model CommercialArtifactBlob {
+  storageKey String   @id
+  sha256     String
+  byteSize   BigInt
+  ciphertext String
+  createdAt  DateTime @default(now())
+
+  @@index([sha256])
+}
+
 model CommercialDeliveryAttempt {
   id                String                   @id @default(uuid())
   artifactId        String

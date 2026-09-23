@@ -240,6 +240,18 @@ class EnvVars {
   @IsOptional()
   @IsString()
   COMMERCIAL_OUTBOX_WORKER_ENABLED?: string;
+
+  @IsOptional()
+  @IsString()
+  COMMERCIAL_ARTIFACT_STORE?: string;
+
+  @IsOptional()
+  @IsString()
+  COMMERCIAL_LEAN_STAGING_PORTALS?: string;
+
+  @IsOptional()
+  @IsString()
+  PATROLSAFE_COMMERCIAL_STAGING?: string;
 }
 
 function isTruthy(value: string | undefined): boolean {
@@ -278,8 +290,8 @@ export function validateEnv(config: Record<string, unknown>): EnvVars {
 
   const commercialStripeEnabled = isTruthy(validated.COMMERCIAL_STRIPE_ENABLED);
   if (commercialStripeEnabled) {
-    if (!validated.COMMERCIAL_STRIPE_SECRET_KEY?.startsWith('sk_test_')) {
-      throw new Error('[validate-env] Commercial payments require an explicit Stripe TEST secret key.');
+    if (!/^(?:sk|rk)_test_/.test(validated.COMMERCIAL_STRIPE_SECRET_KEY ?? '')) {
+      throw new Error('[validate-env] Commercial payments require an explicit Stripe TEST secret or restricted key.');
     }
     if (!validated.COMMERCIAL_STRIPE_WEBHOOK_SECRET?.startsWith('whsec_')) {
       throw new Error('[validate-env] Commercial payments require a Stripe TEST webhook secret.');
@@ -297,8 +309,20 @@ export function validateEnv(config: Record<string, unknown>): EnvVars {
       throw new Error('[validate-env] Commercial Stripe Price tax behaviour must be explicitly inclusive.');
     }
   }
-  if (validated.COMMERCIAL_STRIPE_SECRET_KEY?.startsWith('sk_live_')) {
+  if (/^(?:sk|rk)_live_/.test(validated.COMMERCIAL_STRIPE_SECRET_KEY ?? '')) {
     throw new Error('[validate-env] Live Stripe credentials are not authorized for commercial Phase 2.');
+  }
+  if (validated.COMMERCIAL_ARTIFACT_STORE
+    && !['database', 'private-test-filesystem'].includes(validated.COMMERCIAL_ARTIFACT_STORE)) {
+    throw new Error('[validate-env] COMMERCIAL_ARTIFACT_STORE must be database or private-test-filesystem.');
+  }
+  if (isTruthy(validated.COMMERCIAL_LEAN_STAGING_PORTALS)) {
+    if (!isTruthy(validated.PATROLSAFE_COMMERCIAL_STAGING)) {
+      throw new Error('[validate-env] Lean portals require the explicit commercial staging marker.');
+    }
+    if (validated.NODE_ENV === 'production') {
+      throw new Error('[validate-env] Lean staging portals are forbidden in production.');
+    }
   }
 
   // Optional infrastructure — never fail startup for these, but warn loudly in production

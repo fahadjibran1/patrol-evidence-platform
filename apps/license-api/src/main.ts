@@ -4,6 +4,7 @@ import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { configureLeanStagingPortals } from './config/lean-staging-portals';
 
 async function bootstrap(): Promise<void> {
   // rawBody: true preserves exact bytes for Stripe webhook signature verification.
@@ -50,6 +51,8 @@ async function bootstrap(): Promise<void> {
 
     SwaggerModule.setup('docs', app, SwaggerModule.createDocument(app, swaggerConfig));
   }
+
+  configureLeanStagingPortals(app, configService);
 
   app.enableShutdownHooks();
 
