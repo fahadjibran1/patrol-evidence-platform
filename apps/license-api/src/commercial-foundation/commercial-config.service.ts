@@ -108,10 +108,10 @@ export class CommercialConfigService {
         503,
       );
     }
-    if (!this.isSafeS4Url(stripe.successUrlTemplate) || !this.isSafeS4Url(stripe.cancelUrlTemplate)) {
+    if (!this.isSafeCheckoutRedirect(stripe.successUrlTemplate) || !this.isSafeCheckoutRedirect(stripe.cancelUrlTemplate)) {
       throw new ApiException(
         ERROR_CODES.COMMERCIAL_STRIPE_NOT_CONFIGURED,
-        'Commercial checkout redirect configuration is not an approved HTTPS S4 URL.',
+        'Commercial checkout redirect configuration is not an approved HTTPS portal URL.',
         503,
       );
     }
@@ -126,10 +126,32 @@ export class CommercialConfigService {
     return template.replace('{ORDER_REFERENCE}', encodeURIComponent(publicOrderId));
   }
 
-  private isSafeS4Url(template: string): boolean {
+  private isSafeCheckoutRedirect(template: string): boolean {
     try {
       const candidate = new URL(template.replace('{ORDER_REFERENCE}', 'ord_test'));
-      return candidate.protocol === 'https:' && (candidate.hostname === 'sfour.co.uk' || candidate.hostname.endsWith('.sfour.co.uk'));
+      if (candidate.protocol !== 'https:' || candidate.port || candidate.username || candidate.password) return false;
+      if (candidate.hostname === 'sfour.co.uk' || candidate.hostname.endsWith('.sfour.co.uk')) return true;
+      if (
+        this.config.get<string>('NODE_ENV') !== 'staging'
+        || !this.parseBool(this.config.get<string>('PATROLSAFE_COMMERCIAL_STAGING'))
+        || !this.parseBool(this.config.get<string>('COMMERCIAL_LEAN_STAGING_PORTALS'))
+      ) {
+        return false;
+      }
+
+      const configuredOrigin = this.config.get<string>('CUSTOMER_PORTAL_ORIGIN')?.trim() ?? '';
+      const customerPortal = new URL(configuredOrigin);
+      if (
+        customerPortal.protocol !== 'https:'
+        || customerPortal.username
+        || customerPortal.password
+        || customerPortal.pathname !== '/'
+        || customerPortal.search
+        || customerPortal.hash
+      ) {
+        return false;
+      }
+      return candidate.origin === customerPortal.origin;
     } catch {
       return false;
     }
