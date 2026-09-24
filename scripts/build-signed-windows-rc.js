@@ -42,6 +42,10 @@ function main() {
   if (typeof releaseVersion !== 'string' || !/^\d+\.\d+\.\d+$/.test(releaseVersion)) {
     throw new Error('SIGNED_WINDOWS_RC_INVALID_PACKAGE_VERSION');
   }
+  const expectedProductName =
+    process.env.PATROLSAFE_COMMERCIAL_STAGING_BUILD === 'true'
+      ? 'PatrolSafe by S4 STAGING'
+      : 'PatrolSafe by S4';
 
   const env = {
     ...process.env,
@@ -76,6 +80,8 @@ function main() {
       manifestPath,
       '-ExpectedReleaseVersion',
       releaseVersion,
+      '-ExpectedProductName',
+      expectedProductName,
       '-RequireInstaller',
     ],
     env,

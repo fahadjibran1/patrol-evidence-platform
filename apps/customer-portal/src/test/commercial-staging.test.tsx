@@ -16,6 +16,8 @@ describe('S4 commercial staging pages', () => {
     render(<MemoryRouter initialEntries={[`/patrolsafe/buy/${reference}`]}><Routes><Route path="/patrolsafe/buy/:reference" element={<CommercialPurchasePage />} /></Routes></MemoryRouter>);
     expect(await screen.findByText('Staging Patrol Ltd')).toBeInTheDocument();
     expect(screen.getByText(/£299/)).toBeInTheDocument();
+    expect(screen.getByText('total (VAT included)')).toBeInTheDocument();
+    expect(screen.queryByText(/VAT where applicable/i)).not.toBeInTheDocument();
     expect(screen.getByText('1 Windows workstation')).toBeInTheDocument();
     expect(screen.queryByText(/fingerprint|installation id|signing/i)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Continue to secure checkout' })).toBeDisabled();

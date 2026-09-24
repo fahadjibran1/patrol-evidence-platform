@@ -45,7 +45,7 @@ describe('PatrolSafe release branding contract', () => {
 
     expect(licencePage).toContain("const PUBLIC_REQUEST_PLAN = 'annual' as const");
     expect(licencePage).toContain('requestedPlan: PUBLIC_REQUEST_PLAN');
-    expect(licencePage).toContain('£299 <span>+ VAT where applicable</span>');
+    expect(licencePage).toContain('£299 <span>total (VAT included)</span>');
     expect(licencePage).not.toContain('<option value="three_year">');
     expect(licencePage).not.toContain('<option value="lifetime">');
     expect(licencePage).not.toContain('setRequestedPlan');
@@ -70,8 +70,9 @@ describe('PatrolSafe release branding contract', () => {
     expect(packageMetadata.name).toBe('patrol-evidence-platform');
     expect(packageMetadata.productName).toBe('Patrol Evidence Platform');
     expect(forgeConfig).toContain("executableName: 'PatrolEvidencePlatform'");
-    expect(forgeConfig).toContain("name: 'patrol_evidence_platform'");
-    expect(forgeConfig).toContain("setupExe: 'PatrolEvidencePlatformSetup.exe'");
+    expect(forgeConfig).toContain("? 'patrolsafe_commercial_staging' : 'patrol_evidence_platform'");
+    expect(forgeConfig).toContain("? 'PatrolSafe-v1.0.3-Commercial-Staging-Setup.exe'");
+    expect(forgeConfig).toContain(": 'PatrolEvidencePlatformSetup.exe'");
   });
 
   it('preserves the certified WhatsApp LocalAuth identity and session directory', () => {

@@ -41,6 +41,7 @@ const {
   verifyPatrolSafeBackup,
 } = require('./data-durability');
 const { validateBackedUpCommercialLicence } = require('./commercial-licence-backup');
+const { applyPackagedCommercialStagingRuntime } = require('./commercial-staging-runtime');
 
 const packageMetadata = require('../package.json');
 const {
@@ -67,6 +68,16 @@ const PRODUCT_METADATA = {
   companyName: packageMetadata.companyName || 'Vesoft Services Limited',
   supportEmail: packageMetadata.supportEmail || 'support@sfour.co.uk',
 };
+
+const commercialStagingRuntime = applyPackagedCommercialStagingRuntime({
+  packaged: app.isPackaged,
+  resourcesPath: process.resourcesPath,
+});
+if (commercialStagingRuntime) {
+  console.log(
+    `PATROLSAFE_COMMERCIAL_STAGING_RUNTIME_READY origin=${process.env.PATROLSAFE_COMMERCIAL_SERVICE_ORIGIN} keyId=${commercialStagingRuntime.keyId} publicKeySha256=${commercialStagingRuntime.publicKeyFingerprintSha256}`,
+  );
+}
 
 const DEFAULT_WEB_URL = 'http://localhost:5173';
 const BACKEND_HEALTH_PATH = '/health';

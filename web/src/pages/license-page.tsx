@@ -264,7 +264,7 @@ export function LicensePage(): JSX.Element {
       <div className="settings-grid">
         <Card className="action-card licence-purchase-card">
           <p className="eyebrow">PatrolSafe Annual Licence</p><h3>{canRenew ? 'Renew licence' : 'Buy annual licence'}</h3>
-          <p className="licence-price">£299 <span>+ VAT where applicable</span></p>
+          <p className="licence-price">£299 <span>total (VAT included)</span></p>
           <ul className="plain-list"><li>1 Windows workstation</li><li>12-month licence</li><li>Manual annual renewal — no automatic charge</li></ul>
           <button type="button" className="primary-button" disabled={isSubmitting || companyName.trim().length < 2} onClick={() => void handleOnlinePurchase()}>{isSubmitting ? 'Please wait…' : canRenew ? 'Renew licence' : 'Buy annual licence'}</button>
           {purchaseSession?.purchaseReference ? <div className="purchase-status-panel"><strong>Purchase started</strong><p>{purchaseStatus?.message ?? 'Complete payment in your browser. PatrolSafe will not activate until you import the supplied licence.'}</p><button type="button" className="secondary-button" disabled={isSubmitting} onClick={() => void handleCheckPurchaseStatus()}>Check licence status</button></div> : null}

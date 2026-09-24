@@ -1,11 +1,16 @@
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const { MakerSquirrel } = require('@electron-forge/maker-squirrel');
 const { MakerZIP } = require('@electron-forge/maker-zip');
 const { MakerDMG } = require('@electron-forge/maker-dmg');
 const packageMetadata = require('./package.json');
-const releaseDisplayName =
+const commercialStagingBuild = process.env.PATROLSAFE_COMMERCIAL_STAGING_BUILD === 'true';
+const baseReleaseDisplayName =
   packageMetadata.displayName || packageMetadata.productName || 'PatrolSafe by S4';
+const releaseDisplayName = commercialStagingBuild
+  ? `${baseReleaseDisplayName} STAGING`
+  : baseReleaseDisplayName;
 const { getPackagerRuntimeIgnoreBlocklist } = require('./scripts/lib/electron-runtime-manifest');
 const { ensureElectronRuntimeFiles } = require('./scripts/ensure-electron-runtime-files');
 const {
@@ -21,6 +26,36 @@ const {
 } = require('./scripts/lib/license-public-key.util');
 
 const trackedPublicKeyPath = getTrackedPublicKeyPath(__dirname);
+const commercialStagingOrigin = 'https://patrolsafe-commercial-staging.onrender.com';
+const commercialStagingKeyId = 'test-phase6-online-key';
+const commercialStagingPublicKeyFileName = 'patrolsafe-staging-ed25519-public.pem';
+const commercialStagingConfigFileName = 'patrolsafe-commercial-staging.json';
+let commercialStagingExtraResources = [];
+
+if (commercialStagingBuild) {
+  const publicKeyPath = path.join(
+    os.tmpdir(),
+    'patrolsafe-staging-signing',
+    commercialStagingPublicKeyFileName,
+  );
+  const publicKeyValidation = validatePublicKeyFile(
+    publicKeyPath,
+    'authorised staging online issuer public key',
+  );
+  logSafePublicKeyConfirmation(publicKeyPath, publicKeyValidation.keyObject);
+
+  const configDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'patrolsafe-staging-package-'));
+  const configPath = path.join(configDirectory, commercialStagingConfigFileName);
+  fs.writeFileSync(configPath, `${JSON.stringify({
+    schemaVersion: 1,
+    staging: true,
+    serviceOrigin: commercialStagingOrigin,
+    purchaseOrigin: commercialStagingOrigin,
+    onlineKeyId: commercialStagingKeyId,
+    onlinePublicKeyFile: commercialStagingPublicKeyFileName,
+  }, null, 2)}\n`, 'utf8');
+  commercialStagingExtraResources = [publicKeyPath, configPath];
+}
 
 function resolveWindowsBuildVersion() {
   const fromPackage = String(packageMetadata.windowsBuild || '').trim();
@@ -305,6 +340,9 @@ module.exports = {
       const validation = validatePublicKeyFile(trackedPublicKeyPath, 'resources/license-public.pem');
       logSafePublicKeyConfirmation(trackedPublicKeyPath, validation.keyObject);
       assertNoPrivateKeysInPaths([path.join(__dirname, 'resources')], 'Pre-package resources safety check');
+      if (commercialStagingBuild && commercialStagingExtraResources.length !== 2) {
+        throw new Error('COMMERCIAL_STAGING_PACKAGE_INPUT_MISSING');
+      }
     },
     postPackage: async (_forgeConfig, packageResult) => {
       if (!packageResult || packageResult.platform !== 'win32') {
@@ -365,6 +403,26 @@ module.exports = {
         const validation = validatePublicKeyFile(packagedPublicKeyPath, packagedPublicKeyPath);
         console.log(`LICENSE_PUBLIC_KEY_PACKAGED path=${packagedPublicKeyPath}`);
         logSafePublicKeyConfirmation(packagedPublicKeyPath, validation.keyObject);
+        if (commercialStagingBuild) {
+          const stagingConfigPath = path.join(packagedResourcesPath, commercialStagingConfigFileName);
+          const stagingPublicKeyPath = path.join(packagedResourcesPath, commercialStagingPublicKeyFileName);
+          if (!fs.existsSync(stagingConfigPath)) {
+            throw new Error('COMMERCIAL_STAGING_CONFIG_PACKAGE_VALIDATION_FAILED');
+          }
+          const stagingConfig = JSON.parse(fs.readFileSync(stagingConfigPath, 'utf8'));
+          if (
+            stagingConfig.serviceOrigin !== commercialStagingOrigin
+            || stagingConfig.purchaseOrigin !== commercialStagingOrigin
+            || stagingConfig.onlineKeyId !== commercialStagingKeyId
+          ) {
+            throw new Error('COMMERCIAL_STAGING_CONFIG_IDENTITY_MISMATCH');
+          }
+          const onlineValidation = validatePublicKeyFile(stagingPublicKeyPath, stagingPublicKeyPath);
+          logSafePublicKeyConfirmation(stagingPublicKeyPath, onlineValidation.keyObject);
+          console.log(
+            `COMMERCIAL_STAGING_PACKAGE_VALID origin=${commercialStagingOrigin} keyId=${commercialStagingKeyId}`,
+          );
+        }
         assertNoPrivateKeysInPaths([outputPath], 'Post-package safety check');
       }
     },
@@ -386,6 +444,7 @@ module.exports = {
     windowsSign,
     extraResource: [
       ...(fs.existsSync(trackedPublicKeyPath) ? [trackedPublicKeyPath] : []),
+      ...commercialStagingExtraResources,
       // Vendored WhatsApp Web HTML pin for whatsapp-web.js LocalWebCache (survives src prune).
       ...(fs.existsSync(path.join(__dirname, 'src', 'collectors', 'wa-web-cache'))
         ? [path.join(__dirname, 'src', 'collectors', 'wa-web-cache')]
@@ -425,14 +484,16 @@ module.exports = {
   },
   makers: [
     new MakerSquirrel({
-      name: 'patrol_evidence_platform',
+      name: commercialStagingBuild ? 'patrolsafe_commercial_staging' : 'patrol_evidence_platform',
       title: releaseDisplayName,
       authors: packageMetadata.companyName || packageMetadata.author || 'Vesoft Services Limited',
       owners: packageMetadata.companyName || packageMetadata.author || 'Vesoft Services Limited',
       // Squirrel maps this field into Setup.exe ProductName/FileDescription.
       description: releaseDisplayName,
       exe: 'PatrolEvidencePlatform.exe',
-      setupExe: 'PatrolEvidencePlatformSetup.exe',
+      setupExe: commercialStagingBuild
+        ? 'PatrolSafe-v1.0.3-Commercial-Staging-Setup.exe'
+        : 'PatrolEvidencePlatformSetup.exe',
       setupIcon: hasWindowsIcon ? `${iconBasePath}.ico` : undefined,
       iconUrl: windowsIconUrl || undefined,
       skipUpdateIcon: false,

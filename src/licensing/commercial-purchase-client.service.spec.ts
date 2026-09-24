@@ -92,4 +92,36 @@ describe('CommercialPurchaseClientService', () => {
     await expect(service().start({ requestId: '5c97ec6e-77af-4fbe-8928-6ba4931eb213', clientNonce: 'n'.repeat(32) })).rejects.toThrow(/safely/i);
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it('accepts only the exact Render origin for an explicitly marked private staging candidate', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.PATROLSAFE_COMMERCIAL_STAGING = 'true';
+    process.env.PATROLSAFE_COMMERCIAL_STAGING_BUILD = 'true';
+    process.env.PATROLSAFE_COMMERCIAL_SERVICE_ORIGIN = 'https://patrolsafe-commercial-staging.onrender.com';
+    process.env.PATROLSAFE_COMMERCIAL_PURCHASE_ORIGIN = 'https://patrolsafe-commercial-staging.onrender.com';
+    const requestId = '5c97ec6e-77af-4fbe-8928-6ba4931eb213';
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ requestId, publicOrderId: 'ord_74cc812c-4abf-4f06-a57e-3a4c1ad6ce27', purchaseReference: 'S'.repeat(43), referenceExpiresAt: '2026-09-24T14:00:00.000Z', status: 'REQUEST_CREATED' }) });
+
+    await expect(service().start({ requestId, clientNonce: 'n'.repeat(32) })).resolves.toMatchObject({
+      purchaseUrl: `https://patrolsafe-commercial-staging.onrender.com/patrolsafe/buy/${'S'.repeat(43)}`,
+    });
+  });
+
+  it.each([
+    ['missing staging marker', { PATROLSAFE_COMMERCIAL_STAGING: undefined }],
+    ['missing staging build marker', { PATROLSAFE_COMMERCIAL_STAGING_BUILD: undefined }],
+    ['alternate Render service', { PATROLSAFE_COMMERCIAL_SERVICE_ORIGIN: 'https://other.onrender.com' }],
+    ['alternate Render purchase site', { PATROLSAFE_COMMERCIAL_PURCHASE_ORIGIN: 'https://other.onrender.com' }],
+  ])('rejects the private staging origin when %s', async (_label, overrides) => {
+    process.env.NODE_ENV = 'production';
+    process.env.PATROLSAFE_COMMERCIAL_STAGING = 'true';
+    process.env.PATROLSAFE_COMMERCIAL_STAGING_BUILD = 'true';
+    process.env.PATROLSAFE_COMMERCIAL_SERVICE_ORIGIN = 'https://patrolsafe-commercial-staging.onrender.com';
+    process.env.PATROLSAFE_COMMERCIAL_PURCHASE_ORIGIN = 'https://patrolsafe-commercial-staging.onrender.com';
+    Object.assign(process.env, overrides);
+    for (const [key, value] of Object.entries(overrides)) if (value === undefined) delete process.env[key];
+
+    await expect(service().start({ requestId: '5c97ec6e-77af-4fbe-8928-6ba4931eb213', clientNonce: 'n'.repeat(32) })).rejects.toThrow(/not configured/i);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });

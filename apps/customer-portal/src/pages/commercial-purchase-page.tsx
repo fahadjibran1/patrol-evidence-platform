@@ -52,7 +52,7 @@ export function CommercialPurchasePage(): JSX.Element {
         <h1>PatrolSafe Annual Licence</h1>
         {message ? <div className="banner" role="alert">{message}</div> : null}
         {purchase ? <>
-          <p className="commercial-price">£299 <span>+ VAT where applicable</span></p>
+          <p className="commercial-price">£299 <span>total (VAT included)</span></p>
           <ul className="commercial-summary">
             <li>1 Windows workstation</li>
             <li>12-month licence</li>

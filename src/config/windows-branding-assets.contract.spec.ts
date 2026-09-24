@@ -88,7 +88,8 @@ describe('PatrolSafe Windows branding assets', () => {
     expect(metadata.name).toBe('patrol-evidence-platform');
     expect(metadata.productName).toBe('Patrol Evidence Platform');
     expect(forge).toContain("executableName: 'PatrolEvidencePlatform'");
-    expect(forge).toContain("setupExe: 'PatrolEvidencePlatformSetup.exe'");
+    expect(forge).toContain("? 'PatrolSafe-v1.0.3-Commercial-Staging-Setup.exe'");
+    expect(forge).toContain(": 'PatrolEvidencePlatformSetup.exe'");
     expect(helper).toContain("const SESSION_PROFILE_DIR = 'session-patrol-evidence-platform'");
     expect(helper).toContain("const LOCAL_AUTH_CLIENT_ID = 'patrol-evidence-platform'");
   });
@@ -109,6 +110,11 @@ describe('PatrolSafe Windows branding assets', () => {
     expect(signedRelease).toContain("PATROLSAFE_WINDOWS_RELEASE: 'rc'");
     expect(signedRelease).toContain('patrolsafe-${releaseVersion}-private-rc-');
     expect(signedRelease).toContain("'-ExpectedReleaseVersion'");
+    expect(signedRelease).toContain(
+      "process.env.PATROLSAFE_COMMERCIAL_STAGING_BUILD === 'true'",
+    );
+    expect(signedRelease).toContain("'PatrolSafe by S4 STAGING'");
+    expect(signedRelease).toContain("'-ExpectedProductName'");
     expect(signedRelease).toContain("['-IBm', 'azure.cli', 'account', 'show'");
     expect(signedRelease).toContain('verify-windows-signatures.ps1');
     expect(verification).toContain("$ExpectedPublisher = 'Vesoft Services Limited'");

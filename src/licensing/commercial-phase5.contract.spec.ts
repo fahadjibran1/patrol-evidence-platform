@@ -12,7 +12,7 @@ describe('PatrolSafe v1.0.3 commercial desktop contract', () => {
   const durability = source('desktop/data-durability.js');
 
   it('makes online annual purchase primary and keeps offline activation available', () => {
-    for (const text of ['PatrolSafe Trial', 'Buy annual licence', 'Renew licence', '£299', '+ VAT where applicable', '1 Windows workstation', '12-month licence', 'Manual / Offline activation', 'Create licence request (.tgreq)', 'Activate supplied licence (.tglic)']) {
+    for (const text of ['PatrolSafe Trial', 'Buy annual licence', 'Renew licence', '£299', 'total (VAT included)', '1 Windows workstation', '12-month licence', 'Manual / Offline activation', 'Create licence request (.tgreq)', 'Activate supplied licence (.tglic)']) {
       expect(page).toContain(text);
     }
   });

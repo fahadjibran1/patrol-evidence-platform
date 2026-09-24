@@ -11,6 +11,7 @@ import { InstallationIdentityService } from './installation-identity.service';
 const SERVICE_TIMEOUT_MS = 10_000;
 const PURCHASE_REFERENCE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const ORDER_ID_PATTERN = /^ord_[0-9a-f-]{36}$/i;
+const AUTHORISED_COMMERCIAL_STAGING_ORIGIN = 'https://patrolsafe-commercial-staging.onrender.com';
 
 export type CustomerPurchaseStatus =
   | 'AWAITING_PAYMENT'
@@ -152,13 +153,25 @@ export class CommercialPurchaseClientService {
     const production = process.env.NODE_ENV === 'production';
     const serviceOrigin = this.parseOrigin('PATROLSAFE_COMMERCIAL_SERVICE_ORIGIN', production, true);
     const purchaseOrigin = this.parseOrigin('PATROLSAFE_COMMERCIAL_PURCHASE_ORIGIN', true, false);
-    if (production && !this.isSfourHost(serviceOrigin.hostname)) {
+    const stagingCandidate = this.isAuthorisedStagingCandidate(serviceOrigin, purchaseOrigin);
+    if (production && !stagingCandidate && !this.isSfourHost(serviceOrigin.hostname)) {
       throw new ServiceUnavailableException('The online licensing service is not configured for this release.');
     }
-    if (production && !this.isSfourHost(purchaseOrigin.hostname)) {
+    if (production && !stagingCandidate && !this.isSfourHost(purchaseOrigin.hostname)) {
       throw new ServiceUnavailableException('The approved PatrolSafe purchase site is not configured for this release.');
     }
     return { serviceOrigin, purchaseOrigin };
+  }
+
+  private isAuthorisedStagingCandidate(serviceOrigin: URL, purchaseOrigin: URL): boolean {
+    if (
+      process.env.PATROLSAFE_COMMERCIAL_STAGING !== 'true'
+      || process.env.PATROLSAFE_COMMERCIAL_STAGING_BUILD !== 'true'
+    ) {
+      return false;
+    }
+    return serviceOrigin.origin === AUTHORISED_COMMERCIAL_STAGING_ORIGIN
+      && purchaseOrigin.origin === AUTHORISED_COMMERCIAL_STAGING_ORIGIN;
   }
 
   private parseOrigin(name: string, requireHttps: boolean, allowLoopbackHttp: boolean): URL {

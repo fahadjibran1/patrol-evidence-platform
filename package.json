@@ -5,8 +5,8 @@
   "brandName": "PatrolSafe",
   "endorsement": "by S4",
   "tagline": "Patrol evidence. Automatically organised.",
-  "version": "1.0.2",
-  "buildId": "2026.09.19.11.17.30",
+  "version": "1.0.3",
+  "buildId": "2026.09.24.23.00.34",
   "private": true,
   "workspaces": [
     "packages/*",
@@ -165,5 +165,5 @@
       "brace-expansion": "2.1.4"
     }
   },
-  "windowsBuild": "2026.9.19.677"
+  "windowsBuild": "2026.9.24.1380"
 }
