@@ -21,7 +21,7 @@ services:
       - key: LICENSE_API_ENABLE_SWAGGER
         value: "false"
       - key: COMMERCIAL_STRIPE_ENABLED
-        value: "true"
+        value: "false"
       - key: COMMERCIAL_STRIPE_PRODUCT_ID
         value: prod_VJZKhQacoagUlL
       - key: COMMERCIAL_STRIPE_PRICE_ID
