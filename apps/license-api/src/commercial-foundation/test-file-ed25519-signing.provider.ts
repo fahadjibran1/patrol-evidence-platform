@@ -1,10 +1,28 @@
 import { ConfigService } from '@nestjs/config';
-import { createPrivateKey, createPublicKey, sign, type KeyObject } from 'crypto';
-import { readFile } from 'fs/promises';
+import { createHash, createPrivateKey, createPublicKey, sign, type KeyObject } from 'crypto';
+import { constants } from 'fs';
+import { access, readFile } from 'fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'path';
 import type { CommercialSigningProvider } from './commercial-signing-provider.port';
 import { ApiException } from '@/common/exceptions/api.exception';
 import { ERROR_CODES } from '@/common/constants/error-codes';
+
+export interface CommercialSignerPreflightPolicy {
+  keyId: string;
+  keyPath: string;
+  publicKeySha256: string;
+}
+
+export interface CommercialSignerPreflightResult {
+  keyIdValid: boolean;
+  keyPathValid: boolean;
+  fileReadable: boolean;
+  keyParseValid: boolean;
+  keyTypeValid: boolean;
+  publicKeySha256: string;
+  publicKeyMatch: boolean;
+  passed: boolean;
+}
 
 /** Test/development adapter only. Production is required to use a secret-manager-backed provider. */
 export class TestFileEd25519SigningProvider implements CommercialSigningProvider {
@@ -21,6 +39,44 @@ export class TestFileEd25519SigningProvider implements CommercialSigningProvider
 
   async verificationKey(): Promise<KeyObject> {
     return createPublicKey(await this.loadPrivateKey());
+  }
+
+  async preflight(policy: Readonly<CommercialSignerPreflightPolicy>): Promise<CommercialSignerPreflightResult> {
+    const configuredPath = this.config.get<string>('COMMERCIAL_TEST_SIGNING_PRIVATE_KEY_FILE')?.trim() ?? '';
+    const result: CommercialSignerPreflightResult = {
+      keyIdValid: this.keyId === policy.keyId,
+      keyPathValid: configuredPath === policy.keyPath,
+      fileReadable: false,
+      keyParseValid: false,
+      keyTypeValid: false,
+      publicKeySha256: 'UNAVAILABLE',
+      publicKeyMatch: false,
+      passed: false,
+    };
+
+    if (!result.keyIdValid || !result.keyPathValid) return result;
+
+    let keyBytes: Buffer | undefined;
+    try {
+      await access(policy.keyPath, constants.R_OK);
+      keyBytes = await readFile(policy.keyPath);
+      result.fileReadable = true;
+      const key = createPrivateKey(keyBytes);
+      result.keyParseValid = true;
+      result.keyTypeValid = key.asymmetricKeyType === 'ed25519';
+      if (!result.keyTypeValid) return result;
+
+      const publicKey = createPublicKey(key).export({ type: 'spki', format: 'der' });
+      result.publicKeySha256 = createHash('sha256').update(publicKey).digest('hex').toUpperCase();
+      result.publicKeyMatch = result.publicKeySha256 === policy.publicKeySha256;
+      result.passed = result.publicKeyMatch;
+      if (result.passed) this.privateKey = key;
+      return result;
+    } catch {
+      return result;
+    } finally {
+      keyBytes?.fill(0);
+    }
   }
 
   private async loadPrivateKey(): Promise<KeyObject> {

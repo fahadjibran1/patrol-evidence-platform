@@ -32,6 +32,7 @@ import { CommercialDeliveryService } from './commercial-delivery.service';
 import { PrismaService } from '@/prisma/prisma.service';
 import { EncryptionService } from '@/crypto/encryption.service';
 import { DatabaseCommercialArtifactStore } from './database-commercial-artifact.store';
+import { CommercialStagingSignerPreflightService } from './commercial-staging-signer-preflight.service';
 
 @Module({
   imports: [AuthModule],
@@ -53,6 +54,12 @@ import { DatabaseCommercialArtifactStore } from './database-commercial-artifact.
     CommercialOutboxWorkerService,
     StripeCommercialPaymentProvider,
     {
+      provide: TestFileEd25519SigningProvider,
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => new TestFileEd25519SigningProvider(config),
+    },
+    CommercialStagingSignerPreflightService,
+    {
       provide: COMMERCIAL_ARTIFACT_STORE,
       inject: [ConfigService, PrismaService, EncryptionService],
       useFactory: (config: ConfigService, prisma: PrismaService, encryption: EncryptionService) =>
@@ -67,11 +74,15 @@ import { DatabaseCommercialArtifactStore } from './database-commercial-artifact.
     },
     {
       provide: COMMERCIAL_LICENCE_ISSUER,
-      inject: [ConfigService, COMMERCIAL_ARTIFACT_STORE],
-      useFactory: (config: ConfigService, artifacts: CommercialArtifactStore) => new CurrentFormatCommercialLicenceIssuer(
-        new TestFileEd25519SigningProvider(config),
-        artifacts,
-      ),
+      inject: [CommercialStagingSignerPreflightService, TestFileEd25519SigningProvider, COMMERCIAL_ARTIFACT_STORE],
+      useFactory: async (
+        preflight: CommercialStagingSignerPreflightService,
+        signer: TestFileEd25519SigningProvider,
+        artifacts: CommercialArtifactStore,
+      ) => {
+        await preflight.verify();
+        return new CurrentFormatCommercialLicenceIssuer(signer, artifacts);
+      },
     },
     {
       provide: COMMERCIAL_PAYMENT_PROVIDER,
