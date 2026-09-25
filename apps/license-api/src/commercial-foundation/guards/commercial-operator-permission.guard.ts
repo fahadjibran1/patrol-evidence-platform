@@ -17,7 +17,7 @@ export class CommercialOperatorPermissionGuard implements CanActivate {
       [context.getHandler(), context.getClass()],
     );
     if (!required) return true;
-    const admin = context.switchToHttp().getRequest<Request & { user?: AuthenticatedAdmin }>().user;
+    const admin = context.switchToHttp().getRequest<Request & { admin?: AuthenticatedAdmin }>().admin;
     if (!admin || !adminHasCommercialPermission(admin.role, required)) {
       throw new ApiException(ERROR_CODES.COMMERCIAL_OPERATOR_FORBIDDEN, 'Commercial approval permission is required.', 403);
     }
