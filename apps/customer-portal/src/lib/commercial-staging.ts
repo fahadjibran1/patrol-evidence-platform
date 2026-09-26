@@ -13,7 +13,24 @@ export interface CommercialPurchasePreview {
   maxDevices: 1;
   taxPolicy: string;
   expiresAt: string;
-  orderState: string;
+}
+
+export type CommercialCustomerOrderStatus =
+  | 'AWAITING_PAYMENT'
+  | 'PAYMENT_RECEIVED'
+  | 'LICENCE_PREPARING'
+  | 'LICENCE_READY'
+  | 'LICENCE_SENT'
+  | 'CHECKOUT_CANCELLED'
+  | 'SUPPORT_REQUIRED';
+
+export interface CommercialPublicOrderStatus {
+  publicOrderId: string;
+  product: 'PatrolSafe Annual Licence';
+  amountMinor: 29900;
+  currency: 'GBP';
+  paymentReceived: boolean;
+  status: CommercialCustomerOrderStatus;
 }
 
 export interface CommercialCheckoutResponse {
@@ -42,11 +59,6 @@ export function validateStripeCheckoutUrl(value: string): string {
     throw new Error('The secure checkout destination is not approved.');
   }
   return url.toString();
-}
-
-export function purchaseSessionKey(publicOrderId: string): string {
-  if (!PUBLIC_ORDER_PATTERN.test(publicOrderId)) throw new Error('This order reference is invalid.');
-  return `patrolsafe-commercial-reference:${publicOrderId}`;
 }
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -86,10 +98,30 @@ export async function createCommercialCheckout(input: {
   return result;
 }
 
-export function customerStatus(orderState: string): string {
-  if (['REQUEST_CREATED', 'CHECKOUT_PENDING', 'PAYMENT_PENDING'].includes(orderState)) return 'Awaiting payment';
-  if (orderState === 'PAID_AWAITING_APPROVAL') return 'Payment received — awaiting approval';
-  if (orderState === 'ISSUANCE_PENDING') return 'Licence being prepared';
-  if (['ISSUED', 'DELIVERY_PENDING', 'DELIVERED'].includes(orderState)) return 'Licence ready — check your email';
-  return 'Support required';
+export async function getCommercialOrderStatus(publicOrderId: string): Promise<CommercialPublicOrderStatus> {
+  if (!PUBLIC_ORDER_PATTERN.test(publicOrderId)) throw new Error('This order reference is invalid.');
+  const response = await fetch(
+    `${getApiBaseUrl()}/commercial/orders/${encodeURIComponent(publicOrderId)}/status`,
+    { redirect: 'error' },
+  );
+  const result = await readJson<CommercialPublicOrderStatus>(response);
+  if (
+    result.publicOrderId !== publicOrderId
+    || result.product !== 'PatrolSafe Annual Licence'
+    || result.amountMinor !== 29900
+    || result.currency !== 'GBP'
+    || typeof result.paymentReceived !== 'boolean'
+    || ![
+      'AWAITING_PAYMENT',
+      'PAYMENT_RECEIVED',
+      'LICENCE_PREPARING',
+      'LICENCE_READY',
+      'LICENCE_SENT',
+      'CHECKOUT_CANCELLED',
+      'SUPPORT_REQUIRED',
+    ].includes(result.status)
+  ) {
+    throw new Error('The purchase status response was invalid.');
+  }
+  return result;
 }

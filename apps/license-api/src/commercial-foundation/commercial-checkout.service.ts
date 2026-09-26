@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   CommercialActorType,
   CommercialOrderState,
+  CommercialPaymentStatus,
   CommercialPlan,
   CommercialProvider,
   CommercialProviderMode,
@@ -28,6 +29,9 @@ import {
 } from './commercial-payment-provider.port';
 import { hashPurchaseReference } from './commercial-hash.util';
 import { createCommercialAudit, createCommercialOutboxEvent } from './commercial-persistence.util';
+import { toCommercialCustomerOrderStatus } from './commercial-customer-status';
+
+const PUBLIC_ORDER_PATTERN = /^ord_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export interface CommercialCheckoutResult {
   publicOrderId: string;
@@ -83,7 +87,32 @@ export class CommercialCheckoutService {
       maxDevices: policy.maxDevices,
       taxPolicy: policy.taxPolicy,
       expiresAt: stored.expiresAt.toISOString(),
-      orderState: order.state,
+    };
+  }
+
+  async getPublicOrderStatus(publicOrderId: string) {
+    if (!PUBLIC_ORDER_PATTERN.test(publicOrderId)) throw this.orderNotFound();
+    const order = await this.prisma.commercialOrder.findUnique({
+      where: { publicOrderId },
+      select: {
+        publicOrderId: true,
+        state: true,
+        payments: {
+          where: { status: CommercialPaymentStatus.SUCCEEDED },
+          select: { id: true },
+          take: 1,
+        },
+      },
+    });
+    if (!order) throw this.orderNotFound();
+    const policy = this.config.getPolicy();
+    return {
+      publicOrderId: order.publicOrderId,
+      product: policy.displayName,
+      amountMinor: policy.amountMinor,
+      currency: policy.currency,
+      paymentReceived: order.payments.length > 0,
+      status: toCommercialCustomerOrderStatus(order.state),
     };
   }
 
@@ -402,6 +431,10 @@ export class CommercialCheckoutService {
 
   private invalidReference(): ApiException {
     return new ApiException(ERROR_CODES.COMMERCIAL_REFERENCE_INVALID, 'Purchase reference is not valid.', 404);
+  }
+
+  private orderNotFound(): ApiException {
+    return new ApiException(ERROR_CODES.COMMERCIAL_ORDER_NOT_FOUND, 'Purchase status was not found.', 404);
   }
 
   private isUniqueConstraintError(error: unknown): boolean {

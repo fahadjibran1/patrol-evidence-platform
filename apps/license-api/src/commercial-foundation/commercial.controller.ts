@@ -29,6 +29,12 @@ export class CommercialController {
     return this.checkout.inspectOpaqueReference(this.bearer(authorization));
   }
 
+  @Get('orders/:publicOrderId/status')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  publicOrderStatus(@Param('publicOrderId') publicOrderId: string) {
+    return this.checkout.getPublicOrderStatus(publicOrderId);
+  }
+
   @Post('checkout')
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   createCheckout(

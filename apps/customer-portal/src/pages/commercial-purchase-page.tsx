@@ -4,7 +4,6 @@ import {
   commercialStagingEnabled,
   createCommercialCheckout,
   inspectCommercialPurchase,
-  purchaseSessionKey,
   validateOpaqueReference,
   validateStripeCheckoutUrl,
   type CommercialPurchasePreview,
@@ -37,7 +36,6 @@ export function CommercialPurchasePage(): JSX.Element {
     try {
       const valid = validateOpaqueReference(reference);
       const result = await createCommercialCheckout({ reference: valid, customerEmail: email, contactName });
-      sessionStorage.setItem(purchaseSessionKey(result.publicOrderId), valid);
       window.location.assign(validateStripeCheckoutUrl(result.checkoutUrl));
     } catch {
       setMessage('Secure checkout could not be started. No payment was taken.');
