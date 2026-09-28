@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Headers, Param, Post, Req, StreamableFile } from '@nestjs/common';
-import type { Request } from 'express';
+import { Body, Controller, Get, Headers, Param, Post, Req, Res, StreamableFile } from '@nestjs/common';
+import type { Request, Response } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import { CommercialPurchaseService } from './commercial-purchase.service';
 import { CommercialCheckoutService } from './commercial-checkout.service';
@@ -8,6 +8,7 @@ import { CommercialCheckoutDto } from './dto/commercial-checkout.dto';
 import { ApiException } from '@/common/exceptions/api.exception';
 import { ERROR_CODES } from '@/common/constants/error-codes';
 import { CommercialDeliveryService } from './commercial-delivery.service';
+import { COMMERCIAL_EXPIRED_DOWNLOAD_PAGE } from './commercial-expired-download-page';
 
 @Controller('commercial')
 export class CommercialController {
@@ -52,9 +53,23 @@ export class CommercialController {
 
   @Get('licence/download/:token')
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
-  async downloadLicence(@Param('token') token: string, @Req() request: Request) {
-    const result = await this.delivery.download(token, { ipAddress: request.ip, userAgent: request.get('user-agent') });
-    return new StreamableFile(result.bytes, { type: result.contentType, disposition: `attachment; filename="${result.fileName}"`, length: result.bytes.byteLength });
+  async downloadLicence(
+    @Param('token') token: string,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    try {
+      const result = await this.delivery.download(token, { ipAddress: request.ip, userAgent: request.get('user-agent') });
+      return new StreamableFile(result.bytes, { type: result.contentType, disposition: `attachment; filename="${result.fileName}"`, length: result.bytes.byteLength });
+    } catch (error) {
+      if (!(error instanceof ApiException) || error.code !== ERROR_CODES.COMMERCIAL_DELIVERY_TOKEN_EXPIRED) throw error;
+      const page = Buffer.from(COMMERCIAL_EXPIRED_DOWNLOAD_PAGE, 'utf8');
+      response.status(410);
+      response.setHeader('Cache-Control', 'no-store, max-age=0');
+      response.setHeader('Referrer-Policy', 'no-referrer');
+      response.setHeader('Content-Security-Policy', `default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`);
+      return new StreamableFile(page, { type: 'text/html; charset=utf-8', disposition: 'inline', length: page.byteLength });
+    }
   }
 
   private bearer(authorization?: string): string {

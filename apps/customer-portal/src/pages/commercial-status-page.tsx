@@ -90,7 +90,7 @@ function LoadedStatus({ order, paid, cancelled, copy }: {
         <h1>{paid ? 'Thank you for your purchase' : title}</h1>
         {paid ? <p className='commercial-lead'>Your payment has been received successfully.</p> : null}
         <div className={`banner ${tone}`} role='status'><strong>{title}</strong><p>{detail}</p></div>
-        {paid ? <PaidInstructions /> : null}
+        {paid ? <PaidInstructions status={order.status} /> : null}
         <OrderDetails order={order} cancelled={cancelled} />
         <p className='commercial-close-copy'>You can now close this window.</p>
         <p className='field-hint'>Payment confirmation does not activate PatrolSafe automatically. Activate only the signed licence file supplied through the secure licence email.</p>
@@ -99,9 +99,12 @@ function LoadedStatus({ order, paid, cancelled, copy }: {
   );
 }
 
-function PaidInstructions(): JSX.Element {
+function PaidInstructions({ status }: { status: CommercialPublicOrderStatus['status'] }): JSX.Element {
+  const sent = status === 'LICENCE_READY' || status === 'LICENCE_SENT';
   return <>
-    <p>We're preparing your PatrolSafe annual licence. Your licence will be sent to the email address provided during checkout, normally within 24 hours.</p>
+    <p>{sent
+      ? 'Your PatrolSafe annual licence has been sent to the email address provided during checkout. Please check your inbox and spam or junk folder.'
+      : `We're preparing your PatrolSafe annual licence. Your licence will be sent to the email address provided during checkout, normally within 24 hours.`}</p>
     <p>Once received, download the licence file and activate it from:</p>
     <p className='commercial-activation-path'>PatrolSafe &gt; Licence &gt; Activate supplied licence</p>
     <p>If you haven't received your licence within 24 hours, or need help with your purchase, please contact PatrolSafe Support.</p>

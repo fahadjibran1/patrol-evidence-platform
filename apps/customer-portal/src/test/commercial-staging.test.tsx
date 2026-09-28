@@ -85,6 +85,22 @@ describe('S4 commercial staging pages', () => {
     expect(document.body.textContent).not.toMatch(/PAID_AWAITING_APPROVAL|ISSUANCE_PENDING|DELIVERY_PENDING|approval queue|operator|outbox|signing|reconciliation/i);
   });
 
+  it.each(['PAYMENT_RECEIVED', 'LICENCE_PREPARING'])('retains preparation guidance before delivery for %s', async (status) => {
+    vi.stubGlobal('fetch', vi.fn(async () => response(orderStatus(status))));
+    renderStatus();
+    expect(await screen.findByText(/normally within 24 hours/i)).toBeInTheDocument();
+    expect(screen.queryByText(/has been sent to the email address/i)).not.toBeInTheDocument();
+  });
+
+  it.each(['LICENCE_READY', 'LICENCE_SENT'])('shows delivered guidance without contradictory preparation copy for %s', async (status) => {
+    vi.stubGlobal('fetch', vi.fn(async () => response(orderStatus(status))));
+    renderStatus();
+    expect(await screen.findByText(/has been sent to the email address provided during checkout/i)).toBeInTheDocument();
+    expect(screen.getByText(/spam or junk folder/i)).toBeInTheDocument();
+    expect(screen.queryByText(/We're preparing/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/normally within 24 hours/i)).not.toBeInTheDocument();
+  });
+
   it('does not depend on an expired original purchase reference', async () => {
     sessionStorage.setItem(`patrolsafe-commercial-reference:${order}`, reference);
     const fetchMock = vi.fn(async (_input: RequestInfo, _init?: RequestInit) => response(orderStatus('LICENCE_SENT')));
