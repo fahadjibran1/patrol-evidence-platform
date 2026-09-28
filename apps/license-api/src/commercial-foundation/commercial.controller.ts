@@ -8,7 +8,10 @@ import { CommercialCheckoutDto } from './dto/commercial-checkout.dto';
 import { ApiException } from '@/common/exceptions/api.exception';
 import { ERROR_CODES } from '@/common/constants/error-codes';
 import { CommercialDeliveryService } from './commercial-delivery.service';
-import { COMMERCIAL_EXPIRED_DOWNLOAD_PAGE } from './commercial-expired-download-page';
+import {
+  COMMERCIAL_EXPIRED_DOWNLOAD_PAGE,
+  COMMERCIAL_INVALID_DOWNLOAD_PAGE,
+} from './commercial-expired-download-page';
 
 @Controller('commercial')
 export class CommercialController {
@@ -62,9 +65,15 @@ export class CommercialController {
       const result = await this.delivery.download(token, { ipAddress: request.ip, userAgent: request.get('user-agent') });
       return new StreamableFile(result.bytes, { type: result.contentType, disposition: `attachment; filename="${result.fileName}"`, length: result.bytes.byteLength });
     } catch (error) {
-      if (!(error instanceof ApiException) || error.code !== ERROR_CODES.COMMERCIAL_DELIVERY_TOKEN_EXPIRED) throw error;
-      const page = Buffer.from(COMMERCIAL_EXPIRED_DOWNLOAD_PAGE, 'utf8');
-      response.status(410);
+      if (!(error instanceof ApiException)) throw error;
+      const safePage = error.code === ERROR_CODES.COMMERCIAL_DELIVERY_TOKEN_EXPIRED
+        ? { html: COMMERCIAL_EXPIRED_DOWNLOAD_PAGE, status: 410 }
+        : error.code === ERROR_CODES.COMMERCIAL_DELIVERY_TOKEN_INVALID
+          ? { html: COMMERCIAL_INVALID_DOWNLOAD_PAGE, status: 404 }
+          : null;
+      if (!safePage) throw error;
+      const page = Buffer.from(safePage.html, 'utf8');
+      response.status(safePage.status);
       response.setHeader('Cache-Control', 'no-store, max-age=0');
       response.setHeader('Referrer-Policy', 'no-referrer');
       response.setHeader('Content-Security-Policy', `default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`);

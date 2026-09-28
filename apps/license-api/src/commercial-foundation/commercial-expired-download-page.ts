@@ -1,10 +1,18 @@
-export const COMMERCIAL_EXPIRED_DOWNLOAD_PAGE = `<!doctype html>
+interface CommercialDownloadPageCopy {
+  title: string;
+  notice: string;
+  assurance: string;
+  guidance: string;
+}
+
+function commercialDownloadPage(copy: CommercialDownloadPageCopy): string {
+  return `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex,nofollow,noarchive">
-    <title>Licence download link expired | PatrolSafe by S4</title>
+    <title>${copy.title} | PatrolSafe by S4</title>
     <style>
       :root { color-scheme: dark; font-family: "Segoe UI", Inter, system-ui, sans-serif; color: #e8eef6; background: #0b1220; }
       * { box-sizing: border-box; }
@@ -23,14 +31,27 @@ export const COMMERCIAL_EXPIRED_DOWNLOAD_PAGE = `<!doctype html>
     <main>
       <section>
         <p class="eyebrow">PatrolSafe by S4</p>
-        <h1>This licence download link has expired</h1>
-        <div class="notice" role="status">
-          <strong>For your security, licence download links expire after 24 hours.</strong>
-        </div>
-        <p class="valid">Your purchase and licence remain valid.</p>
-        <p>Please contact PatrolSafe Support to request a new secure download link.</p>
+        <h1>${copy.title}</h1>
+        <div class="notice" role="status"><strong>${copy.notice}</strong></div>
+        <p class="valid">${copy.assurance}</p>
+        <p>${copy.guidance}</p>
         <p>You can now close this window.</p>
       </section>
     </main>
   </body>
 </html>`;
+}
+
+export const COMMERCIAL_EXPIRED_DOWNLOAD_PAGE = commercialDownloadPage({
+  title: 'This licence download link has expired',
+  notice: 'For your security, licence download links expire after 24 hours.',
+  assurance: 'Your purchase and licence remain valid.',
+  guidance: 'Please contact PatrolSafe Support to request a new secure download link.',
+});
+
+export const COMMERCIAL_INVALID_DOWNLOAD_PAGE = commercialDownloadPage({
+  title: 'This licence download link is not valid',
+  notice: 'The link may be incomplete or may no longer be available.',
+  assurance: 'No licence file has been downloaded.',
+  guidance: 'Please use the complete link from your licence email or contact PatrolSafe Support.',
+});

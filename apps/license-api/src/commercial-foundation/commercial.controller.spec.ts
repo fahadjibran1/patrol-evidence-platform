@@ -77,6 +77,7 @@ describe('CommercialController licence delivery', () => {
   });
 
   it('keeps invalid or tampered tokens fail-closed', async () => {
+    const token = 'tampered';
     const error = new ApiException(
       ERROR_CODES.COMMERCIAL_DELIVERY_TOKEN_INVALID,
       'Licence delivery link is not valid.',
@@ -84,7 +85,13 @@ describe('CommercialController licence delivery', () => {
     );
     const { controller, response } = harness(jest.fn().mockRejectedValue(error));
 
-    await expect(controller.downloadLicence('tampered', request, response)).rejects.toBe(error);
-    expect(response.status).not.toHaveBeenCalled();
+    const file = await controller.downloadLicence(token, request, response);
+    const html = (await streamBytes(file)).toString('utf8');
+
+    expect(response.status).toHaveBeenCalledWith(HttpStatus.NOT_FOUND);
+    expect(html).toContain('This licence download link is not valid');
+    expect(html).toContain('No licence file has been downloaded.');
+    expect(html).not.toContain(ERROR_CODES.COMMERCIAL_DELIVERY_TOKEN_INVALID);
+    expect(html).not.toContain(token);
   });
 });
