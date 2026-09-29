@@ -1,4 +1,6 @@
-import { generateKeyPairSync } from 'crypto';
+import { createHash, generateKeyPairSync } from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
 import {
   signCommercialLicencePayload,
   verifyCommercialLicenceWithTrustRing,
@@ -7,6 +9,8 @@ import {
 import {
   LEGACY_PRODUCTION_SIGNING_KEY_ID,
   ONLINE_PRODUCTION_SIGNING_KEY_ID,
+  ONLINE_PRODUCTION_PUBLIC_KEY_SHA256,
+  STAGING_ONLINE_SIGNING_KEY_ID,
   loadLicensePublicKeyRing,
 } from './license-public-key.util';
 
@@ -36,6 +40,7 @@ describe('production commercial desktop trust ring', () => {
     process.env.LICENSE_ONLINE_PUBLIC_KEY_ID = ONLINE_PRODUCTION_SIGNING_KEY_ID;
     delete process.env.PATROLSAFE_COMMERCIAL_STAGING;
     delete process.env.PATROLSAFE_COMMERCIAL_STAGING_BUILD;
+    delete process.env.PATROLSAFE_COMMERCIAL_PRODUCTION_BUILD;
   });
 
   afterAll(() => { process.env = { ...originalEnv }; });
@@ -73,5 +78,30 @@ describe('production commercial desktop trust ring', () => {
     expect(() => loadLicensePublicKeyRing()).toThrow(/not authorised/);
     process.env.LICENSE_ONLINE_PUBLIC_KEY_ID = 'vesoft-online-v2';
     expect(() => loadLicensePublicKeyRing()).toThrow(/not authorised/);
+  });
+
+  it('loads the authorised packaged production key alongside legacy trust and no staging key', () => {
+    process.env.LICENSE_ONLINE_PUBLIC_KEY = fs.readFileSync(
+      path.resolve(__dirname, '..', '..', 'resources', 'license-online-public.pem'),
+      'utf8',
+    );
+    process.env.PATROLSAFE_COMMERCIAL_PRODUCTION_BUILD = 'true';
+    const ring = loadLicensePublicKeyRing();
+    expect(ring.map((entry) => entry.keyId)).toEqual([
+      LEGACY_PRODUCTION_SIGNING_KEY_ID,
+      ONLINE_PRODUCTION_SIGNING_KEY_ID,
+    ]);
+    expect(ring.map((entry) => entry.keyId)).not.toContain(STAGING_ONLINE_SIGNING_KEY_ID);
+    const onlineEntry = ring.find((entry) => entry.keyId === ONLINE_PRODUCTION_SIGNING_KEY_ID);
+    const fingerprint = createHash('sha256')
+      .update(onlineEntry!.publicKey.export({ type: 'spki', format: 'der' }))
+      .digest('hex')
+      .toUpperCase();
+    expect(fingerprint).toBe(ONLINE_PRODUCTION_PUBLIC_KEY_SHA256);
+  });
+
+  it('rejects a substituted online public key in production build mode', () => {
+    process.env.PATROLSAFE_COMMERCIAL_PRODUCTION_BUILD = 'true';
+    expect(() => loadLicensePublicKeyRing()).toThrow(/fingerprint is not authorised/);
   });
 });

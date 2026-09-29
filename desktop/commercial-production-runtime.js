@@ -6,6 +6,7 @@ const COMMERCIAL_PRODUCTION_CONFIG_FILE = 'patrolsafe-commercial-production.json
 const COMMERCIAL_PRODUCTION_PUBLIC_KEY_FILE = 'license-online-public.pem';
 const COMMERCIAL_PRODUCTION_ORIGIN = 'https://licensing.sfour.co.uk';
 const COMMERCIAL_PRODUCTION_KEY_ID = 'vesoft-online-v1';
+const COMMERCIAL_PRODUCTION_PUBLIC_KEY_SHA256 = 'CEAA988A6B2AD61DA4323450B51FA56A18AF804881601DCF3F5FF03E78485F30';
 
 function loadPackagedCommercialProductionRuntime(resourcesPath, io = fs) {
   const configPath = path.resolve(resourcesPath, COMMERCIAL_PRODUCTION_CONFIG_FILE);
@@ -23,7 +24,7 @@ function loadPackagedCommercialProductionRuntime(resourcesPath, io = fs) {
     || config.purchaseOrigin !== COMMERCIAL_PRODUCTION_ORIGIN
     || config.onlineKeyId !== COMMERCIAL_PRODUCTION_KEY_ID
     || config.onlinePublicKeyFile !== COMMERCIAL_PRODUCTION_PUBLIC_KEY_FILE
-    || !/^[0-9A-F]{64}$/.test(config.onlinePublicKeySha256)) {
+    || config.onlinePublicKeySha256 !== COMMERCIAL_PRODUCTION_PUBLIC_KEY_SHA256) {
     throw new Error('Packaged commercial production configuration does not match the authorised production identity.');
   }
   const publicKeyPath = path.resolve(resourcesPath, COMMERCIAL_PRODUCTION_PUBLIC_KEY_FILE);
@@ -69,6 +70,7 @@ module.exports = {
   COMMERCIAL_PRODUCTION_PUBLIC_KEY_FILE,
   COMMERCIAL_PRODUCTION_ORIGIN,
   COMMERCIAL_PRODUCTION_KEY_ID,
+  COMMERCIAL_PRODUCTION_PUBLIC_KEY_SHA256,
   loadPackagedCommercialProductionRuntime,
   applyPackagedCommercialProductionRuntime,
 };

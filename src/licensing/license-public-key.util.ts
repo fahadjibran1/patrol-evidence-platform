@@ -1,4 +1,4 @@
-import { createPublicKey, type KeyObject } from 'crypto';
+import { createHash, createPublicKey, type KeyObject } from 'crypto';
 import { existsSync, readFileSync } from 'fs';
 import * as path from 'path';
 import { loadPublicKeyFromPem } from './license-crypto.util';
@@ -9,6 +9,8 @@ const PRIVATE_KEY_MARKERS = [/PRIVATE KEY/i, /BEGIN ED25519 PRIVATE KEY/i];
 export const LEGACY_PRODUCTION_SIGNING_KEY_ID = 'vesoft-offline-v1';
 export const ONLINE_PRODUCTION_SIGNING_KEY_ID = 'vesoft-online-v1';
 export const STAGING_ONLINE_SIGNING_KEY_ID = 'test-phase6-online-key';
+export const ONLINE_PRODUCTION_PUBLIC_KEY_SHA256 =
+  'CEAA988A6B2AD61DA4323450B51FA56A18AF804881601DCF3F5FF03E78485F30';
 
 export function isPackagedProductionMode(): boolean {
   return process.env.PATROL_DESKTOP_PACKAGED === 'true' || Boolean(process.env.LICENSE_PUBLIC_KEY_FILE?.trim());
@@ -179,9 +181,19 @@ export function loadLicensePublicKeyRing(): CommercialLicenceTrustEntry[] {
     if (keyId !== expectedKeyId) {
       throw new Error('The online licence key identity is not authorised for this build.');
     }
+    const onlineKey = loadPublicKeyFromPem(onlinePem);
+    if (!staging && process.env.PATROLSAFE_COMMERCIAL_PRODUCTION_BUILD === 'true') {
+      const fingerprint = createHash('sha256')
+        .update(onlineKey.export({ type: 'spki', format: 'der' }))
+        .digest('hex')
+        .toUpperCase();
+      if (fingerprint !== ONLINE_PRODUCTION_PUBLIC_KEY_SHA256) {
+        throw new Error('The online licence public key fingerprint is not authorised for this build.');
+      }
+    }
     entries.push({
       keyId,
-      publicKey: loadPublicKeyFromPem(onlinePem),
+      publicKey: onlineKey,
       policy: 'online-annual-v1',
     });
   }

@@ -29,6 +29,13 @@ const {
   logSafePublicKeyConfirmation,
   assertNoPrivateKeysInPaths,
 } = require('./scripts/lib/license-public-key.util');
+const {
+  COMMERCIAL_PRODUCTION_KEY_ID: commercialProductionKeyId,
+  COMMERCIAL_PRODUCTION_PUBLIC_KEY_FILE: commercialProductionPublicKeyFileName,
+  COMMERCIAL_PRODUCTION_PUBLIC_KEY_SHA256: commercialProductionPublicKeySha256,
+  getTrackedProductionPublicKeyPath,
+  validateAuthorisedProductionPublicKeyFile,
+} = require('./scripts/lib/commercial-production-public-key');
 
 const trackedPublicKeyPath = getTrackedPublicKeyPath(__dirname);
 const commercialStagingOrigin = 'https://patrolsafe-commercial-staging.onrender.com';
@@ -63,26 +70,22 @@ if (commercialStagingBuild) {
 }
 
 const commercialProductionOrigin = 'https://licensing.sfour.co.uk';
-const commercialProductionKeyId = 'vesoft-online-v1';
-const commercialProductionPublicKeyFileName = 'license-online-public.pem';
 const commercialProductionConfigFileName = 'patrolsafe-commercial-production.json';
-const stagingPublicKeySha256 = '688340412959FBC23E8C3F0CB17BC6CFC2EE121254ACE2256D66216B2A512582';
 let commercialProductionExtraResources = [];
 
 if (commercialProductionBuild) {
-  const sourcePublicKeyPath = String(process.env.PATROLSAFE_PRODUCTION_ONLINE_PUBLIC_KEY_FILE || '').trim();
-  const authorisedFingerprint = String(process.env.PATROLSAFE_PRODUCTION_ONLINE_PUBLIC_KEY_SHA256 || '').trim().toUpperCase();
-  if (!sourcePublicKeyPath || !/^[0-9A-F]{64}$/.test(authorisedFingerprint) || authorisedFingerprint === stagingPublicKeySha256) {
-    throw new Error('COMMERCIAL_PRODUCTION_PUBLIC_KEY_AUTHORISATION_MISSING');
-  }
-  const publicKeyValidation = validatePublicKeyFile(sourcePublicKeyPath, 'authorised production online issuer public key');
-  const derivedFingerprint = createHash('sha256')
-    .update(publicKeyValidation.keyObject.export({ type: 'spki', format: 'der' }))
-    .digest('hex')
-    .toUpperCase();
-  if (derivedFingerprint !== authorisedFingerprint) {
+  const trackedProductionPublicKeyPath = getTrackedProductionPublicKeyPath(__dirname);
+  const explicitPublicKeyPath = String(
+    process.env.PATROLSAFE_PRODUCTION_ONLINE_PUBLIC_KEY_FILE || '',
+  ).trim();
+  const explicitFingerprint = String(
+    process.env.PATROLSAFE_PRODUCTION_ONLINE_PUBLIC_KEY_SHA256 || '',
+  ).trim().toUpperCase();
+  if (explicitFingerprint && explicitFingerprint !== commercialProductionPublicKeySha256) {
     throw new Error('COMMERCIAL_PRODUCTION_PUBLIC_KEY_FINGERPRINT_MISMATCH');
   }
+  const sourcePublicKeyPath = explicitPublicKeyPath || trackedProductionPublicKeyPath;
+  const publicKeyValidation = validateAuthorisedProductionPublicKeyFile(sourcePublicKeyPath);
   const configDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'patrolsafe-production-package-'));
   const packagedPublicKeyPath = path.join(configDirectory, commercialProductionPublicKeyFileName);
   const configPath = path.join(configDirectory, commercialProductionConfigFileName);
@@ -94,7 +97,7 @@ if (commercialProductionBuild) {
     purchaseOrigin: commercialProductionOrigin,
     onlineKeyId: commercialProductionKeyId,
     onlinePublicKeyFile: commercialProductionPublicKeyFileName,
-    onlinePublicKeySha256: authorisedFingerprint,
+    onlinePublicKeySha256: commercialProductionPublicKeySha256,
   }, null, 2)}\n`, 'utf8');
   commercialProductionExtraResources = [packagedPublicKeyPath, configPath];
   logSafePublicKeyConfirmation(sourcePublicKeyPath, publicKeyValidation.keyObject);

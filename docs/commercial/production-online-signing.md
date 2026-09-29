@@ -28,12 +28,12 @@ Safe startup evidence is limited to provider ID, key ID, public SPKI fingerprint
 A production Windows build must set:
 
 - `PATROLSAFE_COMMERCIAL_PRODUCTION_BUILD=true`
-- `PATROLSAFE_PRODUCTION_ONLINE_PUBLIC_KEY_FILE=<authorised public-only Ed25519 PEM outside the repository>`
-- `PATROLSAFE_PRODUCTION_ONLINE_PUBLIC_KEY_SHA256=<authorised 64-hex SPKI fingerprint>`
+- The authorised public-only Ed25519 key is tracked at `resources/license-online-public.pem`.
+- Its pinned SPKI SHA-256 is `CEAA988A6B2AD61DA4323450B51FA56A18AF804881601DCF3F5FF03E78485F30`.
 
-The packager verifies the supplied public key and fingerprint, packages it as `license-online-public.pem`, and writes a public production runtime manifest bound to `https://licensing.sfour.co.uk` and `vesoft-online-v1`. Packaged startup re-verifies that manifest and fingerprint. Staging and production manifests cannot coexist. A normal production package trusts only `vesoft-offline-v1` and `vesoft-online-v1`; it rejects test and unknown IDs.
+The packager verifies the tracked public key against the pinned fingerprint, packages it as `license-online-public.pem`, and writes a public production runtime manifest bound to `https://licensing.sfour.co.uk` and `vesoft-online-v1`. The former `PATROLSAFE_PRODUCTION_ONLINE_PUBLIC_KEY_FILE` input remains an optional controlled-build override, but it must contain the same authorised public key; `PATROLSAFE_PRODUCTION_ONLINE_PUBLIC_KEY_SHA256`, if supplied, must equal the pinned fingerprint. Packaged startup and the production trust-ring loader independently re-verify the identity. Staging and production manifests cannot coexist. A normal production package trusts only `vesoft-offline-v1` and `vesoft-online-v1`; it rejects test and unknown IDs.
 
-No production public key exists in source yet. Consequently a new production installer is required after the real key is generated, authorised, and supplied to the production build.
+The authorised production public key is now present in source. A new production installer is required to package that trust entry; no private key is used by the desktop build.
 
 ## Rotation
 

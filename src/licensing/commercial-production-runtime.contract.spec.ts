@@ -1,4 +1,4 @@
-import { createHash, generateKeyPairSync } from 'crypto';
+import { generateKeyPairSync } from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -7,6 +7,7 @@ import * as path from 'path';
 const runtime = require('../../desktop/commercial-production-runtime') as {
   COMMERCIAL_PRODUCTION_CONFIG_FILE: string;
   COMMERCIAL_PRODUCTION_PUBLIC_KEY_FILE: string;
+  COMMERCIAL_PRODUCTION_PUBLIC_KEY_SHA256: string;
   loadPackagedCommercialProductionRuntime: (root: string) => unknown;
 };
 
@@ -16,10 +17,11 @@ describe('packaged commercial production runtime contract', () => {
   afterEach(() => { fs.rmSync(root, { recursive: true, force: true }); });
 
   function fixture(overrides: Record<string, unknown> = {}): string {
-    const pair = generateKeyPairSync('ed25519');
-    const fingerprint = createHash('sha256')
-      .update(pair.publicKey.export({ type: 'spki', format: 'der' })).digest('hex').toUpperCase();
-    fs.writeFileSync(path.join(root, runtime.COMMERCIAL_PRODUCTION_PUBLIC_KEY_FILE), pair.publicKey.export({ type: 'spki', format: 'pem' }));
+    const fingerprint = runtime.COMMERCIAL_PRODUCTION_PUBLIC_KEY_SHA256;
+    fs.copyFileSync(
+      path.resolve(__dirname, '..', '..', 'resources', 'license-online-public.pem'),
+      path.join(root, runtime.COMMERCIAL_PRODUCTION_PUBLIC_KEY_FILE),
+    );
     fs.writeFileSync(path.join(root, runtime.COMMERCIAL_PRODUCTION_CONFIG_FILE), JSON.stringify({
       schemaVersion: 1,
       production: true,
@@ -53,5 +55,15 @@ describe('packaged commercial production runtime contract', () => {
   ])('rejects %s', (_label, overrides) => {
     fixture(overrides);
     expect(() => runtime.loadPackagedCommercialProductionRuntime(root)).toThrow();
+  });
+
+  it('rejects a different Ed25519 public key even when the manifest claims the authorised fingerprint', () => {
+    fixture();
+    const wrong = generateKeyPairSync('ed25519');
+    fs.writeFileSync(
+      path.join(root, runtime.COMMERCIAL_PRODUCTION_PUBLIC_KEY_FILE),
+      wrong.publicKey.export({ type: 'spki', format: 'pem' }),
+    );
+    expect(() => runtime.loadPackagedCommercialProductionRuntime(root)).toThrow(/fingerprint/);
   });
 });
