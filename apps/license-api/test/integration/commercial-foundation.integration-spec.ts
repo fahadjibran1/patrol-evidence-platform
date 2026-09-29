@@ -81,6 +81,13 @@ describe('commercial Phase 1 persistence foundation', () => {
     await expect(purchase.createPurchaseRequest(request({ clientNonce: input.clientNonce }))).rejects.toMatchObject({
       code: 'COMMERCIAL_REQUEST_DUPLICATE',
     });
+    const stored = await context.prisma.commercialPurchaseRequest.findUniqueOrThrow({
+      where: { requestId: input.requestId as string },
+      include: { references: true, orders: true },
+    });
+    expect(stored.references).toHaveLength(1);
+    expect(stored.orders).toHaveLength(1);
+    expect(await context.prisma.commercialOutboxEvent.count({ where: { aggregateId: stored.id } })).toBe(1);
   });
 
   it('expires references and rejects malformed opaque references', async () => {

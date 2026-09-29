@@ -14,30 +14,18 @@ import { useEntitlement } from '../state/entitlement';
 import type { LicenseStatusResponse } from '../types';
 import { Card, PageHeader, StatusBadge } from '../components/ui';
 import { formatPatrolDate, formatPatrolDateTime } from '../lib/patrol-time';
+import {
+  runCommercialPurchaseFlow,
+  type CommercialPurchaseSession as PurchaseSession,
+  type CommercialPurchaseStartedResponse as PurchaseStartedResponse,
+} from '../lib/commercial-purchase-flow';
 
 const SUPPLIER_CONTACT = 'mailto:support@sfour.co.uk?subject=PatrolSafe%20by%20S4%20Licence';
 const PUBLIC_REQUEST_PLAN = 'annual' as const;
 const PURCHASE_REFERENCE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+const COMMERCIAL_PURCHASE_LOCAL_API_TIMEOUT_MS = 100_000;
 
 type PurchaseStatus = 'AWAITING_PAYMENT' | 'AWAITING_APPROVAL' | 'PREPARING' | 'READY' | 'DELIVERY_PROBLEM';
-
-interface PurchaseSession {
-  requestId: string;
-  clientNonce: string;
-  previousLicenceId: string | null;
-  purchaseReference?: string;
-  purchaseUrl?: string;
-  referenceExpiresAt: string;
-}
-
-interface PurchaseStartedResponse {
-  requestId: string;
-  publicOrderId: string;
-  purchaseReference: string;
-  referenceExpiresAt: string;
-  purchaseUrl: string;
-  status: 'PURCHASE_STARTED';
-}
 
 interface PurchaseStatusResponse {
   status: PurchaseStatus;
@@ -134,37 +122,30 @@ export function LicensePage(): JSX.Element {
     setError(null);
     setSuccess(null);
     try {
-      const currentSession = purchaseSession && Date.parse(purchaseSession.referenceExpiresAt) > Date.now()
-        ? purchaseSession
-        : null;
-      if (!currentSession && purchaseSession) {
-        await clearCommercialPurchaseSession();
-        setPurchaseSession(null);
-      }
-      if (currentSession?.purchaseUrl && currentSession.purchaseReference) {
-        if (!(await openCommercialPurchase(currentSession.purchaseUrl))) throw new Error('Browser handoff unavailable');
-        setSuccess('Purchase started. Complete payment in your browser, then check licence status here.');
-        return;
-      }
-      const pending: PurchaseSession = currentSession ?? {
-        requestId: window.crypto.randomUUID(),
-        clientNonce: nonce(),
+      const result = await runCommercialPurchaseFlow({
+        existingSession: purchaseSession,
         previousLicenceId: canRenew ? status?.licenseId ?? null : null,
-        referenceExpiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
-      };
-      await persistSession(pending);
-      const result = await apiRequest<PurchaseStartedResponse>(
-        '/license/commercial/purchase',
-        { method: 'POST', body: JSON.stringify({ requestId: pending.requestId, clientNonce: pending.clientNonce, previousLicenceId: pending.previousLicenceId }) },
-        token,
-      );
-      const active: PurchaseSession = { ...pending, purchaseReference: result.purchaseReference, purchaseUrl: result.purchaseUrl, referenceExpiresAt: result.referenceExpiresAt };
-      await persistSession(active);
-      if (!(await openCommercialPurchase(result.purchaseUrl))) throw new Error('Browser handoff unavailable');
+        now: () => Date.now(),
+        createRequestId: () => window.crypto.randomUUID(),
+        createClientNonce: nonce,
+        clearSession: async () => {
+          await clearCommercialPurchaseSession();
+          setPurchaseSession(null);
+        },
+        persistSession,
+        requestPurchase: (pending) => apiRequest<PurchaseStartedResponse>(
+          '/license/commercial/purchase',
+          { method: 'POST', body: JSON.stringify({ requestId: pending.requestId, clientNonce: pending.clientNonce, previousLicenceId: pending.previousLicenceId }) },
+          token,
+          { timeoutMs: COMMERCIAL_PURCHASE_LOCAL_API_TIMEOUT_MS },
+        ),
+        openPurchase: openCommercialPurchase,
+      });
+      setPurchaseSession(result.session);
       setPurchaseStatus({ status: 'AWAITING_PAYMENT', message: 'Awaiting payment' });
       setSuccess('Purchase started. Complete payment in your browser, then check licence status here.');
     } catch {
-      setError('Online purchasing is currently unavailable. Your trial or existing licence is unchanged. You can retry or use Manual / Offline activation.');
+      setError('Online purchasing is currently unavailable. Your trial or current licence unchanged.');
     } finally {
       setIsSubmitting(false);
     }

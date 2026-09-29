@@ -2,13 +2,19 @@ import {
   BadGatewayException,
   BadRequestException,
   Injectable,
+  Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { LICENCE_PRODUCT_NAME } from '@patrol/license-core';
 import { readDesktopWorkspaceConfig } from '@/desktop/desktop-config.util';
 import { InstallationIdentityService } from './installation-identity.service';
+import { formatCommercialDiagnostic, safeCommercialError } from './commercial-purchase-diagnostic';
 
-const SERVICE_TIMEOUT_MS = 10_000;
+const STATUS_REQUEST_TIMEOUT_MS = 10_000;
+export const COMMERCIAL_PURCHASE_ATTEMPT_TIMEOUT_MS = 45_000;
+export const COMMERCIAL_PURCHASE_MAX_ATTEMPTS = 2;
+export const COMMERCIAL_PURCHASE_RETRY_DELAY_MS = 750;
+const TRANSIENT_HTTP_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
 const PURCHASE_REFERENCE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const ORDER_ID_PATTERN = /^ord_[0-9a-f-]{36}$/i;
 const AUTHORISED_COMMERCIAL_STAGING_ORIGIN = 'https://patrolsafe-commercial-staging.onrender.com';
@@ -30,6 +36,8 @@ interface PurchaseRequestResponse {
 
 @Injectable()
 export class CommercialPurchaseClientService {
+  private readonly logger = new Logger(CommercialPurchaseClientService.name);
+
   constructor(private readonly identity: InstallationIdentityService) {}
 
   async start(input: {
@@ -37,33 +45,57 @@ export class CommercialPurchaseClientService {
     clientNonce: string;
     previousLicenceId?: string | null;
   }) {
-    const configuration = this.configuration();
-    const workspace = readDesktopWorkspaceConfig();
-    const companyName = workspace.companyName?.trim();
-    if (!companyName) {
-      throw new BadRequestException('Complete company setup before buying a licence.');
+    this.log('PURCHASE_REQUEST_V2_BUILD_STARTED');
+    let configuration: { serviceOrigin: URL; purchaseOrigin: URL };
+    let request: Record<string, unknown>;
+    try {
+      configuration = this.configuration();
+      const workspace = readDesktopWorkspaceConfig();
+      const companyName = workspace.companyName?.trim();
+      if (!companyName) {
+        throw new BadRequestException('Complete company setup before buying a licence.');
+      }
+      const installation = this.identity.getOrCreateIdentity();
+      const build = this.buildMetadata();
+      request = {
+        requestId: input.requestId,
+        schemaVersion: 2,
+        product: LICENCE_PRODUCT_NAME,
+        plan: 'annual',
+        installationId: installation.installationId,
+        machineFingerprint: installation.machineFingerprint,
+        companyName,
+        appVersion: build.appVersion,
+        buildId: build.buildId,
+        clientNonce: input.clientNonce,
+        previousLicenceId: input.previousLicenceId ?? null,
+      } as const;
+      this.log('PURCHASE_REQUEST_V2_BUILD_SUCCEEDED');
+    } catch (error) {
+      this.logError('PURCHASE_REQUEST_V2_BUILD_FAILED', error);
+      throw error;
     }
-    const installation = this.identity.getOrCreateIdentity();
-    const build = this.buildMetadata();
-    const request = {
-      requestId: input.requestId,
-      schemaVersion: 2,
-      product: LICENCE_PRODUCT_NAME,
-      plan: 'annual',
-      installationId: installation.installationId,
-      machineFingerprint: installation.machineFingerprint,
-      companyName,
-      appVersion: build.appVersion,
-      buildId: build.buildId,
-      clientNonce: input.clientNonce,
-      previousLicenceId: input.previousLicenceId ?? null,
-    } as const;
 
-    const result = await this.requestJson<PurchaseRequestResponse>(
+    const response = await this.requestPurchase(
       new URL('/commercial/purchase-requests', configuration.serviceOrigin),
       { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(request) },
     );
-    this.assertCreatedResponse(result, input.requestId);
+
+    this.log('COMMERCIAL_RESPONSE_VALIDATION_STARTED');
+    let result: PurchaseRequestResponse;
+    try {
+      const parsed: unknown = await response.json();
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new BadGatewayException('The licensing service returned an invalid response.');
+      }
+      result = parsed as PurchaseRequestResponse;
+      this.assertCreatedResponse(result, input.requestId);
+      this.log('COMMERCIAL_RESPONSE_VALIDATION_SUCCEEDED');
+    } catch (error) {
+      this.logError('COMMERCIAL_RESPONSE_VALIDATION_FAILED', error);
+      if (error instanceof BadGatewayException) throw error;
+      throw new BadGatewayException('The licensing service returned an invalid response.');
+    }
     const purchaseUrl = new URL(
       `/patrolsafe/buy/${encodeURIComponent(result.purchaseReference)}`,
       configuration.purchaseOrigin,
@@ -77,6 +109,88 @@ export class CommercialPurchaseClientService {
       purchaseUrl: purchaseUrl.toString(),
       status: 'PURCHASE_STARTED' as const,
     };
+  }
+
+  private async requestPurchase(url: URL, init: RequestInit): Promise<Response> {
+    this.log('RENDER_PURCHASE_REQUEST_STARTED');
+    for (let attempt = 1; attempt <= COMMERCIAL_PURCHASE_MAX_ATTEMPTS; attempt += 1) {
+      const abort = new AbortController();
+      const startedAt = Date.now();
+      const timer = setTimeout(() => abort.abort(), COMMERCIAL_PURCHASE_ATTEMPT_TIMEOUT_MS);
+      this.logger.log(formatCommercialDiagnostic('RENDER_PURCHASE_REQUEST_ATTEMPT_STARTED', {
+        attempt,
+        maxAttempts: COMMERCIAL_PURCHASE_MAX_ATTEMPTS,
+      }));
+      try {
+        const response = await fetch(url, { ...init, redirect: 'error', signal: abort.signal });
+        this.logger.log(formatCommercialDiagnostic('RENDER_PURCHASE_REQUEST_RESPONSE', {
+          status: response.status,
+          durationMs: Date.now() - startedAt,
+          attempt,
+          maxAttempts: COMMERCIAL_PURCHASE_MAX_ATTEMPTS,
+        }));
+        if (response.ok) return response;
+
+        const safeHttpError: ReturnType<typeof safeCommercialError> = {
+          errorClass: 'HTTP_EXCEPTION',
+          errorCode: `HTTP_${response.status}`,
+        };
+        this.logger.warn(formatCommercialDiagnostic('RENDER_PURCHASE_REQUEST_FAILED', {
+          attempt,
+          maxAttempts: COMMERCIAL_PURCHASE_MAX_ATTEMPTS,
+          ...safeHttpError,
+        }));
+        if (TRANSIENT_HTTP_STATUSES.has(response.status) && attempt < COMMERCIAL_PURCHASE_MAX_ATTEMPTS) {
+          await this.schedulePurchaseRetry(attempt, safeHttpError);
+          continue;
+        }
+        if (response.status === 404 || response.status === 409 || response.status === 410) {
+          throw new BadRequestException('This purchase can no longer be checked. Start a new purchase or contact support.');
+        }
+        throw new BadGatewayException('The licensing service could not complete the request. No local entitlement was changed.');
+      } catch (error) {
+        if (error instanceof BadRequestException || error instanceof BadGatewayException) throw error;
+        const safeError = safeCommercialError(error);
+        this.logger.warn(formatCommercialDiagnostic('RENDER_PURCHASE_REQUEST_FAILED', {
+          attempt,
+          maxAttempts: COMMERCIAL_PURCHASE_MAX_ATTEMPTS,
+          ...safeError,
+        }));
+        if (this.isRetryableTransportError(safeError) && attempt < COMMERCIAL_PURCHASE_MAX_ATTEMPTS) {
+          await this.schedulePurchaseRetry(attempt, safeError);
+          continue;
+        }
+        throw new ServiceUnavailableException(
+          'The online licensing service is temporarily unavailable. Your current trial or licence is unchanged; manual activation remains available.',
+        );
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+    throw new ServiceUnavailableException(
+      'The online licensing service is temporarily unavailable. Your current trial or licence is unchanged; manual activation remains available.',
+    );
+  }
+
+  private isRetryableTransportError(error: ReturnType<typeof safeCommercialError>): boolean {
+    return error.errorClass === 'ABORT_ERROR'
+      || error.errorClass === 'TYPE_ERROR'
+      || ['ECONNABORTED', 'ECONNREFUSED', 'ECONNRESET', 'EAI_AGAIN', 'ENETUNREACH', 'ENOTFOUND', 'ETIMEDOUT']
+        .includes(error.errorCode);
+  }
+
+  private async schedulePurchaseRetry(
+    attempt: number,
+    error: ReturnType<typeof safeCommercialError>,
+  ): Promise<void> {
+    this.logger.warn(formatCommercialDiagnostic('RENDER_PURCHASE_REQUEST_RETRY_SCHEDULED', {
+      attempt,
+      maxAttempts: COMMERCIAL_PURCHASE_MAX_ATTEMPTS,
+      nextAttempt: attempt + 1,
+      delayMs: COMMERCIAL_PURCHASE_RETRY_DELAY_MS,
+      ...error,
+    }));
+    await new Promise<void>((resolve) => setTimeout(resolve, COMMERCIAL_PURCHASE_RETRY_DELAY_MS));
   }
 
   async status(purchaseReference: string): Promise<{
@@ -113,7 +227,7 @@ export class CommercialPurchaseClientService {
 
   private async requestJson<T>(url: URL, init: RequestInit): Promise<T> {
     const abort = new AbortController();
-    const timer = setTimeout(() => abort.abort(), SERVICE_TIMEOUT_MS);
+    const timer = setTimeout(() => abort.abort(), STATUS_REQUEST_TIMEOUT_MS);
     try {
       const response = await fetch(url, { ...init, redirect: 'error', signal: abort.signal });
       if (!response.ok) {
@@ -209,5 +323,13 @@ export class CommercialPurchaseClientService {
       appVersion: process.env.PATROL_APP_VERSION?.trim() || pkg.version || '1.0.3',
       buildId: process.env.PATROL_BUILD_ID?.trim() || pkg.buildId || 'development',
     };
+  }
+
+  private log(stage: string): void {
+    this.logger.log(formatCommercialDiagnostic(stage));
+  }
+
+  private logError(stage: string, error: unknown): void {
+    this.logger.warn(formatCommercialDiagnostic(stage, safeCommercialError(error)));
   }
 }

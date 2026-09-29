@@ -80,7 +80,7 @@ export async function apiRequest<T>(
   path: string,
   init: RequestInit = {},
   token?: string,
-  options?: { skipRefresh?: boolean },
+  options?: { skipRefresh?: boolean; timeoutMs?: number },
 ): Promise<T> {
   const headers = new Headers(init.headers);
   const desktopApiToken = await getDesktopApiToken();
@@ -97,7 +97,8 @@ export async function apiRequest<T>(
   }
 
   let response: Response;
-  const timedSignal = createTimedSignal(init.signal);
+  const timeoutMs = options?.timeoutMs ?? LOCAL_API_TIMEOUT_MS;
+  const timedSignal = createTimedSignal(init.signal, timeoutMs);
   try {
     response = await fetch(`${await resolveApiBaseUrl()}${path}`, {
       ...init,
@@ -107,7 +108,7 @@ export async function apiRequest<T>(
   } catch (error) {
     if (timedSignal.didTimeout()) {
       throw new ApiError(
-        `The local PatrolSafe service did not respond within ${LOCAL_API_TIMEOUT_MS / 1000} seconds. Retry after the desktop service is ready.`,
+        `The local PatrolSafe service did not respond within ${timeoutMs / 1000} seconds. Retry after the desktop service is ready.`,
         408,
       );
     }
@@ -120,7 +121,7 @@ export async function apiRequest<T>(
     try {
       const nextToken = await refreshAccessTokenOnce();
       if (nextToken && nextToken !== token) {
-        return apiRequest<T>(path, init, nextToken, { skipRefresh: true });
+        return apiRequest<T>(path, init, nextToken, { ...options, skipRefresh: true });
       }
     } catch {
       // Fall through to throw the original 401.

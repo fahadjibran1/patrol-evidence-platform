@@ -56,7 +56,7 @@ export class InstallationIdentityService {
       createdAt: new Date().toISOString(),
     };
     this.writeIdentity(identity);
-    this.logger.log(`INSTALLATION_IDENTITY_CREATED id=${identity.installationId}`);
+    this.logger.log('INSTALLATION_IDENTITY_CREATED');
     return identity;
   }
 

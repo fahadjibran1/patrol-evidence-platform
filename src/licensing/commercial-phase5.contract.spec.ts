@@ -7,6 +7,7 @@ function source(relative: string): string {
 
 describe('PatrolSafe v1.0.3 commercial desktop contract', () => {
   const page = source('web/src/pages/license-page.tsx');
+  const purchaseFlow = source('web/src/lib/commercial-purchase-flow.ts');
   const client = source('src/licensing/commercial-purchase-client.service.ts');
   const policy = source('desktop/security-policy.js');
   const durability = source('desktop/data-durability.js');
@@ -36,7 +37,7 @@ describe('PatrolSafe v1.0.3 commercial desktop contract', () => {
 
   it('uses encrypted restart recovery and a fixed opaque-reference browser destination', () => {
     expect(source('web/src/lib/desktop.ts')).toContain("secureStoreSet?.('commercial-purchase-session'");
-    expect(page).toContain('currentSession?.purchaseUrl');
+    expect(purchaseFlow).toContain('currentSession?.purchaseUrl');
     expect(policy).toContain("/^\\/patrolsafe\\/buy\\/[A-Za-z0-9_-]{43}$/");
     expect(policy).toContain("target.protocol !== 'https:'");
     expect(policy).toContain('target.origin !== approved.origin');

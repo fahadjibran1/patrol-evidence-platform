@@ -1,7 +1,12 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { CommercialPurchaseClientService } from './commercial-purchase-client.service';
+import {
+  COMMERCIAL_PURCHASE_ATTEMPT_TIMEOUT_MS,
+  COMMERCIAL_PURCHASE_MAX_ATTEMPTS,
+  COMMERCIAL_PURCHASE_RETRY_DELAY_MS,
+  CommercialPurchaseClientService,
+} from './commercial-purchase-client.service';
 import { InstallationIdentityService } from './installation-identity.service';
 
 describe('CommercialPurchaseClientService', () => {
@@ -33,6 +38,18 @@ describe('CommercialPurchaseClientService', () => {
 
   function service(): CommercialPurchaseClientService {
     return new CommercialPurchaseClientService(new InstallationIdentityService());
+  }
+
+  function captureDiagnostics(candidate: CommercialPurchaseClientService): {
+    lines: string[];
+  } {
+    const lines: string[] = [];
+    const logger = (candidate as unknown as {
+      logger: { log: (message: string) => void; warn: (message: string) => void };
+    }).logger;
+    jest.spyOn(logger, 'log').mockImplementation((message) => { lines.push(message); });
+    jest.spyOn(logger, 'warn').mockImplementation((message) => { lines.push(message); });
+    return { lines };
   }
 
   it('submits exact PurchaseRequestV2 without desktop price authority and returns an S4 opaque URL', async () => {
@@ -80,7 +97,138 @@ describe('CommercialPurchaseClientService', () => {
 
   it('rejects malformed service responses', async () => {
     fetchMock.mockResolvedValue({ ok: true, json: async () => ({ purchaseReference: 'leaked' }) });
-    await expect(service().start({ requestId: '5c97ec6e-77af-4fbe-8928-6ba4931eb213', clientNonce: 'n'.repeat(32) })).rejects.toThrow(/invalid purchase response/i);
+    const candidate = service();
+    const { lines } = captureDiagnostics(candidate);
+    await expect(candidate.start({ requestId: '5c97ec6e-77af-4fbe-8928-6ba4931eb213', clientNonce: 'n'.repeat(32) })).rejects.toThrow(/invalid purchase response/i);
+    expect(lines).toContain('COMMERCIAL_PURCHASE_DIAGNOSTIC stage=COMMERCIAL_RESPONSE_VALIDATION_STARTED');
+    expect(lines).toContain('COMMERCIAL_PURCHASE_DIAGNOSTIC stage=COMMERCIAL_RESPONSE_VALIDATION_FAILED errorClass=HTTP_EXCEPTION errorCode=HTTP_502');
+    expect(lines.join(' ')).not.toContain('leaked');
+  });
+
+  it('identifies request construction failure before any outbound request', async () => {
+    delete process.env.PATROLSAFE_COMMERCIAL_SERVICE_ORIGIN;
+    const candidate = service();
+    const { lines } = captureDiagnostics(candidate);
+    await expect(candidate.start({ requestId: '5c97ec6e-77af-4fbe-8928-6ba4931eb213', clientNonce: 'n'.repeat(32) })).rejects.toThrow(/not configured/i);
+    expect(lines).toEqual([
+      'COMMERCIAL_PURCHASE_DIAGNOSTIC stage=PURCHASE_REQUEST_V2_BUILD_STARTED',
+      'COMMERCIAL_PURCHASE_DIAGNOSTIC stage=PURCHASE_REQUEST_V2_BUILD_FAILED errorClass=HTTP_EXCEPTION errorCode=HTTP_503',
+    ]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('identifies outbound network failure without logging request secrets', async () => {
+    fetchMock.mockRejectedValue(Object.assign(new TypeError('request body contained secret values'), { code: 'ECONNRESET' }));
+    const candidate = service();
+    const { lines } = captureDiagnostics(candidate);
+    const requestId = '5c97ec6e-77af-4fbe-8928-6ba4931eb213';
+    const clientNonce = 'SENSITIVE_NONCE_12345678901234567';
+    await expect(candidate.start({ requestId, clientNonce })).rejects.toThrow(/temporarily unavailable/i);
+    expect(lines).toContain('COMMERCIAL_PURCHASE_DIAGNOSTIC stage=RENDER_PURCHASE_REQUEST_STARTED');
+    expect(lines).toContain('COMMERCIAL_PURCHASE_DIAGNOSTIC stage=RENDER_PURCHASE_REQUEST_RETRY_SCHEDULED attempt=1 maxAttempts=2 nextAttempt=2 delayMs=750 errorClass=TYPE_ERROR errorCode=ECONNRESET');
+    expect(lines).toContain('COMMERCIAL_PURCHASE_DIAGNOSTIC stage=RENDER_PURCHASE_REQUEST_FAILED attempt=2 maxAttempts=2 errorClass=TYPE_ERROR errorCode=ECONNRESET');
+    expect(fetchMock).toHaveBeenCalledTimes(COMMERCIAL_PURCHASE_MAX_ATTEMPTS);
+    expect(lines.join(' ')).not.toContain(requestId);
+    expect(lines.join(' ')).not.toContain(clientNonce);
+    expect(lines.join(' ')).not.toContain('request body');
+  });
+
+  it('uses a finite timeout and identifies the final abort after one bounded retry', async () => {
+    jest.useFakeTimers();
+    try {
+      fetchMock.mockImplementation((_url: URL, init: RequestInit) => new Promise((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () => {
+          const error = new Error('sensitive timeout details');
+          error.name = 'AbortError';
+          reject(error);
+        });
+      }));
+      const candidate = service();
+      const { lines } = captureDiagnostics(candidate);
+      const purchase = candidate.start({
+        requestId: '5c97ec6e-77af-4fbe-8928-6ba4931eb213',
+        clientNonce: 'n'.repeat(32),
+      });
+      const rejection = expect(purchase).rejects.toThrow(/temporarily unavailable/i);
+      await jest.advanceTimersByTimeAsync(
+        (COMMERCIAL_PURCHASE_ATTEMPT_TIMEOUT_MS * COMMERCIAL_PURCHASE_MAX_ATTEMPTS)
+          + COMMERCIAL_PURCHASE_RETRY_DELAY_MS,
+      );
+      await rejection;
+      expect(fetchMock).toHaveBeenCalledTimes(COMMERCIAL_PURCHASE_MAX_ATTEMPTS);
+      expect(lines).toContain('COMMERCIAL_PURCHASE_DIAGNOSTIC stage=RENDER_PURCHASE_REQUEST_RETRY_SCHEDULED attempt=1 maxAttempts=2 nextAttempt=2 delayMs=750 errorClass=ABORT_ERROR errorCode=ABORT_ERR');
+      expect(lines).toContain('COMMERCIAL_PURCHASE_DIAGNOSTIC stage=RENDER_PURCHASE_REQUEST_FAILED attempt=2 maxAttempts=2 errorClass=ABORT_ERROR errorCode=ABORT_ERR');
+      expect(lines.join(' ')).not.toContain('sensitive timeout details');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('allows a valid response delayed beyond the former ten-second boundary', async () => {
+    jest.useFakeTimers();
+    try {
+      const requestId = '5c97ec6e-77af-4fbe-8928-6ba4931eb213';
+      fetchMock.mockImplementation(() => new Promise((resolve) => {
+        setTimeout(() => resolve({
+          ok: true,
+          status: 201,
+          json: async () => ({
+            requestId,
+            publicOrderId: 'ord_74cc812c-4abf-4f06-a57e-3a4c1ad6ce27',
+            purchaseReference: 'D'.repeat(43),
+            referenceExpiresAt: '2026-09-25T14:00:00.000Z',
+            status: 'REQUEST_CREATED',
+          }),
+        }), 12_000);
+      }));
+      const purchase = service().start({ requestId, clientNonce: 'n'.repeat(32) });
+      await jest.advanceTimersByTimeAsync(12_000);
+      await expect(purchase).resolves.toMatchObject({ status: 'PURCHASE_STARTED' });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('retries a transient HTTP failure once with the identical request identity and body', async () => {
+    const requestId = '5c97ec6e-77af-4fbe-8928-6ba4931eb213';
+    fetchMock
+      .mockResolvedValueOnce({ ok: false, status: 503 })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 201,
+        json: async () => ({
+          requestId,
+          publicOrderId: 'ord_74cc812c-4abf-4f06-a57e-3a4c1ad6ce27',
+          purchaseReference: 'T'.repeat(43),
+          referenceExpiresAt: '2026-09-25T14:00:00.000Z',
+          status: 'REQUEST_CREATED',
+        }),
+      });
+    const candidate = service();
+    const { lines } = captureDiagnostics(candidate);
+    await expect(candidate.start({ requestId, clientNonce: 'n'.repeat(32) })).resolves.toMatchObject({
+      status: 'PURCHASE_STARTED',
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][1].body).toBe(fetchMock.mock.calls[0][1].body);
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).requestId).toBe(requestId);
+    expect(lines).toContain('COMMERCIAL_PURCHASE_DIAGNOSTIC stage=RENDER_PURCHASE_REQUEST_RETRY_SCHEDULED attempt=1 maxAttempts=2 nextAttempt=2 delayMs=750 errorClass=HTTP_EXCEPTION errorCode=HTTP_503');
+  });
+
+  it('records Render HTTP status/duration without response-body leakage', async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 422,
+      json: async () => ({ secret: 'response-body-secret' }),
+    });
+    const candidate = service();
+    const { lines } = captureDiagnostics(candidate);
+    await expect(candidate.start({ requestId: '5c97ec6e-77af-4fbe-8928-6ba4931eb213', clientNonce: 'n'.repeat(32) })).rejects.toThrow(/could not complete/i);
+    expect(lines.some((line) => /^COMMERCIAL_PURCHASE_DIAGNOSTIC stage=RENDER_PURCHASE_REQUEST_RESPONSE status=422 durationMs=\d+ attempt=1 maxAttempts=2$/.test(line))).toBe(true);
+    expect(lines).toContain('COMMERCIAL_PURCHASE_DIAGNOSTIC stage=RENDER_PURCHASE_REQUEST_FAILED attempt=1 maxAttempts=2 errorClass=HTTP_EXCEPTION errorCode=HTTP_422');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(lines.join(' ')).not.toContain('response-body-secret');
   });
 
   it('rejects non-S4 and non-HTTPS production origins before network access', async () => {

@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Logger, Post, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
 import { DesktopApiGuard } from '@/security/desktop-api.guard';
 import { ActivateLicenseDto } from './dto/activate-license.dto';
@@ -6,10 +6,13 @@ import { CreateLicenceRequestFileDto, ImportLicenceDto } from './dto/commercial-
 import { CommercialPurchaseStatusDto, StartCommercialPurchaseDto } from './dto/commercial-purchase.dto';
 import { CommercialPurchaseClientService } from './commercial-purchase-client.service';
 import { LicenseService } from './license.service';
+import { formatCommercialDiagnostic } from './commercial-purchase-diagnostic';
 
 @Controller('license')
 @UseGuards(DesktopApiGuard)
 export class LicenseController {
+  private readonly logger = new Logger(LicenseController.name);
+
   constructor(
     private readonly licenseService: LicenseService,
     private readonly commercialPurchase: CommercialPurchaseClientService,
@@ -46,6 +49,7 @@ export class LicenseController {
   @Post('commercial/purchase')
   @UseGuards(JwtAuthGuard)
   startCommercialPurchase(@Body() dto: StartCommercialPurchaseDto) {
+    this.logger.log(formatCommercialDiagnostic('COMMERCIAL_PURCHASE_CONTROLLER_ENTERED'));
     return this.commercialPurchase.start(dto);
   }
 

@@ -40,10 +40,8 @@ export class LicenceBootstrapService implements OnModuleInit {
     }
 
     try {
-      const identity = this.identityService.getOrCreateIdentity();
-      this.logger.log(
-        `INSTALLATION_IDENTITY_READY id=${identity.installationId} dataRoot=${this.identityService.getDataRoot() ?? 'null'}`,
-      );
+      this.identityService.getOrCreateIdentity();
+      this.logger.log('INSTALLATION_IDENTITY_READY');
 
       const commercial = getStoredCommercialLicence();
       if (commercial) {
