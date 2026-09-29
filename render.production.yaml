@@ -1,0 +1,92 @@
+services:
+  - type: web
+    name: patrolsafe-commercial-production
+    runtime: docker
+    plan: free
+    branch: v1.0.3-commercial-licensing
+    dockerfilePath: ./docker/commercial-production/Dockerfile
+    autoDeploy: false
+    healthCheckPath: /health/ready
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: COMMERCIAL_MODE
+        value: DISABLED
+      - key: COMMERCIAL_STRIPE_ENABLED
+        value: "false"
+      - key: PATROLSAFE_COMMERCIAL_STAGING
+        value: "false"
+      - key: COMMERCIAL_LEAN_STAGING_PORTALS
+        value: "false"
+      - key: COMMERCIAL_EMBEDDED_PORTALS
+        value: "true"
+      - key: COMMERCIAL_DATABASE_ENVIRONMENT
+        value: production
+      - key: COMMERCIAL_UK_ONLY_ENABLED
+        value: "true"
+      - key: COMMERCIAL_OUTBOX_WORKER_ENABLED
+        value: "true"
+      - key: COMMERCIAL_ARTIFACT_STORE
+        value: database
+      - key: COMMERCIAL_DELIVERY_PROVIDER
+        value: resend
+      - key: LICENSE_API_ENABLE_SWAGGER
+        value: "false"
+      - key: COMMERCIAL_SERVICE_ORIGIN
+        value: https://licensing.sfour.co.uk
+      - key: LICENSE_PORTAL_ORIGIN
+        value: https://licensing.sfour.co.uk
+      - key: CUSTOMER_PORTAL_ORIGIN
+        value: https://licensing.sfour.co.uk
+      - key: COMMERCIAL_CHECKOUT_SUCCESS_URL
+        value: https://licensing.sfour.co.uk/patrolsafe/licence/status/{ORDER_REFERENCE}?checkout=success
+      - key: COMMERCIAL_CHECKOUT_CANCEL_URL
+        value: https://licensing.sfour.co.uk/patrolsafe/licence/status/{ORDER_REFERENCE}?checkout=cancelled
+      - key: COMMERCIAL_LICENCE_DOWNLOAD_BASE_URL
+        value: https://licensing.sfour.co.uk/commercial/licence/download
+      - key: COMMERCIAL_STRIPE_INVOICE_CREATION_ENABLED
+        value: "false"
+      - key: COMMERCIAL_VAT_CONFIGURATION_APPROVED
+        value: "false"
+      - key: LICENSE_DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: LICENCE_STORAGE_ENCRYPTION_KEY
+        sync: false
+      - key: LICENSE_SIGNING_KEY_ID
+        sync: false
+      - key: COMMERCIAL_PRODUCTION_SIGNING_KEY_ID
+        sync: false
+      - key: COMMERCIAL_SIGNING_PROVIDER
+        sync: false
+      - key: COMMERCIAL_STRIPE_SECRET_KEY
+        sync: false
+      - key: COMMERCIAL_STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: COMMERCIAL_STRIPE_PRODUCT_ID
+        sync: false
+      - key: COMMERCIAL_STRIPE_PRICE_ID
+        sync: false
+      - key: COMMERCIAL_STRIPE_PRICE_LOOKUP_KEY
+        value: patrolsafe_annual_gbp_v1
+      - key: COMMERCIAL_STRIPE_PRICE_TAX_BEHAVIOR
+        value: inclusive
+      - key: COMMERCIAL_STRIPE_API_VERSION
+        sync: false
+      - key: COMMERCIAL_STRIPE_TAX_RATE_ID
+        sync: false
+      - key: COMMERCIAL_TERMS_VERSION
+        sync: false
+      - key: COMMERCIAL_PRIVACY_VERSION
+        sync: false
+      - key: COMMERCIAL_DELIVERY_TOKEN_SECRET
+        generateValue: true
+      - key: COMMERCIAL_RESEND_ENABLED
+        value: "true"
+      - key: COMMERCIAL_RESEND_API_KEY
+        sync: false
+      - key: COMMERCIAL_RESEND_FROM
+        sync: false
+      - key: COMMERCIAL_RESEND_WEBHOOK_SECRET
+        sync: false

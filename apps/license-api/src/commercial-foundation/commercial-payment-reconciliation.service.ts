@@ -47,9 +47,12 @@ export class CommercialPaymentReconciliationService {
       where: { id: outbox.aggregateId },
     });
     if (!providerEvent) throw new ApiException(ERROR_CODES.COMMERCIAL_OUTBOX_INVALID, 'Provider event was not found.', 404);
-    if (providerEvent.livemode || this.provider.getMode() !== 'TEST') {
+    const runtimeProviderMode = this.provider.getMode();
+    const expectedLivemode = runtimeProviderMode === 'LIVE';
+    if (runtimeProviderMode === 'DISABLED' || providerEvent.livemode !== expectedLivemode) {
       throw new ApiException(ERROR_CODES.COMMERCIAL_WEBHOOK_MODE_MISMATCH, 'Provider event mode mismatch.', 409);
     }
+    const providerMode = runtimeProviderMode === 'LIVE' ? 'LIVE' : 'TEST';
 
     const metadata = this.parseMetadata(providerEvent.safeMetadata);
     const order = await this.findOrder(metadata);
@@ -101,12 +104,12 @@ export class CommercialPaymentReconciliationService {
             orderId: current.id,
             provider: CommercialProvider.STRIPE,
             providerReference: effectivePaymentIntentId,
-            providerMode: 'TEST',
+            providerMode,
             checkoutSessionId: checkout?.providerSessionId ?? sessionId,
             providerCustomerId: payment?.providerCustomerId ?? checkout?.providerCustomerId,
             status: decision.paymentStatus,
             amountMinor: payment?.amount ?? checkout?.amountTotal ?? this.config.getPolicy().amountMinor,
-            taxMinor: 0,
+            taxMinor: checkout?.taxMinor ?? 0,
             currency: payment?.currency ?? checkout?.currency ?? this.config.getPolicy().currency,
             paidAt: decision.paymentStatus === CommercialPaymentStatus.SUCCEEDED ? new Date() : null,
             refundedAt: decision.paymentStatus === CommercialPaymentStatus.REFUNDED ? new Date() : null,
@@ -135,6 +138,8 @@ export class CommercialPaymentReconciliationService {
           providerCustomerId: payment?.providerCustomerId ?? checkout?.providerCustomerId ?? undefined,
           checkoutStatus: checkout?.status ?? undefined,
           checkoutExpiresAt: checkout?.expiresAt ?? undefined,
+          billingCountry: checkout?.billingCountry ?? undefined,
+          providerInvoiceId: checkout?.providerInvoiceId ?? undefined,
         },
       });
       if (protectionReason === 'refund_after_issuance_requires_manual_action' && current.issuance) {
@@ -242,7 +247,11 @@ export class CommercialPaymentReconciliationService {
     payment: CommercialPaymentSnapshot | null,
   ): string | null {
     const policy = this.config.getPolicy();
-    if (checkout?.livemode || payment?.livemode) return 'provider_mode_mismatch';
+    const providerMode = this.provider.getMode();
+    const expectedLivemode = providerMode === 'LIVE';
+    if (providerMode === 'DISABLED'
+      || (checkout && checkout.livemode !== expectedLivemode)
+      || (payment && payment.livemode !== expectedLivemode)) return 'provider_mode_mismatch';
     if (order.amountMinor !== policy.amountMinor || order.currency !== policy.currency) return 'order_price_mismatch';
     if (checkout?.publicOrderId && checkout.publicOrderId !== order.publicOrderId) return 'checkout_order_mismatch';
     if (payment?.publicOrderId && payment.publicOrderId !== order.publicOrderId) return 'payment_order_mismatch';
@@ -262,6 +271,11 @@ export class CommercialPaymentReconciliationService {
     if (checkout?.currency && checkout.currency !== policy.currency) return 'checkout_currency_mismatch';
     if (payment && payment.amount !== policy.amountMinor) return 'payment_amount_mismatch';
     if (payment && payment.currency !== policy.currency) return 'payment_currency_mismatch';
+    const settled = checkout?.paymentStatus === 'paid'
+      || payment?.status === 'succeeded'
+      || (payment?.amountReceived ?? 0) >= policy.amountMinor;
+    if (policy.ukBusinessOnly && settled && checkout?.billingCountry !== 'GB') return 'billing_country_not_uk';
+    if (policy.invoiceCreationEnabled && settled && !checkout?.providerInvoiceId) return 'provider_invoice_missing';
     return null;
   }
 

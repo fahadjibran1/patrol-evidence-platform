@@ -12,6 +12,8 @@ services:
         value: staging
       - key: PATROLSAFE_COMMERCIAL_STAGING
         value: "true"
+      - key: COMMERCIAL_MODE
+        value: STAGING_TEST
       - key: COMMERCIAL_LEAN_STAGING_PORTALS
         value: "true"
       - key: COMMERCIAL_OUTBOX_WORKER_ENABLED

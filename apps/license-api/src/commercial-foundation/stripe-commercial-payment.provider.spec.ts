@@ -6,6 +6,7 @@ import { StripeCommercialPaymentProvider } from './stripe-commercial-payment.pro
 describe('StripeCommercialPaymentProvider webhook boundary', () => {
   const secret = 'whsec_phase2_deterministic_test_secret';
   const config = new CommercialConfigService(new ConfigService({
+    NODE_ENV: 'test',
     COMMERCIAL_STRIPE_ENABLED: 'true',
     COMMERCIAL_STRIPE_SECRET_KEY: 'sk_test_phase2_not_a_real_key',
     COMMERCIAL_STRIPE_WEBHOOK_SECRET: secret,
@@ -116,6 +117,25 @@ describe('StripeCommercialPaymentProvider webhook boundary', () => {
       }],
     }), { idempotencyKey: 'checkout:order:1' });
     expect(retrievePrice).toHaveBeenCalledWith('price_phase2_test', { expand: ['product'] });
+  });
+
+  it('rejects live Stripe objects in STAGING_TEST', async () => {
+    const provider = new StripeCommercialPaymentProvider(config);
+    (provider as unknown as { client: unknown }).client = {
+      prices: { retrieve: jest.fn().mockResolvedValue({
+        id: 'price_phase2_test', active: true, livemode: true, type: 'one_time', recurring: null,
+        currency: 'gbp', unit_amount: 29900, tax_behavior: 'inclusive', lookup_key: 'patrolsafe_annual_gbp_v1',
+        product: { id: 'prod_phase2_test', active: true, name: 'PatrolSafe Annual Licence' },
+      }) },
+      checkout: { sessions: { create: jest.fn() } },
+    };
+    await expect(provider.createCheckout({
+      commandId: 'checkout:order:live-object', publicOrderId: 'ord_live_object',
+      customerEmail: 'buyer@example.test', customerName: 'Test Ltd',
+      productDisplayName: 'PatrolSafe Annual Licence', amountMinor: 29900, currency: 'GBP',
+      successUrl: 'https://test.sfour.co.uk/success', cancelUrl: 'https://test.sfour.co.uk/cancel',
+      metadata: { commercial_order_ref: 'ord_live_object' },
+    })).rejects.toThrow('explicit mode');
   });
 
   it('fails closed when the configured sandbox Price does not match policy', async () => {

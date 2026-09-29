@@ -1,4 +1,5 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiTags } from '@nestjs/swagger';
 import { NotificationStatus } from '@prisma/client';
 import { PrismaService } from '@/prisma/prisma.service';
@@ -29,12 +30,13 @@ export class HealthController {
   }
 
   @Get('ready')
-  async ready() {
+  async ready(@Res({ passthrough: true }) response?: Response) {
     const [databaseOk, queueStats] = await Promise.all([this.checkDatabase(), this.queueService.getQueueStats()]);
     const redisEnabled = this.queueService.isRedisEnabled();
     const smtpConfigured = this.emailProvider.getSafeStatus().configured;
 
     const status = databaseOk ? 'ok' : 'degraded';
+    if (!databaseOk) response?.status(503);
 
     return {
       status,

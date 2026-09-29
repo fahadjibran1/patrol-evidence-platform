@@ -18,7 +18,7 @@ describe('lean staging portal configuration', () => {
         PATROLSAFE_COMMERCIAL_STAGING: 'true',
       }),
       leanStagingPortalPaths('C:/definitely-not-a-portal-root'),
-    )).toThrow('Lean staging portal assets are missing');
+    )).toThrow('Commercial portal assets are missing');
   });
 
   it('requires an explicit staging marker', () => {
@@ -40,5 +40,15 @@ describe('lean staging portal configuration', () => {
     const config = { get: (key: string) => values[key] } as ConfigService;
     expect(() => configureLeanStagingPortals(app, config)).toThrow('cannot be enabled in production');
     expect(app.getHttpAdapter).not.toHaveBeenCalled();
+  });
+
+  it('accepts the dedicated production portal gate without requiring staging flags', () => {
+    const app = { getHttpAdapter: jest.fn() } as unknown as INestApplication;
+    const values: Record<string, string> = { NODE_ENV: 'production', COMMERCIAL_EMBEDDED_PORTALS: 'true' };
+    const config = { get: (key: string) => values[key] } as ConfigService;
+    expect(() => configureLeanStagingPortals(app, config, {
+      customerRoot: 'C:/definitely-not-a-portal-root',
+      operatorRoot: 'C:/definitely-not-a-portal-root',
+    })).toThrow('Commercial portal assets are missing');
   });
 });

@@ -1067,6 +1067,8 @@ model CommercialOrder {
   providerCheckoutSessionId String?                 @unique
   providerPaymentIntentId   String?                 @unique
   providerCustomerId        String?
+  providerInvoiceId         String?                 @unique
+  billingCountry            String?
   providerMode              CommercialProviderMode?
   checkoutStatus            String?
   checkoutExpiresAt         DateTime?

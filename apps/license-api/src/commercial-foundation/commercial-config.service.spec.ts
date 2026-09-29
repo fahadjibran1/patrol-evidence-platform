@@ -3,6 +3,8 @@ import { CommercialConfigService } from './commercial-config.service';
 
 describe('CommercialConfigService', () => {
   const stripeConfig = (overrides: Record<string, string | undefined> = {}) => ({
+    NODE_ENV: 'test',
+    COMMERCIAL_MODE: 'STAGING_TEST',
     COMMERCIAL_STRIPE_ENABLED: 'true',
     COMMERCIAL_STRIPE_SECRET_KEY: 'sk_test_phase2_not_a_real_key',
     COMMERCIAL_STRIPE_WEBHOOK_SECRET: 'whsec_phase2_not_a_real_secret',
@@ -58,7 +60,7 @@ describe('CommercialConfigService', () => {
     const live = configuredService({
       COMMERCIAL_STRIPE_SECRET_KEY: 'sk_live_forbidden',
     });
-    expect(() => live.assertStripeTestReady()).toThrow('not test mode');
+    expect(() => live.assertStripeTestReady()).toThrow('explicit commercial mode');
   });
 
   it('accepts the exact configured HTTPS customer portal origin only under every staging gate', () => {
@@ -104,6 +106,7 @@ describe('CommercialConfigService', () => {
     'https://attacker.example/patrolsafe/licence/status/{ORDER_REFERENCE}?next=https%3A%2F%2Fpatrolsafe-commercial-staging.onrender.com',
     'https://attacker.example/patrolsafe/licence/status/{ORDER_REFERENCE}#https://patrolsafe-commercial-staging.onrender.com',
     'https://patrolsafe-commercial-staging.onrender.com@attacker.example/patrolsafe/licence/status/{ORDER_REFERENCE}',
+    'https://patrolsafe-commercial-staging.onrender.com/patrolsafe/licence/status/ord_static',
     'not-a-url',
   ])('rejects an unsafe staging redirect: %s', (redirect) => {
     const service = configuredService({
@@ -118,23 +121,35 @@ describe('CommercialConfigService', () => {
     expect(() => service.assertStripeTestReady()).toThrow('approved HTTPS portal URL');
   });
 
-  it('preserves the sfour.co.uk production redirect policy without enabling Render staging origins', () => {
+  it('accepts only an exact approved production origin and restricted live key in production mode', () => {
     const production = configuredService({
       NODE_ENV: 'production',
-      COMMERCIAL_CHECKOUT_SUCCESS_URL: 'https://www.sfour.co.uk/patrolsafe/licence/status/{ORDER_REFERENCE}',
+      COMMERCIAL_MODE: 'PRODUCTION_LIVE',
+      COMMERCIAL_STRIPE_SECRET_KEY: 'rk_live_not_a_real_key',
+      COMMERCIAL_SERVICE_ORIGIN: 'https://licensing.sfour.co.uk',
+      COMMERCIAL_UK_ONLY_ENABLED: 'true',
+      COMMERCIAL_VAT_CONFIGURATION_APPROVED: 'true',
+      COMMERCIAL_STRIPE_INVOICE_CREATION_ENABLED: 'true',
+      COMMERCIAL_STRIPE_TAX_RATE_ID: 'txr_not_a_real_rate',
+      COMMERCIAL_CHECKOUT_SUCCESS_URL: 'https://licensing.sfour.co.uk/patrolsafe/licence/status/{ORDER_REFERENCE}',
       COMMERCIAL_CHECKOUT_CANCEL_URL: 'https://licensing.sfour.co.uk/patrolsafe/licence/status/{ORDER_REFERENCE}',
     });
-    expect(production.assertStripeTestReady()).toEqual(expect.objectContaining({ enabled: true }));
+    expect(production.assertStripeReady()).toEqual(expect.objectContaining({
+      commercialMode: 'PRODUCTION_LIVE', providerMode: 'LIVE', expectedLivemode: true,
+    }));
 
     const renderInProduction = configuredService({
       NODE_ENV: 'production',
-      PATROLSAFE_COMMERCIAL_STAGING: 'true',
-      COMMERCIAL_LEAN_STAGING_PORTALS: 'true',
-      CUSTOMER_PORTAL_ORIGIN: 'https://patrolsafe-commercial-staging.onrender.com',
+      COMMERCIAL_MODE: 'PRODUCTION_LIVE',
+      COMMERCIAL_STRIPE_SECRET_KEY: 'rk_live_not_a_real_key',
+      COMMERCIAL_SERVICE_ORIGIN: 'https://licensing.sfour.co.uk',
+      COMMERCIAL_UK_ONLY_ENABLED: 'true',
+      COMMERCIAL_VAT_CONFIGURATION_APPROVED: 'true',
+      COMMERCIAL_STRIPE_INVOICE_CREATION_ENABLED: 'true',
+      COMMERCIAL_STRIPE_TAX_RATE_ID: 'txr_not_a_real_rate',
       COMMERCIAL_CHECKOUT_SUCCESS_URL: 'https://patrolsafe-commercial-staging.onrender.com/patrolsafe/licence/status/{ORDER_REFERENCE}',
-      COMMERCIAL_CHECKOUT_CANCEL_URL: 'https://patrolsafe-commercial-staging.onrender.com/patrolsafe/licence/status/{ORDER_REFERENCE}',
     });
-    expect(() => renderInProduction.assertStripeTestReady()).toThrow('approved HTTPS portal URL');
+    expect(() => renderInProduction.assertStripeReady()).toThrow('approved HTTPS portal URL');
   });
 
   it.each([

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import {
-  commercialStagingEnabled,
+  commercialEnabled,
   getCommercialOrderStatus,
   PUBLIC_ORDER_PATTERN,
   type CommercialPublicOrderStatus,
@@ -31,7 +31,7 @@ export function CommercialStatusPage(): JSX.Element {
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!commercialStagingEnabled() || !publicOrderId || !PUBLIC_ORDER_PATTERN.test(publicOrderId)) {
+    if (!commercialEnabled() || !publicOrderId || !PUBLIC_ORDER_PATTERN.test(publicOrderId)) {
       setMessage('This purchase status link is invalid.');
       return;
     }

@@ -19,14 +19,13 @@ export class StripeCommercialPaymentProvider implements CommercialPaymentProvide
 
   constructor(private readonly commercialConfig: CommercialConfigService) {}
 
-  getMode(): 'TEST' | 'DISABLED' {
-    const config = this.commercialConfig.getStripeTestConfig();
-    return config.enabled && /^(?:sk|rk)_test_/.test(config.secretKey ?? '') ? 'TEST' : 'DISABLED';
+  getMode(): 'TEST' | 'LIVE' | 'DISABLED' {
+    return this.commercialConfig.getProviderMode();
   }
 
   async createCheckout(command: Readonly<CreateCommercialCheckoutCommand>): Promise<CommercialCheckoutSnapshot> {
     const stripe = this.getStripe();
-    const config = this.commercialConfig.assertStripeTestReady();
+    const config = this.commercialConfig.assertStripeReady();
     const policy = this.commercialConfig.getPolicy();
     if (
       command.productDisplayName !== policy.displayName
@@ -49,7 +48,7 @@ export class StripeCommercialPaymentProvider implements CommercialPaymentProvide
       ? price.product.name
       : null;
     if (
-      price.livemode
+      price.livemode !== config.expectedLivemode
       || !price.active
       || !productActive
       || price.type !== 'one_time'
@@ -63,11 +62,16 @@ export class StripeCommercialPaymentProvider implements CommercialPaymentProvide
     ) {
       throw new ApiException(
         ERROR_CODES.COMMERCIAL_STRIPE_NOT_CONFIGURED,
-        'Configured Stripe sandbox Product/Price does not match the server-owned commercial policy.',
+        'Configured Stripe Product/Price does not match the server-owned commercial policy or explicit mode.',
         503,
       );
     }
 
+    const lineItem: Stripe.Checkout.SessionCreateParams.LineItem = {
+      quantity: 1,
+      price: config.priceId!,
+      ...(config.taxRateId ? { tax_rates: [config.taxRateId] } : {}),
+    };
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
       customer_creation: 'always',
@@ -78,14 +82,13 @@ export class StripeCommercialPaymentProvider implements CommercialPaymentProvide
       billing_address_collection: 'required',
       tax_id_collection: { enabled: false },
       automatic_tax: { enabled: false },
-      invoice_creation: { enabled: false },
+      invoice_creation: config.invoiceCreationEnabled
+        ? { enabled: true, invoice_data: { metadata: { ...command.metadata } } }
+        : { enabled: false },
       allow_promotion_codes: false,
       metadata: { ...command.metadata },
       payment_intent_data: { metadata: { ...command.metadata } },
-      line_items: [{
-        quantity: 1,
-        price: config.priceId!,
-      }],
+      line_items: [lineItem],
     }, { idempotencyKey: command.commandId });
     if (!session.url) {
       throw new ApiException(ERROR_CODES.COMMERCIAL_CHECKOUT_FAILED, 'Stripe Checkout did not return a redirect URL.', 502);
@@ -114,7 +117,7 @@ export class StripeCommercialPaymentProvider implements CommercialPaymentProvide
   }
 
   verifyWebhook(rawBody: Buffer, signature: string): VerifiedCommercialProviderEvent {
-    const config = this.commercialConfig.assertStripeTestReady();
+    const config = this.commercialConfig.assertStripeReady();
     let event: Stripe.Event;
     try {
       event = this.getStripe().webhooks.constructEvent(rawBody, signature, config.webhookSecret!);
@@ -126,7 +129,7 @@ export class StripeCommercialPaymentProvider implements CommercialPaymentProvide
   }
 
   private getStripe(): Stripe {
-    const config = this.commercialConfig.assertStripeTestReady();
+    const config = this.commercialConfig.assertStripeReady();
     if (!this.client) {
       this.client = new Stripe(config.secretKey!, {
         apiVersion: config.apiVersion as Stripe.LatestApiVersion,
@@ -149,8 +152,11 @@ export class StripeCommercialPaymentProvider implements CommercialPaymentProvide
         : session.payment_intent?.id ?? null,
       providerCustomerId: typeof session.customer === 'string' ? session.customer : session.customer?.id ?? null,
       amountTotal: session.amount_total ?? null,
+      taxMinor: session.total_details?.amount_tax ?? null,
       currency: session.currency?.toUpperCase() ?? null,
       publicOrderId: session.metadata?.commercial_order_ref ?? session.client_reference_id ?? null,
+      billingCountry: session.customer_details?.address?.country?.toUpperCase() ?? null,
+      providerInvoiceId: typeof session.invoice === 'string' ? session.invoice : session.invoice?.id ?? null,
     };
   }
 
@@ -163,6 +169,12 @@ export class StripeCommercialPaymentProvider implements CommercialPaymentProvide
     const paymentIntentId = objectType === 'payment_intent'
       ? objectId
       : this.externalId(object.payment_intent);
+    const customerDetails = object.customer_details && typeof object.customer_details === 'object'
+      ? object.customer_details as Record<string, unknown>
+      : {};
+    const customerAddress = customerDetails.address && typeof customerDetails.address === 'object'
+      ? customerDetails.address as Record<string, unknown>
+      : {};
     return {
       providerEventId: event.id,
       type: event.type,
@@ -178,6 +190,8 @@ export class StripeCommercialPaymentProvider implements CommercialPaymentProvide
       paymentStatus: this.optionalString(object.payment_status),
       amountMinor: this.optionalNumber(object.amount_total) ?? this.optionalNumber(object.amount),
       currency: this.optionalString(object.currency)?.toUpperCase() ?? null,
+      billingCountry: this.optionalString(customerAddress.country)?.toUpperCase() ?? null,
+      providerInvoiceId: objectType === 'invoice' ? objectId : this.externalId(object.invoice),
     };
   }
 

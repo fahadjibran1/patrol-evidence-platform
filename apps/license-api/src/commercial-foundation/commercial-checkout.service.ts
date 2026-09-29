@@ -149,6 +149,14 @@ export class CommercialCheckoutService {
     const order = request.orders[0];
     if (!order) throw new ApiException(ERROR_CODES.COMMERCIAL_ORDER_NOT_FOUND, 'Commercial order was not found.', 404);
     this.assertEligible(request, order, now);
+    const stripeConfig = this.config.assertStripeReady();
+    const runtimeProviderMode = this.provider.getMode();
+    if (runtimeProviderMode === 'DISABLED') {
+      throw new ApiException(ERROR_CODES.COMMERCIAL_STRIPE_DISABLED, 'Commercial payments are disabled.', 503);
+    }
+    const providerMode = runtimeProviderMode === 'LIVE'
+      ? CommercialProviderMode.LIVE
+      : CommercialProviderMode.TEST;
 
     const existing = order.checkoutSessions.find((session) => session.isActive);
     const replacingExpiredCheckout = Boolean(existing);
@@ -157,6 +165,7 @@ export class CommercialCheckoutService {
       let snapshot: CommercialCheckoutSnapshot;
       try {
         snapshot = await this.provider.retrieveCheckout(existing.providerSessionId);
+        this.assertProviderSnapshot(snapshot, order.publicOrderId, this.config.getPolicy().amountMinor, this.config.getPolicy().currency);
       } catch {
         await this.auditService.record({
           actorType: 'CUSTOMER',
@@ -164,7 +173,7 @@ export class CommercialCheckoutService {
           entityType: 'CommercialOrder',
           entityId: order.id,
           correlationId: randomUUID(),
-          metadata: { publicOrderId: order.publicOrderId, provider: 'STRIPE', providerMode: 'TEST', operation: 'retrieve' },
+          metadata: { publicOrderId: order.publicOrderId, provider: 'STRIPE', providerMode: runtimeProviderMode, operation: 'retrieve' },
         });
         throw new ApiException(
           ERROR_CODES.COMMERCIAL_CHECKOUT_FAILED,
@@ -195,7 +204,6 @@ export class CommercialCheckoutService {
     }
 
     const policy = this.config.getPolicy();
-    this.config.assertStripeTestReady();
     const generation = order.checkoutGeneration + 1;
     const correlationId = randomUUID();
     let providerSnapshot: CommercialCheckoutSnapshot;
@@ -209,11 +217,11 @@ export class CommercialCheckoutService {
         amountMinor: policy.amountMinor,
         currency: policy.currency,
         successUrl: this.config.renderRedirectUrl(
-          this.config.getStripeTestConfig().successUrlTemplate,
+          stripeConfig.successUrlTemplate,
           order.publicOrderId,
         ),
         cancelUrl: this.config.renderRedirectUrl(
-          this.config.getStripeTestConfig().cancelUrlTemplate,
+          stripeConfig.cancelUrlTemplate,
           order.publicOrderId,
         ),
         metadata: Object.freeze({
@@ -228,7 +236,7 @@ export class CommercialCheckoutService {
         entityType: 'CommercialOrder',
         entityId: order.id,
         correlationId,
-        metadata: { publicOrderId: order.publicOrderId, provider: 'STRIPE', providerMode: 'TEST' },
+        metadata: { publicOrderId: order.publicOrderId, provider: 'STRIPE', providerMode: runtimeProviderMode },
       });
       throw new ApiException(
         ERROR_CODES.COMMERCIAL_CHECKOUT_FAILED,
@@ -272,7 +280,7 @@ export class CommercialCheckoutService {
           data: {
             orderId: order.id,
             provider: CommercialProvider.STRIPE,
-            providerMode: CommercialProviderMode.TEST,
+            providerMode,
             providerSessionId: providerSnapshot.providerSessionId,
             providerCustomerId: providerSnapshot.providerCustomerId,
             providerPaymentIntentId: providerSnapshot.paymentIntentId,
@@ -301,7 +309,7 @@ export class CommercialCheckoutService {
             taxPolicy: policy.taxPolicy,
             termsVersion: policy.termsVersion,
             privacyVersion: policy.privacyVersion,
-            providerMode: CommercialProviderMode.TEST,
+            providerMode,
             providerCheckoutSessionId: providerSnapshot.providerSessionId,
             providerPaymentIntentId: providerSnapshot.paymentIntentId,
             providerCustomerId: providerSnapshot.providerCustomerId,
@@ -334,7 +342,7 @@ export class CommercialCheckoutService {
           metadata: {
             publicOrderId: order.publicOrderId,
             provider: 'STRIPE',
-            providerMode: 'TEST',
+            providerMode: runtimeProviderMode,
             generation,
             amountMinor: policy.amountMinor,
             currency: policy.currency,
@@ -348,7 +356,7 @@ export class CommercialCheckoutService {
             entityId: order.id,
             customerId: effectiveCustomer.id,
             correlationId,
-            metadata: { provider: 'STRIPE', providerMode: 'TEST', replacementGeneration: generation },
+            metadata: { provider: 'STRIPE', providerMode: runtimeProviderMode, replacementGeneration: generation },
           });
         }
         await createCommercialOutboxEvent(tx, {
@@ -402,7 +410,9 @@ export class CommercialCheckoutService {
   }
 
   private assertProviderSnapshot(snapshot: CommercialCheckoutSnapshot, orderId: string, amount: number, currency: string): void {
-    if (snapshot.livemode || snapshot.publicOrderId !== orderId) {
+    const providerMode = this.provider.getMode();
+    const expectedLivemode = providerMode === 'LIVE';
+    if (providerMode === 'DISABLED' || snapshot.livemode !== expectedLivemode || snapshot.publicOrderId !== orderId) {
       throw new ApiException(ERROR_CODES.COMMERCIAL_RECONCILIATION_MISMATCH, 'Stripe Checkout identity or mode mismatch.', 409);
     }
     if ((snapshot.amountTotal !== null && snapshot.amountTotal !== amount)

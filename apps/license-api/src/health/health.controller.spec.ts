@@ -56,8 +56,10 @@ describe('HealthController', () => {
         throw new Error('connection refused');
       },
     });
-    const result = await controller.ready();
+    const response = { status: jest.fn().mockReturnThis() };
+    const result = await controller.ready(response as never);
 
+    expect(response.status).toHaveBeenCalledWith(503);
     expect(result.status).toBe('degraded');
     expect(result.checks.database).toBe(false);
   });

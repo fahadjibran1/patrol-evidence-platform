@@ -29,7 +29,9 @@ export class CommercialWebhookService {
       throw new ApiException(ERROR_CODES.COMMERCIAL_WEBHOOK_INVALID, 'Stripe-Signature is required.', 400);
     }
     const verified = this.provider.verifyWebhook(rawBody, signature);
-    if (verified.livemode || this.provider.getMode() !== 'TEST') {
+    const providerMode = this.provider.getMode();
+    const expectedLivemode = providerMode === 'LIVE';
+    if (providerMode === 'DISABLED' || verified.livemode !== expectedLivemode) {
       await this.auditService.record({
         actorType: 'PROVIDER',
         actorId: 'stripe',
@@ -54,7 +56,7 @@ export class CommercialWebhookService {
             safeMetadata: this.safeMetadata(verified) as Prisma.InputJsonValue,
             correlationId,
             providerCreatedAt: verified.createdAt,
-            livemode: false,
+            livemode: verified.livemode,
           },
         });
         await createCommercialAudit(tx, this.auditService, {
@@ -67,7 +69,7 @@ export class CommercialWebhookService {
           metadata: {
             providerEventId: verified.providerEventId,
             eventType: verified.type,
-            livemode: false,
+            livemode: verified.livemode,
             objectType: verified.objectType,
           },
         });
@@ -115,6 +117,8 @@ export class CommercialWebhookService {
       paymentStatus: event.paymentStatus,
       amountMinor: event.amountMinor,
       currency: event.currency,
+      billingCountry: event.billingCountry,
+      providerInvoiceId: event.providerInvoiceId,
     };
   }
 

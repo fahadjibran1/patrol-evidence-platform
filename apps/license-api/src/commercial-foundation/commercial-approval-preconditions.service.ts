@@ -44,12 +44,16 @@ export class CommercialApprovalPreconditionsService {
       this.provider.retrieveCheckout(checkoutSessionId!),
       this.provider.retrievePayment(paymentIntentId!),
     ]);
-    if (checkout.livemode || payment.livemode || this.provider.getMode() !== 'TEST') fail('provider mode mismatch');
+    const providerMode = this.provider.getMode();
+    const expectedLivemode = providerMode === 'LIVE';
+    if (providerMode === 'DISABLED' || checkout.livemode !== expectedLivemode || payment.livemode !== expectedLivemode) fail('provider mode mismatch');
     if (checkout.publicOrderId !== order.publicOrderId || payment.publicOrderId !== order.publicOrderId) fail('provider order mismatch');
     if (checkout.paymentIntentId !== payment.paymentIntentId || payment.paymentIntentId !== order.providerPaymentIntentId) fail('payment intent mismatch');
     if (checkout.paymentStatus !== 'paid' || payment.status !== 'succeeded') fail('payment is not authoritatively settled');
     if (checkout.amountTotal !== policy.amountMinor || payment.amount !== policy.amountMinor || payment.amountReceived < policy.amountMinor) fail('provider amount mismatch');
     if (checkout.currency !== policy.currency || payment.currency !== policy.currency) fail('provider currency mismatch');
+    if (policy.ukBusinessOnly && checkout.billingCountry !== 'GB') fail('billing country is not eligible');
+    if (policy.invoiceCreationEnabled && !checkout.providerInvoiceId) fail('provider invoice is missing');
     if (payment.amountRefunded > 0) fail('payment has been refunded');
     return order;
   }

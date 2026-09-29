@@ -1,7 +1,8 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
-  commercialStagingEnabled,
+  commercialEnabled,
+  commercialProductionEnabled,
   createCommercialCheckout,
   inspectCommercialPurchase,
   validateOpaqueReference,
@@ -19,7 +20,7 @@ export function CommercialPurchasePage(): JSX.Element {
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!commercialStagingEnabled()) { setMessage('Commercial staging is disabled.'); return; }
+    if (!commercialEnabled()) { setMessage('Commercial purchasing is unavailable.'); return; }
     try {
       const valid = validateOpaqueReference(reference);
       void inspectCommercialPurchase(valid).then(setPurchase).catch(() => setMessage('This purchase link is unavailable or expired.'));
@@ -59,8 +60,8 @@ export function CommercialPurchasePage(): JSX.Element {
           <form className="commercial-form" onSubmit={(event) => void continueToCheckout(event)}>
             <label>Contact name<input value={contactName} maxLength={120} onChange={(event) => setContactName(event.target.value)} /></label>
             <label>Email<input type="email" required maxLength={254} value={email} onChange={(event) => setEmail(event.target.value)} /></label>
-            <label className="commercial-check"><input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} /><span>I acknowledge the staged commercial Terms and Privacy information.</span></label>
-            <p className="field-hint">Tax treatment, commercial Terms and Privacy wording remain subject to production approval.</p>
+            <label className="commercial-check"><input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} /><span>{commercialProductionEnabled() ? 'I accept the PatrolSafe Terms and acknowledge the Privacy Notice.' : 'I acknowledge the staged commercial Terms and Privacy information.'}</span></label>
+            <p className="field-hint">{commercialProductionEnabled() ? 'UK business customers only. £299 total, including VAT. One-off payment; no automatic renewal.' : 'Tax treatment, commercial Terms and Privacy wording remain subject to production approval.'}</p>
             <button className="primary-button" disabled={!accepted || busy}>{busy ? 'Opening secure checkout…' : 'Continue to secure checkout'}</button>
           </form>
         </> : null}

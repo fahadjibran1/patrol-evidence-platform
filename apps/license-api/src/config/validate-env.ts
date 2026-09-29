@@ -9,6 +9,10 @@ import {
   MinLength,
   validateSync,
 } from 'class-validator';
+import {
+  configuredCommercialMode,
+  effectiveCommercialMode,
+} from '../commercial-foundation/commercial-mode';
 
 class EnvVars {
   @IsOptional()
@@ -252,6 +256,136 @@ class EnvVars {
   @IsOptional()
   @IsString()
   PATROLSAFE_COMMERCIAL_STAGING?: string;
+
+  @IsOptional() @IsString() COMMERCIAL_MODE?: string;
+  @IsOptional() @IsString() COMMERCIAL_SERVICE_ORIGIN?: string;
+  @IsOptional() @IsString() COMMERCIAL_DATABASE_ENVIRONMENT?: string;
+  @IsOptional() @IsString() COMMERCIAL_UK_ONLY_ENABLED?: string;
+  @IsOptional() @IsString() COMMERCIAL_VAT_CONFIGURATION_APPROVED?: string;
+  @IsOptional() @IsString() COMMERCIAL_STRIPE_INVOICE_CREATION_ENABLED?: string;
+  @IsOptional() @IsString() COMMERCIAL_STRIPE_TAX_RATE_ID?: string;
+  @IsOptional() @IsString() COMMERCIAL_EMBEDDED_PORTALS?: string;
+  @IsOptional() @IsString() COMMERCIAL_SIGNING_PROVIDER?: string;
+  @IsOptional() @IsString() COMMERCIAL_PRODUCTION_SIGNING_KEY_ID?: string;
+  @IsOptional() @IsString() COMMERCIAL_DELIVERY_PROVIDER?: string;
+  @IsOptional() @IsString() COMMERCIAL_DELIVERY_TOKEN_SECRET?: string;
+  @IsOptional() @IsString() COMMERCIAL_LICENCE_DOWNLOAD_BASE_URL?: string;
+  @IsOptional() @IsString() COMMERCIAL_TEST_ISSUER_ENABLED?: string;
+  @IsOptional() @IsString() COMMERCIAL_TEST_SIGNING_KEY_ID?: string;
+  @IsOptional() @IsString() COMMERCIAL_TEST_SIGNING_PRIVATE_KEY_FILE?: string;
+  @IsOptional() @IsString() COMMERCIAL_RESEND_ENABLED?: string;
+  @IsOptional() @IsString() COMMERCIAL_RESEND_API_KEY?: string;
+  @IsOptional() @IsString() COMMERCIAL_RESEND_FROM?: string;
+  @IsOptional() @IsString() COMMERCIAL_RESEND_WEBHOOK_SECRET?: string;
+}
+
+
+function validateProductionIsolation(config: EnvVars, configuredMode: string): void {
+  if (isTruthy(config.PATROLSAFE_COMMERCIAL_STAGING)
+    || isTruthy(config.COMMERCIAL_LEAN_STAGING_PORTALS)
+    || isTruthy(config.COMMERCIAL_TEST_ISSUER_ENABLED)
+    || config.COMMERCIAL_TEST_SIGNING_KEY_ID
+    || config.COMMERCIAL_TEST_SIGNING_PRIVATE_KEY_FILE) {
+    throw new Error('[validate-env] Staging/test commercial configuration is forbidden in production.');
+  }
+  if (configuredMode === 'STAGING_TEST') {
+    throw new Error('[validate-env] STAGING_TEST commercial mode is forbidden in production.');
+  }
+  if (/^(?:sk|rk)_test_/.test(config.COMMERCIAL_STRIPE_SECRET_KEY ?? '')) {
+    throw new Error('[validate-env] Stripe test credentials are forbidden in production.');
+  }
+  const urls = [config.COMMERCIAL_SERVICE_ORIGIN, config.LICENSE_PORTAL_ORIGIN, config.CUSTOMER_PORTAL_ORIGIN,
+    config.COMMERCIAL_CHECKOUT_SUCCESS_URL, config.COMMERCIAL_CHECKOUT_CANCEL_URL,
+    config.COMMERCIAL_LICENCE_DOWNLOAD_BASE_URL].filter((value): value is string => Boolean(value));
+  if (urls.some((value) => /(?:staging|\.onrender\.com)/i.test(value))) {
+    throw new Error('[validate-env] Staging or Render-generated commercial URLs are forbidden in production.');
+  }
+}
+
+function validateProductionCommercialContract(config: EnvVars): void {
+  if (config.NODE_ENV !== 'production') throw new Error('[validate-env] PRODUCTION_LIVE requires NODE_ENV=production.');
+  if (config.COMMERCIAL_DATABASE_ENVIRONMENT !== 'production') {
+    throw new Error('[validate-env] Production database must be explicitly classified as production.');
+  }
+  assertProductionDatabaseUrl(config.LICENSE_DATABASE_URL);
+  const origin = assertProductionOrigin(config.COMMERCIAL_SERVICE_ORIGIN, 'COMMERCIAL_SERVICE_ORIGIN');
+  for (const [name, value] of [['LICENSE_PORTAL_ORIGIN', config.LICENSE_PORTAL_ORIGIN],
+    ['CUSTOMER_PORTAL_ORIGIN', config.CUSTOMER_PORTAL_ORIGIN]] as const) {
+    if (assertProductionOrigin(value, name) !== origin) throw new Error(`[validate-env] ${name} must equal COMMERCIAL_SERVICE_ORIGIN.`);
+  }
+  assertOrderRedirect(config.COMMERCIAL_CHECKOUT_SUCCESS_URL, origin, 'COMMERCIAL_CHECKOUT_SUCCESS_URL');
+  assertOrderRedirect(config.COMMERCIAL_CHECKOUT_CANCEL_URL, origin, 'COMMERCIAL_CHECKOUT_CANCEL_URL');
+  assertUrlAtOrigin(config.COMMERCIAL_LICENCE_DOWNLOAD_BASE_URL, origin, 'COMMERCIAL_LICENCE_DOWNLOAD_BASE_URL');
+  if (!isTruthy(config.COMMERCIAL_UK_ONLY_ENABLED)) throw new Error('[validate-env] Production launch must enforce UK-only sales.');
+  if (!isTruthy(config.COMMERCIAL_VAT_CONFIGURATION_APPROVED)
+    || !isTruthy(config.COMMERCIAL_STRIPE_INVOICE_CREATION_ENABLED)
+    || !config.COMMERCIAL_STRIPE_TAX_RATE_ID?.startsWith('txr_')) {
+    throw new Error('[validate-env] Production VAT, TaxRate, and invoice configuration must be approved.');
+  }
+  if (config.COMMERCIAL_ARTIFACT_STORE !== 'database') {
+    throw new Error('[validate-env] Production licence artifacts require the encrypted database store.');
+  }
+  if (!config.COMMERCIAL_STRIPE_API_VERSION) {
+    throw new Error('[validate-env] Production Stripe API version must be explicitly pinned.');
+  }
+  if (!isTruthy(config.COMMERCIAL_OUTBOX_WORKER_ENABLED)) {
+    throw new Error('[validate-env] Production durable commercial outbox processing must be enabled.');
+  }
+  if (config.COMMERCIAL_DELIVERY_PROVIDER !== 'resend'
+    || !isTruthy(config.COMMERCIAL_RESEND_ENABLED)
+    || !config.COMMERCIAL_RESEND_API_KEY
+    || !config.COMMERCIAL_RESEND_FROM
+    || !config.COMMERCIAL_RESEND_WEBHOOK_SECRET?.startsWith('whsec_')
+    || (config.COMMERCIAL_DELIVERY_TOKEN_SECRET?.length ?? 0) < 32) {
+    throw new Error('[validate-env] Production delivery provider configuration is incomplete.');
+  }
+  if (!config.COMMERCIAL_TERMS_VERSION || /^pending/i.test(config.COMMERCIAL_TERMS_VERSION)
+    || !config.COMMERCIAL_PRIVACY_VERSION || /^pending/i.test(config.COMMERCIAL_PRIVACY_VERSION)) {
+    throw new Error('[validate-env] Approved production Terms and Privacy versions are required.');
+  }
+  if (config.COMMERCIAL_SIGNING_PROVIDER !== 'external-ed25519'
+    || !config.COMMERCIAL_PRODUCTION_SIGNING_KEY_ID
+    || /^test-/i.test(config.COMMERCIAL_PRODUCTION_SIGNING_KEY_ID)) {
+    throw new Error('[validate-env] Production signing configuration is missing or test-only.');
+  }
+  throw new Error('[validate-env] Production commercial signing provider is not implemented; live payments remain blocked.');
+}
+
+function assertProductionDatabaseUrl(value: string): void {
+  let parsed: URL;
+  try { parsed = new URL(value); } catch { throw new Error('[validate-env] Production database URL is malformed.'); }
+  if (!['postgres:', 'postgresql:'].includes(parsed.protocol)
+    || /(?:staging|sandbox|test|localhost|127\.0\.0\.1)/i.test(`${parsed.hostname}${parsed.pathname}`)) {
+    throw new Error('[validate-env] Production database URL is not an isolated production PostgreSQL target.');
+  }
+}
+
+function assertProductionOrigin(value: string | undefined, name: string): string {
+  let parsed: URL;
+  try { parsed = new URL(value ?? ''); } catch { throw new Error(`[validate-env] ${name} must be a valid HTTPS origin.`); }
+  const host = parsed.hostname.toLowerCase();
+  if (parsed.protocol !== 'https:' || parsed.port || parsed.username || parsed.password || parsed.pathname !== '/'
+    || parsed.search || parsed.hash || (host !== 'sfour.co.uk' && !host.endsWith('.sfour.co.uk'))
+    || /staging/i.test(host) || host.endsWith('.onrender.com')) {
+    throw new Error(`[validate-env] ${name} must be an approved production sfour.co.uk HTTPS origin.`);
+  }
+  return parsed.origin;
+}
+
+function assertOrderRedirect(value: string | undefined, origin: string, name: string): void {
+  if ((value?.match(/\{ORDER_REFERENCE\}/g)?.length ?? 0) !== 1) {
+    throw new Error(`[validate-env] ${name} must contain exactly one server-controlled order placeholder.`);
+  }
+  assertUrlAtOrigin(value, origin, name);
+}
+
+function assertUrlAtOrigin(value: string | undefined, origin: string, name: string): void {
+  let parsed: URL;
+  try { parsed = new URL((value ?? '').replace('{ORDER_REFERENCE}', 'ord_test')); }
+  catch { throw new Error(`[validate-env] ${name} must be a valid HTTPS URL.`); }
+  if (parsed.origin !== origin || parsed.protocol !== 'https:' || parsed.username || parsed.password) {
+    throw new Error(`[validate-env] ${name} must use the exact production origin.`);
+  }
 }
 
 function isTruthy(value: string | undefined): boolean {
@@ -288,30 +422,37 @@ export function validateEnv(config: Record<string, unknown>): EnvVars {
     }
   }
 
-  const commercialStripeEnabled = isTruthy(validated.COMMERCIAL_STRIPE_ENABLED);
-  if (commercialStripeEnabled) {
-    if (!/^(?:sk|rk)_test_/.test(validated.COMMERCIAL_STRIPE_SECRET_KEY ?? '')) {
-      throw new Error('[validate-env] Commercial payments require an explicit Stripe TEST secret or restricted key.');
+  const modeSource = {
+    COMMERCIAL_MODE: validated.COMMERCIAL_MODE,
+    COMMERCIAL_STRIPE_ENABLED: validated.COMMERCIAL_STRIPE_ENABLED,
+    NODE_ENV: validated.NODE_ENV,
+    PATROLSAFE_COMMERCIAL_STAGING: validated.PATROLSAFE_COMMERCIAL_STAGING,
+  };
+  const configuredMode = configuredCommercialMode(modeSource);
+  const commercialMode = effectiveCommercialMode(modeSource);
+  if (commercialMode !== 'DISABLED') {
+    const keyPattern = commercialMode === 'STAGING_TEST' ? /^(?:sk|rk)_test_/ : /^rk_live_/;
+    if (!keyPattern.test(validated.COMMERCIAL_STRIPE_SECRET_KEY ?? '')) {
+      throw new Error('[validate-env] Commercial Stripe credential does not match the explicit commercial mode.');
     }
     if (!validated.COMMERCIAL_STRIPE_WEBHOOK_SECRET?.startsWith('whsec_')) {
-      throw new Error('[validate-env] Commercial payments require a Stripe TEST webhook secret.');
+      throw new Error('[validate-env] Commercial payments require a Stripe webhook secret.');
     }
     if (!validated.COMMERCIAL_STRIPE_PRODUCT_ID?.startsWith('prod_')) {
-      throw new Error('[validate-env] Commercial payments require a configured Stripe sandbox Product ID.');
+      throw new Error('[validate-env] Commercial payments require a configured Stripe Product ID.');
     }
     if (!validated.COMMERCIAL_STRIPE_PRICE_ID?.startsWith('price_')) {
-      throw new Error('[validate-env] Commercial payments require a configured Stripe sandbox Price ID.');
+      throw new Error('[validate-env] Commercial payments require a configured Stripe Price ID.');
     }
-    if (!validated.COMMERCIAL_STRIPE_PRICE_LOOKUP_KEY) {
-      throw new Error('[validate-env] Commercial payments require a configured Stripe Price lookup key.');
+    if (validated.COMMERCIAL_STRIPE_PRICE_LOOKUP_KEY !== 'patrolsafe_annual_gbp_v1') {
+      throw new Error('[validate-env] Commercial Stripe Price lookup key is invalid.');
     }
     if (validated.COMMERCIAL_STRIPE_PRICE_TAX_BEHAVIOR !== 'inclusive') {
       throw new Error('[validate-env] Commercial Stripe Price tax behaviour must be explicitly inclusive.');
     }
   }
-  if (/^(?:sk|rk)_live_/.test(validated.COMMERCIAL_STRIPE_SECRET_KEY ?? '')) {
-    throw new Error('[validate-env] Live Stripe credentials are not authorized for commercial Phase 2.');
-  }
+  if (validated.NODE_ENV === 'production') validateProductionIsolation(validated, configuredMode);
+  if (commercialMode === 'PRODUCTION_LIVE') validateProductionCommercialContract(validated);
   if (validated.COMMERCIAL_ARTIFACT_STORE
     && !['database', 'private-test-filesystem'].includes(validated.COMMERCIAL_ARTIFACT_STORE)) {
     throw new Error('[validate-env] COMMERCIAL_ARTIFACT_STORE must be database or private-test-filesystem.');

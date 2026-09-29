@@ -41,10 +41,18 @@ export interface CommercialCheckoutResponse {
   duplicate: boolean;
 }
 
-export function commercialStagingEnabled(): boolean {
+export function commercialEnabled(): boolean {
   return import.meta.env.MODE === 'test'
-    || (import.meta.env.VITE_COMMERCIAL_STAGING_ENABLED as string | undefined) === 'true';
+    || (import.meta.env.VITE_COMMERCIAL_STAGING_ENABLED as string | undefined) === 'true'
+    || (import.meta.env.VITE_COMMERCIAL_ENABLED as string | undefined) === 'true';
 }
+
+export function commercialProductionEnabled(): boolean {
+  return (import.meta.env.VITE_COMMERCIAL_ENVIRONMENT as string | undefined) === 'production';
+}
+
+/** Compatibility alias retained for existing staging tests and imports. */
+export const commercialStagingEnabled = commercialEnabled;
 
 export function validateOpaqueReference(value: string | undefined): string {
   if (!value || !PURCHASE_REFERENCE_PATTERN.test(value)) throw new Error('This purchase link is invalid.');

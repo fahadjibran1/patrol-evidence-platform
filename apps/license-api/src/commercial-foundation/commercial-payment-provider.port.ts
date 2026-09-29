@@ -23,8 +23,11 @@ export interface CommercialCheckoutSnapshot {
   paymentIntentId: string | null;
   providerCustomerId: string | null;
   amountTotal: number | null;
+  taxMinor?: number | null;
   currency: string | null;
   publicOrderId: string | null;
+  billingCountry?: string | null;
+  providerInvoiceId?: string | null;
 }
 
 export interface CommercialPaymentSnapshot {
@@ -54,11 +57,13 @@ export interface VerifiedCommercialProviderEvent {
   paymentStatus: string | null;
   amountMinor: number | null;
   currency: string | null;
+  billingCountry?: string | null;
+  providerInvoiceId?: string | null;
 }
 
 export interface CommercialPaymentProvider {
   readonly name: 'STRIPE';
-  getMode(): 'TEST' | 'DISABLED';
+  getMode(): 'TEST' | 'LIVE' | 'DISABLED';
   createCheckout(command: Readonly<CreateCommercialCheckoutCommand>): Promise<CommercialCheckoutSnapshot>;
   retrieveCheckout(providerSessionId: string): Promise<CommercialCheckoutSnapshot>;
   retrievePayment(paymentIntentId: string): Promise<CommercialPaymentSnapshot>;
