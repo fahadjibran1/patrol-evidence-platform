@@ -66,3 +66,7 @@ export function canViewCommercialApprovals(role: AdminRole | undefined): boolean
 export function canApproveCommercialIssuance(role: AdminRole | undefined): boolean {
   return role === 'SUPER_ADMIN';
 }
+
+export function canResendCommercialLicence(role: AdminRole | undefined): boolean {
+  return role === 'SUPER_ADMIN';
+}

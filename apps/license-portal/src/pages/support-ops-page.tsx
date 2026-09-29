@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiRequest } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { canResendCommercialLicence } from '../lib/roles';
 import {
   Card,
   ErrorBanner,
@@ -19,6 +20,8 @@ interface FailedNotification {
   createdAt: string;
 }
 
+const PUBLIC_COMMERCIAL_ORDER_PATTERN = /^ord_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export function SupportOpsPage(): JSX.Element {
   const { accessToken, admin } = useAuth();
   const [failed, setFailed] = useState<FailedNotification[]>([]);
@@ -32,6 +35,10 @@ export function SupportOpsPage(): JSX.Element {
   const [subscriptionId, setSubscriptionId] = useState('');
   const [organisationId, setOrganisationId] = useState('');
   const [webhookEventId, setWebhookEventId] = useState('');
+  const [commercialOrderId, setCommercialOrderId] = useState('');
+  const [commercialResendReason, setCommercialResendReason] = useState('');
+  const [commercialPassword, setCommercialPassword] = useState('');
+  const commercialResendIdempotencyKey = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     if (!accessToken) return;
@@ -68,6 +75,38 @@ export function SupportOpsPage(): JSX.Element {
     }
   }
 
+  function resetCommercialResendIdentity(): void {
+    commercialResendIdempotencyKey.current = null;
+  }
+
+  async function resendCommercialLicence(): Promise<void> {
+    if (!accessToken || !canResendCommercialLicence(admin?.role)) return;
+    const idempotencyKey = commercialResendIdempotencyKey.current ?? globalThis.crypto.randomUUID();
+    commercialResendIdempotencyKey.current = idempotencyKey;
+    await run(async () => {
+      const stepUp = await apiRequest<{ stepUpToken: string }>(
+        '/admin/commercial/step-up',
+        { method: 'POST', body: JSON.stringify({ password: commercialPassword }) },
+        accessToken,
+      );
+      const result = await apiRequest(
+        `/admin/commercial/orders/${encodeURIComponent(commercialOrderId)}/resend-licence`,
+        {
+          method: 'POST',
+          headers: {
+            'X-Commercial-Step-Up': stepUp.stepUpToken,
+            'Idempotency-Key': idempotencyKey,
+          },
+          body: JSON.stringify({ reason: commercialResendReason.trim() }),
+        },
+        accessToken,
+      );
+      commercialResendIdempotencyKey.current = null;
+      setCommercialPassword('');
+      return result;
+    }, 'Fresh secure download link queued for the existing licence.');
+  }
+
   if (isLoading) return <LoadingState label="Loading support tools…" />;
 
   return (
@@ -79,7 +118,61 @@ export function SupportOpsPage(): JSX.Element {
       {error ? <ErrorBanner message={error} /> : null}
       {message ? <InfoBanner title="Support" message={message} /> : null}
 
-      <div className="grid two">
+      <div className='grid two'>
+        {canResendCommercialLicence(admin?.role) ? (
+          <Card>
+            <h3>Resend commercial licence email</h3>
+            <p className='muted'>Sends a fresh 24-hour secure download link for the existing immutable signed licence. This does not reissue, regenerate, re-sign, change its workstation binding or dates, or create another order or payment.</p>
+            <label>
+              Commercial order
+              <input
+                value={commercialOrderId}
+                onChange={(event) => {
+                  setCommercialOrderId(event.target.value.trim());
+                  resetCommercialResendIdentity();
+                }}
+                disabled={busy}
+                placeholder='ord_00000000-0000-4000-8000-000000000000'
+                autoComplete='off'
+              />
+            </label>
+            <label>
+              Resend reason
+              <input
+                value={commercialResendReason}
+                onChange={(event) => {
+                  setCommercialResendReason(event.target.value);
+                  resetCommercialResendIdentity();
+                }}
+                disabled={busy}
+                maxLength={500}
+                placeholder='Customer requested a fresh secure download link'
+              />
+            </label>
+            <label>
+              Password reauthentication
+              <input
+                type='password'
+                value={commercialPassword}
+                onChange={(event) => setCommercialPassword(event.target.value)}
+                disabled={busy}
+                autoComplete='current-password'
+              />
+            </label>
+            <button
+              type='button'
+              className='primary-button'
+              disabled={busy
+                || !PUBLIC_COMMERCIAL_ORDER_PATTERN.test(commercialOrderId)
+                || commercialResendReason.trim().length < 3
+                || commercialPassword.length < 12}
+              onClick={() => void resendCommercialLicence()}
+            >
+              Resend licence email
+            </button>
+          </Card>
+        ) : null}
+
         <Card>
           <h3>Unlock account</h3>
           <label>
