@@ -76,8 +76,16 @@ class EnvVars {
   @IsString()
   LICENSE_PRIVATE_KEY_FILE?: string;
 
+  @IsOptional()
   @IsString()
-  LICENSE_SIGNING_KEY_ID!: string;
+  @Matches(/^(?:true|false)$/i, {
+    message: 'LICENSE_LEGACY_ISSUANCE_ENABLED must be true or false',
+  })
+  LICENSE_LEGACY_ISSUANCE_ENABLED?: string;
+
+  @IsOptional()
+  @IsString()
+  LICENSE_SIGNING_KEY_ID?: string;
 
   @IsOptional()
   @IsString()
@@ -402,6 +410,13 @@ export function validateEnv(config: Record<string, unknown>): EnvVars {
 
   if (errors.length) {
     throw new Error(errors.toString());
+  }
+
+  const legacyIssuanceEnabled = validated.LICENSE_LEGACY_ISSUANCE_ENABLED?.toLowerCase() !== 'false';
+  if (legacyIssuanceEnabled && !validated.LICENSE_SIGNING_KEY_ID?.trim()) {
+    throw new Error(
+      '[validate-env] Legacy licence issuance is enabled but LICENSE_SIGNING_KEY_ID is missing.',
+    );
   }
 
   const stripeEnabled = isTruthy(validated.STRIPE_ENABLED);

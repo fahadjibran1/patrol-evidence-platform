@@ -24,11 +24,19 @@ export class SigningService implements OnModuleInit {
   private privateKeyPem: string | null = null;
   private publicKey: ReturnType<typeof derivePublicKeyFromPrivate> | null = null;
   private signingKeyId: string | null = null;
+  private legacyIssuanceEnabled = true;
 
   constructor(private readonly configService: ConfigService) {}
 
   onModuleInit(): void {
     const nodeEnv = this.configService.get<string>('NODE_ENV') ?? 'development';
+    this.legacyIssuanceEnabled =
+      this.configService.get<string>('LICENSE_LEGACY_ISSUANCE_ENABLED')?.trim().toLowerCase()
+      !== 'false';
+    if (!this.legacyIssuanceEnabled) {
+      this.logger.log('LEGACY_LICENCE_ISSUANCE_DISABLED');
+      return;
+    }
     this.signingKeyId = this.configService.getOrThrow<string>('LICENSE_SIGNING_KEY_ID');
 
     try {
@@ -75,6 +83,13 @@ export class SigningService implements OnModuleInit {
   }
 
   signPayload(payload: LicensePayload): SignedLicenceResult {
+    if (!this.legacyIssuanceEnabled) {
+      throw new ApiException(
+        ERROR_CODES.LICENCE_SIGNING_KEY_MISSING,
+        'Legacy licence issuance is disabled',
+        503,
+      );
+    }
     if (!this.privateKeyPem || !this.publicKey || !this.signingKeyId) {
       throw new ApiException(
         ERROR_CODES.LICENCE_SIGNING_KEY_MISSING,

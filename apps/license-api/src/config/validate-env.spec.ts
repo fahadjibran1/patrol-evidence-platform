@@ -115,12 +115,36 @@ describe('commercial staging environment validation', () => {
     })).toThrow('Stripe test credentials are forbidden in production');
   });
 
+  it('allows commercial production bootstrap with legacy issuance explicitly disabled', () => {
+    expect(validateEnv({
+      ...base,
+      NODE_ENV: 'production',
+      PATROLSAFE_COMMERCIAL_STAGING: undefined,
+      COMMERCIAL_MODE: 'DISABLED',
+      COMMERCIAL_STRIPE_ENABLED: 'false',
+      LICENSE_LEGACY_ISSUANCE_ENABLED: 'false',
+      LICENSE_SIGNING_KEY_ID: undefined,
+    })).toEqual(expect.objectContaining({
+      LICENSE_LEGACY_ISSUANCE_ENABLED: 'false',
+      COMMERCIAL_MODE: 'DISABLED',
+    }));
+  });
+
+  it('requires the legacy signing key ID whenever legacy issuance is enabled', () => {
+    expect(() => validateEnv({
+      ...base,
+      LICENSE_LEGACY_ISSUANCE_ENABLED: 'true',
+      LICENSE_SIGNING_KEY_ID: undefined,
+    })).toThrow('Legacy licence issuance is enabled but LICENSE_SIGNING_KEY_ID is missing');
+  });
+
   function productionLive(overrides: Record<string, unknown> = {}) {
     return {
       ...base,
       NODE_ENV: 'production',
       PATROLSAFE_COMMERCIAL_STAGING: undefined,
-      LICENSE_SIGNING_KEY_ID: 'vesoft-offline-v1',
+      LICENSE_LEGACY_ISSUANCE_ENABLED: 'false',
+      LICENSE_SIGNING_KEY_ID: undefined,
       LICENSE_DATABASE_URL: 'postgresql://db.production.internal/patrolsafe',
       COMMERCIAL_MODE: 'PRODUCTION_LIVE',
       COMMERCIAL_STRIPE_ENABLED: 'true',

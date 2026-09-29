@@ -40,9 +40,10 @@ The portal dev server (port 5174) proxies `/admin` to this API when using `npm r
 | `LICENCE_STORAGE_ENCRYPTION_KEY` | 64 hex chars (32-byte AES-256-GCM key) |
 | `LICENSE_PRIVATE_KEY` | Inline Ed25519 private key PEM |
 | `LICENSE_PRIVATE_KEY_FILE` | Path to private key PEM file |
+| `LICENSE_LEGACY_ISSUANCE_ENABLED` | Explicit legacy/manual server-side issuance gate; defaults to `true` |
 | `LICENSE_SIGNING_KEY_ID` | Key identifier stored on issued licences |
 
-Production startup fails if the signing key is missing or invalid. Tests may inject a key via `SigningService.useTestKey()`.
+When legacy issuance is enabled, production startup fails if its signing key is missing or invalid. A commercial-only service may explicitly set `LICENSE_LEGACY_ISSUANCE_ENABLED=false`; in that mode the legacy private key is neither required nor loaded and legacy signing calls fail closed. Tests may inject a key via `SigningService.useTestKey()`.
 
 ## Create the first SUPER_ADMIN
 
