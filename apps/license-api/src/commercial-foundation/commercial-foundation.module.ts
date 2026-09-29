@@ -33,6 +33,9 @@ import { PrismaService } from '@/prisma/prisma.service';
 import { EncryptionService } from '@/crypto/encryption.service';
 import { DatabaseCommercialArtifactStore } from './database-commercial-artifact.store';
 import { CommercialStagingSignerPreflightService } from './commercial-staging-signer-preflight.service';
+import { ProductionFileEd25519SigningProvider } from './production-file-ed25519-signing.provider';
+import { CommercialProductionSignerPreflightService } from './commercial-production-signer-preflight.service';
+import { effectiveCommercialMode } from './commercial-mode';
 
 @Module({
   imports: [AuthModule],
@@ -60,6 +63,12 @@ import { CommercialStagingSignerPreflightService } from './commercial-staging-si
     },
     CommercialStagingSignerPreflightService,
     {
+      provide: ProductionFileEd25519SigningProvider,
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => new ProductionFileEd25519SigningProvider(config),
+    },
+    CommercialProductionSignerPreflightService,
+    {
       provide: COMMERCIAL_ARTIFACT_STORE,
       inject: [ConfigService, PrismaService, EncryptionService],
       useFactory: (config: ConfigService, prisma: PrismaService, encryption: EncryptionService) =>
@@ -74,14 +83,34 @@ import { CommercialStagingSignerPreflightService } from './commercial-staging-si
     },
     {
       provide: COMMERCIAL_LICENCE_ISSUER,
-      inject: [CommercialStagingSignerPreflightService, TestFileEd25519SigningProvider, COMMERCIAL_ARTIFACT_STORE],
+      inject: [
+        ConfigService,
+        CommercialStagingSignerPreflightService,
+        TestFileEd25519SigningProvider,
+        CommercialProductionSignerPreflightService,
+        ProductionFileEd25519SigningProvider,
+        COMMERCIAL_ARTIFACT_STORE,
+      ],
       useFactory: async (
-        preflight: CommercialStagingSignerPreflightService,
-        signer: TestFileEd25519SigningProvider,
+        config: ConfigService,
+        stagingPreflight: CommercialStagingSignerPreflightService,
+        stagingSigner: TestFileEd25519SigningProvider,
+        productionPreflight: CommercialProductionSignerPreflightService,
+        productionSigner: ProductionFileEd25519SigningProvider,
         artifacts: CommercialArtifactStore,
       ) => {
-        await preflight.verify();
-        return new CurrentFormatCommercialLicenceIssuer(signer, artifacts);
+        const mode = effectiveCommercialMode({
+          COMMERCIAL_MODE: config.get<string>('COMMERCIAL_MODE'),
+          COMMERCIAL_STRIPE_ENABLED: config.get<string>('COMMERCIAL_STRIPE_ENABLED'),
+          NODE_ENV: config.get<string>('NODE_ENV'),
+          PATROLSAFE_COMMERCIAL_STAGING: config.get<string>('PATROLSAFE_COMMERCIAL_STAGING'),
+        });
+        if (mode === 'PRODUCTION_LIVE') {
+          await productionPreflight.verify();
+          return new CurrentFormatCommercialLicenceIssuer(productionSigner, artifacts);
+        }
+        await stagingPreflight.verify();
+        return new CurrentFormatCommercialLicenceIssuer(stagingSigner, artifacts);
       },
     },
     {

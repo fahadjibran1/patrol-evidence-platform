@@ -58,10 +58,12 @@ describe('PatrolSafe v1.0.3 commercial desktop contract', () => {
     expect(durability).toContain("portability: 'SAME_MACHINE_ONLY'");
   });
 
-  it('keeps the production online trust entry pending and rejects unknown signatures', () => {
+  it('uses an explicit production online trust entry and rejects unknown signatures', () => {
     const keys = source('src/licensing/license-public-key.util.ts');
     const crypto = source('packages/license-core/src/commercial-crypto.ts');
     expect(keys).toContain('LICENSE_ONLINE_PUBLIC_KEY_FILE');
+    expect(keys).toContain("ONLINE_PRODUCTION_SIGNING_KEY_ID = 'vesoft-online-v1'");
+    expect(keys).toContain('keyId !== expectedKeyId');
     expect(keys).not.toContain('test-phase3');
     expect(crypto).toContain("policy: 'legacy-v1' | 'online-annual-v1'");
     expect(crypto).toContain("reason: 'Licence signature is not trusted.'");

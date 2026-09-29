@@ -56,9 +56,13 @@ services:
         sync: false
       - key: LICENSE_SIGNING_KEY_ID
         sync: false
+      - key: COMMERCIAL_PRODUCTION_SIGNING_PROVIDER
+        value: secret-file-ed25519-v1
       - key: COMMERCIAL_PRODUCTION_SIGNING_KEY_ID
-        sync: false
-      - key: COMMERCIAL_SIGNING_PROVIDER
+        value: vesoft-online-v1
+      - key: COMMERCIAL_PRODUCTION_SIGNING_PRIVATE_KEY_FILE
+        value: /etc/secrets/patrolsafe-production-ed25519-private.pem
+      - key: COMMERCIAL_PRODUCTION_SIGNING_PUBLIC_KEY_SHA256
         sync: false
       - key: COMMERCIAL_STRIPE_SECRET_KEY
         sync: false

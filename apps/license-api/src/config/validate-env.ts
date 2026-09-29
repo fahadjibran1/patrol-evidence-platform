@@ -265,8 +265,10 @@ class EnvVars {
   @IsOptional() @IsString() COMMERCIAL_STRIPE_INVOICE_CREATION_ENABLED?: string;
   @IsOptional() @IsString() COMMERCIAL_STRIPE_TAX_RATE_ID?: string;
   @IsOptional() @IsString() COMMERCIAL_EMBEDDED_PORTALS?: string;
-  @IsOptional() @IsString() COMMERCIAL_SIGNING_PROVIDER?: string;
+  @IsOptional() @IsString() COMMERCIAL_PRODUCTION_SIGNING_PROVIDER?: string;
   @IsOptional() @IsString() COMMERCIAL_PRODUCTION_SIGNING_KEY_ID?: string;
+  @IsOptional() @IsString() COMMERCIAL_PRODUCTION_SIGNING_PRIVATE_KEY_FILE?: string;
+  @IsOptional() @IsString() COMMERCIAL_PRODUCTION_SIGNING_PUBLIC_KEY_SHA256?: string;
   @IsOptional() @IsString() COMMERCIAL_DELIVERY_PROVIDER?: string;
   @IsOptional() @IsString() COMMERCIAL_DELIVERY_TOKEN_SECRET?: string;
   @IsOptional() @IsString() COMMERCIAL_LICENCE_DOWNLOAD_BASE_URL?: string;
@@ -343,12 +345,14 @@ function validateProductionCommercialContract(config: EnvVars): void {
     || !config.COMMERCIAL_PRIVACY_VERSION || /^pending/i.test(config.COMMERCIAL_PRIVACY_VERSION)) {
     throw new Error('[validate-env] Approved production Terms and Privacy versions are required.');
   }
-  if (config.COMMERCIAL_SIGNING_PROVIDER !== 'external-ed25519'
-    || !config.COMMERCIAL_PRODUCTION_SIGNING_KEY_ID
-    || /^test-/i.test(config.COMMERCIAL_PRODUCTION_SIGNING_KEY_ID)) {
-    throw new Error('[validate-env] Production signing configuration is missing or test-only.');
+  if (config.COMMERCIAL_PRODUCTION_SIGNING_PROVIDER !== 'secret-file-ed25519-v1'
+    || config.COMMERCIAL_PRODUCTION_SIGNING_KEY_ID !== 'vesoft-online-v1'
+    || config.COMMERCIAL_PRODUCTION_SIGNING_PRIVATE_KEY_FILE !== '/etc/secrets/patrolsafe-production-ed25519-private.pem'
+    || !/^[0-9a-fA-F]{64}$/.test(config.COMMERCIAL_PRODUCTION_SIGNING_PUBLIC_KEY_SHA256 ?? '')
+    || /^0{64}$/.test(config.COMMERCIAL_PRODUCTION_SIGNING_PUBLIC_KEY_SHA256 ?? '')
+    || config.COMMERCIAL_PRODUCTION_SIGNING_PUBLIC_KEY_SHA256?.toUpperCase() === '688340412959FBC23E8C3F0CB17BC6CFC2EE121254ACE2256D66216B2A512582') {
+    throw new Error('[validate-env] Production Ed25519 signing configuration is missing, invalid, or staging-contaminated.');
   }
-  throw new Error('[validate-env] Production commercial signing provider is not implemented; live payments remain blocked.');
 }
 
 function assertProductionDatabaseUrl(value: string): void {

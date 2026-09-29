@@ -115,11 +115,12 @@ describe('commercial staging environment validation', () => {
     })).toThrow('Stripe test credentials are forbidden in production');
   });
 
-  it('keeps production live fail-closed until the production signer exists', () => {
-    expect(() => validateEnv({
+  function productionLive(overrides: Record<string, unknown> = {}) {
+    return {
       ...base,
       NODE_ENV: 'production',
       PATROLSAFE_COMMERCIAL_STAGING: undefined,
+      LICENSE_SIGNING_KEY_ID: 'vesoft-offline-v1',
       LICENSE_DATABASE_URL: 'postgresql://db.production.internal/patrolsafe',
       COMMERCIAL_MODE: 'PRODUCTION_LIVE',
       COMMERCIAL_STRIPE_ENABLED: 'true',
@@ -151,9 +152,28 @@ describe('commercial staging environment validation', () => {
       COMMERCIAL_DELIVERY_TOKEN_SECRET: 'd'.repeat(32),
       COMMERCIAL_TERMS_VERSION: '2026-09-29',
       COMMERCIAL_PRIVACY_VERSION: '2026-09-29',
-      COMMERCIAL_SIGNING_PROVIDER: 'external-ed25519',
-      COMMERCIAL_PRODUCTION_SIGNING_KEY_ID: 'patrolsafe-prod-2026-01',
-    })).toThrow('Production commercial signing provider is not implemented');
+      COMMERCIAL_PRODUCTION_SIGNING_PROVIDER: 'secret-file-ed25519-v1',
+      COMMERCIAL_PRODUCTION_SIGNING_KEY_ID: 'vesoft-online-v1',
+      COMMERCIAL_PRODUCTION_SIGNING_PRIVATE_KEY_FILE: '/etc/secrets/patrolsafe-production-ed25519-private.pem',
+      COMMERCIAL_PRODUCTION_SIGNING_PUBLIC_KEY_SHA256: 'B'.repeat(64),
+      ...overrides,
+    };
+  }
+
+  it('accepts only the explicit production signing contract', () => {
+    expect(validateEnv(productionLive())).toEqual(expect.objectContaining({
+      COMMERCIAL_PRODUCTION_SIGNING_KEY_ID: 'vesoft-online-v1',
+    }));
+  });
+
+  it.each([
+    ['test provider', { COMMERCIAL_PRODUCTION_SIGNING_PROVIDER: 'test-file-ed25519' }],
+    ['test key ID', { COMMERCIAL_PRODUCTION_SIGNING_KEY_ID: 'test-phase6-online-key' }],
+    ['wrong key path', { COMMERCIAL_PRODUCTION_SIGNING_PRIVATE_KEY_FILE: '/etc/secrets/patrolsafe-staging-ed25519-private.pem' }],
+    ['placeholder fingerprint', { COMMERCIAL_PRODUCTION_SIGNING_PUBLIC_KEY_SHA256: '0'.repeat(64) }],
+    ['staging fingerprint', { COMMERCIAL_PRODUCTION_SIGNING_PUBLIC_KEY_SHA256: '688340412959FBC23E8C3F0CB17BC6CFC2EE121254ACE2256D66216B2A512582' }],
+  ])('rejects production signing cross-contamination: %s', (_label, overrides) => {
+    expect(() => validateEnv(productionLive(overrides))).toThrow('Production Ed25519 signing configuration');
   });
 
 });

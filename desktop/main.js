@@ -42,6 +42,7 @@ const {
 } = require('./data-durability');
 const { validateBackedUpCommercialLicence } = require('./commercial-licence-backup');
 const { applyPackagedCommercialStagingRuntime } = require('./commercial-staging-runtime');
+const { applyPackagedCommercialProductionRuntime } = require('./commercial-production-runtime');
 
 const packageMetadata = require('../package.json');
 const {
@@ -73,6 +74,18 @@ const commercialStagingRuntime = applyPackagedCommercialStagingRuntime({
   packaged: app.isPackaged,
   resourcesPath: process.resourcesPath,
 });
+const commercialProductionRuntime = applyPackagedCommercialProductionRuntime({
+  packaged: app.isPackaged,
+  resourcesPath: process.resourcesPath,
+});
+if (commercialStagingRuntime && commercialProductionRuntime) {
+  throw new Error('Packaged commercial staging and production trust configurations cannot coexist.');
+}
+if (commercialProductionRuntime) {
+  console.log(
+    `PATROLSAFE_COMMERCIAL_PRODUCTION_RUNTIME_READY origin=${process.env.PATROLSAFE_COMMERCIAL_SERVICE_ORIGIN} keyId=${commercialProductionRuntime.keyId} publicKeySha256=${commercialProductionRuntime.publicKeyFingerprintSha256}`,
+  );
+}
 if (commercialStagingRuntime) {
   console.log(
     `PATROLSAFE_COMMERCIAL_STAGING_RUNTIME_READY origin=${process.env.PATROLSAFE_COMMERCIAL_SERVICE_ORIGIN} keyId=${commercialStagingRuntime.keyId} publicKeySha256=${commercialStagingRuntime.publicKeyFingerprintSha256}`,

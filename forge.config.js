@@ -1,11 +1,16 @@
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { createHash } = require('crypto');
 const { MakerSquirrel } = require('@electron-forge/maker-squirrel');
 const { MakerZIP } = require('@electron-forge/maker-zip');
 const { MakerDMG } = require('@electron-forge/maker-dmg');
 const packageMetadata = require('./package.json');
 const commercialStagingBuild = process.env.PATROLSAFE_COMMERCIAL_STAGING_BUILD === 'true';
+const commercialProductionBuild = process.env.PATROLSAFE_COMMERCIAL_PRODUCTION_BUILD === 'true';
+if (commercialStagingBuild && commercialProductionBuild) {
+  throw new Error('Commercial staging and production desktop build modes cannot be enabled together.');
+}
 const baseReleaseDisplayName =
   packageMetadata.displayName || packageMetadata.productName || 'PatrolSafe by S4';
 const releaseDisplayName = commercialStagingBuild
@@ -55,6 +60,44 @@ if (commercialStagingBuild) {
     onlinePublicKeyFile: commercialStagingPublicKeyFileName,
   }, null, 2)}\n`, 'utf8');
   commercialStagingExtraResources = [publicKeyPath, configPath];
+}
+
+const commercialProductionOrigin = 'https://licensing.sfour.co.uk';
+const commercialProductionKeyId = 'vesoft-online-v1';
+const commercialProductionPublicKeyFileName = 'license-online-public.pem';
+const commercialProductionConfigFileName = 'patrolsafe-commercial-production.json';
+const stagingPublicKeySha256 = '688340412959FBC23E8C3F0CB17BC6CFC2EE121254ACE2256D66216B2A512582';
+let commercialProductionExtraResources = [];
+
+if (commercialProductionBuild) {
+  const sourcePublicKeyPath = String(process.env.PATROLSAFE_PRODUCTION_ONLINE_PUBLIC_KEY_FILE || '').trim();
+  const authorisedFingerprint = String(process.env.PATROLSAFE_PRODUCTION_ONLINE_PUBLIC_KEY_SHA256 || '').trim().toUpperCase();
+  if (!sourcePublicKeyPath || !/^[0-9A-F]{64}$/.test(authorisedFingerprint) || authorisedFingerprint === stagingPublicKeySha256) {
+    throw new Error('COMMERCIAL_PRODUCTION_PUBLIC_KEY_AUTHORISATION_MISSING');
+  }
+  const publicKeyValidation = validatePublicKeyFile(sourcePublicKeyPath, 'authorised production online issuer public key');
+  const derivedFingerprint = createHash('sha256')
+    .update(publicKeyValidation.keyObject.export({ type: 'spki', format: 'der' }))
+    .digest('hex')
+    .toUpperCase();
+  if (derivedFingerprint !== authorisedFingerprint) {
+    throw new Error('COMMERCIAL_PRODUCTION_PUBLIC_KEY_FINGERPRINT_MISMATCH');
+  }
+  const configDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'patrolsafe-production-package-'));
+  const packagedPublicKeyPath = path.join(configDirectory, commercialProductionPublicKeyFileName);
+  const configPath = path.join(configDirectory, commercialProductionConfigFileName);
+  fs.copyFileSync(sourcePublicKeyPath, packagedPublicKeyPath);
+  fs.writeFileSync(configPath, `${JSON.stringify({
+    schemaVersion: 1,
+    production: true,
+    serviceOrigin: commercialProductionOrigin,
+    purchaseOrigin: commercialProductionOrigin,
+    onlineKeyId: commercialProductionKeyId,
+    onlinePublicKeyFile: commercialProductionPublicKeyFileName,
+    onlinePublicKeySha256: authorisedFingerprint,
+  }, null, 2)}\n`, 'utf8');
+  commercialProductionExtraResources = [packagedPublicKeyPath, configPath];
+  logSafePublicKeyConfirmation(sourcePublicKeyPath, publicKeyValidation.keyObject);
 }
 
 function resolveWindowsBuildVersion() {
@@ -343,6 +386,9 @@ module.exports = {
       if (commercialStagingBuild && commercialStagingExtraResources.length !== 2) {
         throw new Error('COMMERCIAL_STAGING_PACKAGE_INPUT_MISSING');
       }
+      if (commercialProductionBuild && commercialProductionExtraResources.length !== 2) {
+        throw new Error('COMMERCIAL_PRODUCTION_PACKAGE_INPUT_MISSING');
+      }
     },
     postPackage: async (_forgeConfig, packageResult) => {
       if (!packageResult || packageResult.platform !== 'win32') {
@@ -423,6 +469,26 @@ module.exports = {
             `COMMERCIAL_STAGING_PACKAGE_VALID origin=${commercialStagingOrigin} keyId=${commercialStagingKeyId}`,
           );
         }
+        if (commercialProductionBuild) {
+          const productionConfigPath = path.join(packagedResourcesPath, commercialProductionConfigFileName);
+          const productionPublicKeyPath = path.join(packagedResourcesPath, commercialProductionPublicKeyFileName);
+          if (!fs.existsSync(productionConfigPath) || !fs.existsSync(productionPublicKeyPath)) {
+            throw new Error('COMMERCIAL_PRODUCTION_TRUST_PACKAGE_VALIDATION_FAILED');
+          }
+          const productionConfig = JSON.parse(fs.readFileSync(productionConfigPath, 'utf8'));
+          const onlineValidation = validatePublicKeyFile(productionPublicKeyPath, productionPublicKeyPath);
+          const fingerprint = createHash('sha256')
+            .update(onlineValidation.keyObject.export({ type: 'spki', format: 'der' }))
+            .digest('hex')
+            .toUpperCase();
+          if (productionConfig.serviceOrigin !== commercialProductionOrigin
+            || productionConfig.purchaseOrigin !== commercialProductionOrigin
+            || productionConfig.onlineKeyId !== commercialProductionKeyId
+            || productionConfig.onlinePublicKeySha256 !== fingerprint) {
+            throw new Error('COMMERCIAL_PRODUCTION_TRUST_IDENTITY_MISMATCH');
+          }
+          console.log(`COMMERCIAL_PRODUCTION_PACKAGE_VALID origin=${commercialProductionOrigin} keyId=${commercialProductionKeyId} publicKeySha256=${fingerprint}`);
+        }
         assertNoPrivateKeysInPaths([outputPath], 'Post-package safety check');
       }
     },
@@ -445,6 +511,7 @@ module.exports = {
     extraResource: [
       ...(fs.existsSync(trackedPublicKeyPath) ? [trackedPublicKeyPath] : []),
       ...commercialStagingExtraResources,
+      ...commercialProductionExtraResources,
       // Vendored WhatsApp Web HTML pin for whatsapp-web.js LocalWebCache (survives src prune).
       ...(fs.existsSync(path.join(__dirname, 'src', 'collectors', 'wa-web-cache'))
         ? [path.join(__dirname, 'src', 'collectors', 'wa-web-cache')]

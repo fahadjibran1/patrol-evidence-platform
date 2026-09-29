@@ -24,7 +24,7 @@ export interface CommercialSignerPreflightResult {
   passed: boolean;
 }
 
-/** Test/development adapter only. Production is required to use a secret-manager-backed provider. */
+/** Test/development adapter only. Production uses its dedicated provider and preflight contract. */
 export class TestFileEd25519SigningProvider implements CommercialSigningProvider {
   readonly keyId: string;
   private privateKey: KeyObject | null = null;

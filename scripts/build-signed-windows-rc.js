@@ -47,8 +47,10 @@ function main() {
       ? 'PatrolSafe by S4 STAGING'
       : 'PatrolSafe by S4';
 
+  const stagingBuild = process.env.PATROLSAFE_COMMERCIAL_STAGING_BUILD === 'true';
   const env = {
     ...process.env,
+    PATROLSAFE_COMMERCIAL_PRODUCTION_BUILD: stagingBuild ? 'false' : 'true',
     PATH: `${azureCliDir};${process.env.PATH || ''}`,
     PATROLSAFE_WINDOWS_RELEASE: 'rc',
     PATROLSAFE_WINDOWS_SIGN_HOOK: hookPath,

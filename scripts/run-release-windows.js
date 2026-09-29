@@ -38,6 +38,9 @@ function findPackagedAppDir() {
 }
 
 function main() {
+  if (process.env.PATROLSAFE_COMMERCIAL_STAGING_BUILD !== 'true') {
+    process.env.PATROLSAFE_COMMERCIAL_PRODUCTION_BUILD = 'true';
+  }
   console.log('RELEASE:WINDOWS — cleaning previous build outputs');
   run('npm', ['run', 'desktop:clean']);
 
