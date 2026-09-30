@@ -13,8 +13,11 @@ describe('PatrolSafe v1.0.3 commercial desktop contract', () => {
   const durability = source('desktop/data-durability.js');
 
   it('makes online annual purchase primary and keeps offline activation available', () => {
-    for (const text of ['PatrolSafe Trial', 'Buy annual licence', 'Renew licence', '£299', 'total (VAT included)', '1 Windows workstation', '12-month licence', 'Manual / Offline activation', 'Create licence request (.tgreq)', 'Activate supplied licence (.tglic)']) {
+    for (const text of ['PatrolSafe Trial', 'Buy annual licence', 'Renew licence', '£299', 'total (VAT included)', 'Your 30-day trial is free. No payment card is required for the trial.', '1 Windows workstation', '12-month licence', 'One-off payment.', 'Manual / Offline activation', 'Create licence request (.tgreq)', 'Activate supplied licence (.tglic)']) {
       expect(page).toContain(text);
+    }
+    for (const url of ['https://www.sfour.co.uk/terms', 'https://www.sfour.co.uk/privacy', 'https://www.sfour.co.uk/contact']) {
+      expect(page).toContain(url);
     }
   });
 

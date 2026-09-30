@@ -148,6 +148,8 @@ const windowsSign = windowsSigningHookModule
     }
   : undefined;
 const packagerIgnore = [
+  ...(commercialProductionBuild ? [/^\/desktop\/commercial-staging-runtime\.js$/] : []),
+  ...(commercialStagingBuild ? [/^\/desktop\/commercial-production-runtime\.js$/] : []),
   /^\/out($|\/)/,
   /^\/\.git($|\/)/,
   /^\/\.github($|\/)/,

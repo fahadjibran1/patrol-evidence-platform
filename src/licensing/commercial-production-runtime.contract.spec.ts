@@ -66,4 +66,17 @@ describe('packaged commercial production runtime contract', () => {
     );
     expect(() => runtime.loadPackagedCommercialProductionRuntime(root)).toThrow(/fingerprint/);
   });
+
+  it('excludes staging trust code and identifiers from production packages', () => {
+    const projectRoot = path.resolve(__dirname, '..', '..');
+    const forge = fs.readFileSync(path.join(projectRoot, 'forge.config.js'), 'utf8');
+    const main = fs.readFileSync(path.join(projectRoot, 'desktop', 'main.js'), 'utf8');
+    const verifier = fs.readFileSync(path.join(projectRoot, 'scripts', 'verify-packaged-app.js'), 'utf8');
+
+    expect(forge).toContain("commercialProductionBuild ? [/^\\/desktop\\/commercial-staging-runtime\\.js$/]");
+    expect(main).not.toContain("require('./commercial-staging-runtime')");
+    expect(verifier).toContain('Production package contains no staging commercial runtime, trust resource, origin, or key ID');
+    expect(verifier).toContain('https://patrolsafe-commercial-staging.onrender.com');
+    expect(verifier).toContain('test-phase6-online-key');
+  });
 });

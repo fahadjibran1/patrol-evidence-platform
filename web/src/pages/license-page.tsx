@@ -21,6 +21,9 @@ import {
 } from '../lib/commercial-purchase-flow';
 
 const SUPPLIER_CONTACT = 'mailto:support@sfour.co.uk?subject=PatrolSafe%20by%20S4%20Licence';
+const TERMS_URL = 'https://www.sfour.co.uk/terms';
+const PRIVACY_URL = 'https://www.sfour.co.uk/privacy';
+const SUPPORT_URL = 'https://www.sfour.co.uk/contact';
 const PUBLIC_REQUEST_PLAN = 'annual' as const;
 const PURCHASE_REFERENCE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const COMMERCIAL_PURCHASE_LOCAL_API_TIMEOUT_MS = 100_000;
@@ -246,7 +249,9 @@ export function LicensePage(): JSX.Element {
         <Card className="action-card licence-purchase-card">
           <p className="eyebrow">PatrolSafe Annual Licence</p><h3>{canRenew ? 'Renew licence' : 'Buy annual licence'}</h3>
           <p className="licence-price">£299 <span>total (VAT included)</span></p>
+          {isTrial && !isExpired ? <p className="muted-text">Your 30-day trial is free. No payment card is required for the trial.</p> : null}
           <ul className="plain-list"><li>1 Windows workstation</li><li>12-month licence</li><li>Manual annual renewal — no automatic charge</li></ul>
+          <p className="muted-text">One-off payment. By continuing in your browser, you can review and accept the <a href={TERMS_URL} target="_blank" rel="noreferrer">Terms</a> and <a href={PRIVACY_URL} target="_blank" rel="noreferrer">Privacy Notice</a>. <a href={SUPPORT_URL} target="_blank" rel="noreferrer">PatrolSafe Support</a>.</p>
           <button type="button" className="primary-button" disabled={isSubmitting || companyName.trim().length < 2} onClick={() => void handleOnlinePurchase()}>{isSubmitting ? 'Please wait…' : canRenew ? 'Renew licence' : 'Buy annual licence'}</button>
           {purchaseSession?.purchaseReference ? <div className="purchase-status-panel"><strong>Purchase started</strong><p>{purchaseStatus?.message ?? 'Complete payment in your browser. PatrolSafe will not activate until you import the supplied licence.'}</p><button type="button" className="secondary-button" disabled={isSubmitting} onClick={() => void handleCheckPurchaseStatus()}>Check licence status</button></div> : null}
         </Card>

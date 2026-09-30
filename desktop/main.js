@@ -41,9 +41,6 @@ const {
   verifyPatrolSafeBackup,
 } = require('./data-durability');
 const { validateBackedUpCommercialLicence } = require('./commercial-licence-backup');
-const { applyPackagedCommercialStagingRuntime } = require('./commercial-staging-runtime');
-const { applyPackagedCommercialProductionRuntime } = require('./commercial-production-runtime');
-
 const packageMetadata = require('../package.json');
 const {
   getBackendEntryCandidates,
@@ -70,13 +67,34 @@ const PRODUCT_METADATA = {
   supportEmail: packageMetadata.supportEmail || 'support@sfour.co.uk',
 };
 
-const commercialStagingRuntime = applyPackagedCommercialStagingRuntime({
-  packaged: app.isPackaged,
-  resourcesPath: process.resourcesPath,
+function applyOptionalPackagedCommercialRuntime({ moduleFile, configFile, exportName }) {
+  const modulePath = path.join(__dirname, moduleFile);
+  const configPath = path.join(process.resourcesPath, configFile);
+  if (!fs.existsSync(modulePath)) {
+    if (app.isPackaged && fs.existsSync(configPath)) {
+      throw new Error('Packaged commercial trust configuration is incomplete.');
+    }
+    return null;
+  }
+  const runtimeModule = require(modulePath);
+  if (typeof runtimeModule[exportName] !== 'function') {
+    throw new Error('Packaged commercial trust runtime is invalid.');
+  }
+  return runtimeModule[exportName]({
+    packaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+  });
+}
+
+const commercialStagingRuntime = applyOptionalPackagedCommercialRuntime({
+  moduleFile: 'commercial-staging-runtime.js',
+  configFile: 'patrolsafe-commercial-staging.json',
+  exportName: 'applyPackagedCommercialStagingRuntime',
 });
-const commercialProductionRuntime = applyPackagedCommercialProductionRuntime({
-  packaged: app.isPackaged,
-  resourcesPath: process.resourcesPath,
+const commercialProductionRuntime = applyOptionalPackagedCommercialRuntime({
+  moduleFile: 'commercial-production-runtime.js',
+  configFile: 'patrolsafe-commercial-production.json',
+  exportName: 'applyPackagedCommercialProductionRuntime',
 });
 if (commercialStagingRuntime && commercialProductionRuntime) {
   throw new Error('Packaged commercial staging and production trust configurations cannot coexist.');

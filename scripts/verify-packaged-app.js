@@ -140,11 +140,49 @@ const sharpRoot = path.join(appRoot, 'node_modules', 'sharp');
 const imgRoot = path.join(appRoot, 'node_modules', '@img');
 const whatsappRoot = path.join(appRoot, 'node_modules', 'whatsapp-web.js');
 const puppeteerRoot = path.join(appRoot, 'node_modules', 'puppeteer');
+const productionConfigPath = path.join(resourcesPath, 'patrolsafe-commercial-production.json');
 
 ensureExists(exePath, 'Packaged Windows executable');
 ensureExists(mainEntry, 'Electron main entry');
 ensureExists(preloadEntry, 'Electron preload');
 ensureExists(runtimePathsModule, 'Packaged runtime path resolver');
+
+if (fs.existsSync(productionConfigPath)) {
+  const forbiddenProductionPaths = [
+    path.join(appRoot, 'desktop', 'commercial-staging-runtime.js'),
+    path.join(resourcesPath, 'patrolsafe-commercial-staging.json'),
+    path.join(resourcesPath, 'patrolsafe-staging-ed25519-public.pem'),
+  ];
+  for (const forbiddenPath of forbiddenProductionPaths) {
+    if (fs.existsSync(forbiddenPath)) {
+      fail(`Production package contains a staging trust input: ${forbiddenPath}`);
+    }
+  }
+
+  const forbiddenProductionValues = [
+    'https://patrolsafe-commercial-staging.onrender.com',
+    'test-phase6-online-key',
+  ];
+  const textExtensions = new Set(['.html', '.js', '.json', '.pem', '.txt']);
+  const stack = [appRoot, resourcesPath];
+  const visited = new Set();
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current || visited.has(current) || !fs.existsSync(current)) continue;
+    visited.add(current);
+    const stat = fs.statSync(current);
+    if (stat.isDirectory()) {
+      for (const entry of fs.readdirSync(current)) stack.push(path.join(current, entry));
+      continue;
+    }
+    if (!textExtensions.has(path.extname(current).toLowerCase())) continue;
+    const contents = fs.readFileSync(current, 'utf8');
+    if (forbiddenProductionValues.some((value) => contents.includes(value))) {
+      fail(`Production package contains a staging commercial identifier: ${current}`);
+    }
+  }
+  pass('Production package contains no staging commercial runtime, trust resource, origin, or key ID');
+}
 
 console.log('Backend entry candidates:');
 for (const candidate of backendResolution.candidates) {
