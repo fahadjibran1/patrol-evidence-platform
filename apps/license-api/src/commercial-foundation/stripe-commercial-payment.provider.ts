@@ -125,6 +125,10 @@ export class StripeCommercialPaymentProvider implements CommercialPaymentProvide
       this.logger.warn('Commercial Stripe webhook signature verification failed.');
       throw new ApiException(ERROR_CODES.COMMERCIAL_WEBHOOK_INVALID, 'Stripe webhook signature is invalid.', 400);
     }
+    if (event.api_version !== config.apiVersion) {
+      this.logger.warn('Commercial Stripe webhook API version mismatch.');
+      throw new ApiException(ERROR_CODES.COMMERCIAL_WEBHOOK_INVALID, 'Stripe webhook API version is not accepted.', 400);
+    }
     return this.normalizeEvent(event);
   }
 

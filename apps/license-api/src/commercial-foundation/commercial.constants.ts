@@ -10,3 +10,5 @@ export const COMMERCIAL_CURRENCY = 'GBP';
 export const COMMERCIAL_MAX_DEVICES = 1;
 export const COMMERCIAL_TAX_POLICY = 'NOT_YET_PRODUCTION_AUTHORIZED';
 export const COMMERCIAL_CHECKOUT_SCOPE = 'patrolsafe.commercial.checkout';
+export const COMMERCIAL_STRIPE_STAGING_API_VERSION = '2024-11-20.acacia';
+export const COMMERCIAL_STRIPE_PRODUCTION_API_VERSION = '2026-08-26.dahlia';

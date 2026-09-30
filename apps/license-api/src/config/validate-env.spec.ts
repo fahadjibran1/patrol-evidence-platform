@@ -166,7 +166,7 @@ describe('commercial staging environment validation', () => {
       COMMERCIAL_STRIPE_INVOICE_CREATION_ENABLED: 'true',
       COMMERCIAL_STRIPE_TAX_RATE_ID: 'txr_live_placeholder',
       COMMERCIAL_ARTIFACT_STORE: 'database',
-      COMMERCIAL_STRIPE_API_VERSION: '2024-11-20.acacia',
+      COMMERCIAL_STRIPE_API_VERSION: '2026-08-26.dahlia',
       COMMERCIAL_OUTBOX_WORKER_ENABLED: 'true',
       COMMERCIAL_DELIVERY_PROVIDER: 'resend',
       COMMERCIAL_RESEND_ENABLED: 'true',
@@ -188,6 +188,15 @@ describe('commercial staging environment validation', () => {
     expect(validateEnv(productionLive())).toEqual(expect.objectContaining({
       COMMERCIAL_PRODUCTION_SIGNING_KEY_ID: 'vesoft-online-v1',
     }));
+  });
+
+  it('rejects production Stripe API versions other than the supported Dahlia snapshot contract', () => {
+    expect(() => validateEnv(productionLive({
+      COMMERCIAL_STRIPE_API_VERSION: '2024-11-20.acacia',
+    }))).toThrow('Production Stripe API version must be 2026-08-26.dahlia');
+    expect(() => validateEnv(productionLive({
+      COMMERCIAL_STRIPE_API_VERSION: '2026-08-26.preview',
+    }))).toThrow('Production Stripe API version must be 2026-08-26.dahlia');
   });
 
   it.each([

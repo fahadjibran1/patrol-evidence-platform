@@ -77,7 +77,7 @@ services:
       - key: COMMERCIAL_STRIPE_PRICE_TAX_BEHAVIOR
         value: inclusive
       - key: COMMERCIAL_STRIPE_API_VERSION
-        sync: false
+        value: 2026-08-26.dahlia
       - key: COMMERCIAL_STRIPE_TAX_RATE_ID
         sync: false
       - key: COMMERCIAL_TERMS_VERSION

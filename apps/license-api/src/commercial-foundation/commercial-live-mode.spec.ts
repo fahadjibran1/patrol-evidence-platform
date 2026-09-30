@@ -14,6 +14,7 @@ describe('production live Stripe mode boundary', () => {
       COMMERCIAL_STRIPE_PRICE_ID: 'price_live_expected',
       COMMERCIAL_STRIPE_PRICE_LOOKUP_KEY: 'patrolsafe_annual_gbp_v1',
       COMMERCIAL_STRIPE_PRICE_TAX_BEHAVIOR: 'inclusive',
+      COMMERCIAL_STRIPE_API_VERSION: '2026-08-26.dahlia',
       COMMERCIAL_SERVICE_ORIGIN: 'https://licensing.sfour.co.uk',
       COMMERCIAL_CHECKOUT_SUCCESS_URL: 'https://licensing.sfour.co.uk/patrolsafe/licence/status/{ORDER_REFERENCE}',
       COMMERCIAL_CHECKOUT_CANCEL_URL: 'https://licensing.sfour.co.uk/patrolsafe/licence/status/{ORDER_REFERENCE}',
@@ -75,5 +76,24 @@ describe('production live Stripe mode boundary', () => {
       invoice_creation: { enabled: true, invoice_data: { metadata: command.metadata } },
       line_items: [{ quantity: 1, price: 'price_live_expected', tax_rates: ['txr_live_expected'] }],
     }), { idempotencyKey: command.commandId });
+  });
+
+  it('fails closed if production is configured for Acacia or the Dahlia preview channel', async () => {
+    for (const apiVersion of ['2024-11-20.acacia', '2026-08-26.preview']) {
+      const config = new CommercialConfigService(new ConfigService({
+        NODE_ENV: 'production', COMMERCIAL_MODE: 'PRODUCTION_LIVE', COMMERCIAL_STRIPE_ENABLED: 'true',
+        COMMERCIAL_STRIPE_SECRET_KEY: 'rk_live_not_a_real_key',
+        COMMERCIAL_STRIPE_WEBHOOK_SECRET: 'whsec_not_a_real_secret',
+        COMMERCIAL_STRIPE_PRODUCT_ID: 'prod_live_expected', COMMERCIAL_STRIPE_PRICE_ID: 'price_live_expected',
+        COMMERCIAL_STRIPE_PRICE_LOOKUP_KEY: 'patrolsafe_annual_gbp_v1',
+        COMMERCIAL_STRIPE_PRICE_TAX_BEHAVIOR: 'inclusive', COMMERCIAL_STRIPE_API_VERSION: apiVersion,
+        COMMERCIAL_SERVICE_ORIGIN: 'https://licensing.sfour.co.uk',
+        COMMERCIAL_CHECKOUT_SUCCESS_URL: 'https://licensing.sfour.co.uk/patrolsafe/licence/status/{ORDER_REFERENCE}',
+        COMMERCIAL_CHECKOUT_CANCEL_URL: 'https://licensing.sfour.co.uk/patrolsafe/licence/status/{ORDER_REFERENCE}',
+        COMMERCIAL_UK_ONLY_ENABLED: 'true', COMMERCIAL_VAT_CONFIGURATION_APPROVED: 'true',
+        COMMERCIAL_STRIPE_INVOICE_CREATION_ENABLED: 'true', COMMERCIAL_STRIPE_TAX_RATE_ID: 'txr_live_expected',
+      }));
+      expect(() => config.assertStripeReady()).toThrow('Stripe API');
+    }
   });
 });

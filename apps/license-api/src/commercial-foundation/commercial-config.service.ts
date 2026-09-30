@@ -9,6 +9,8 @@ import {
   COMMERCIAL_PLAN,
   COMMERCIAL_PRODUCT,
   COMMERCIAL_PRODUCT_DISPLAY_NAME,
+  COMMERCIAL_STRIPE_PRODUCTION_API_VERSION,
+  COMMERCIAL_STRIPE_STAGING_API_VERSION,
   COMMERCIAL_TAX_POLICY,
 } from './commercial.constants';
 import {
@@ -111,7 +113,10 @@ export class CommercialConfigService {
       priceTaxBehavior: this.config.get<string>('COMMERCIAL_STRIPE_PRICE_TAX_BEHAVIOR') === 'inclusive'
         ? 'inclusive'
         : null,
-      apiVersion: this.config.get<string>('COMMERCIAL_STRIPE_API_VERSION') ?? '2024-11-20.acacia',
+      apiVersion: this.config.get<string>('COMMERCIAL_STRIPE_API_VERSION')
+        ?? (commercialMode === 'PRODUCTION_LIVE'
+          ? COMMERCIAL_STRIPE_PRODUCTION_API_VERSION
+          : COMMERCIAL_STRIPE_STAGING_API_VERSION),
       successUrlTemplate:
         this.config.get<string>('COMMERCIAL_CHECKOUT_SUCCESS_URL')
         ?? 'https://www.sfour.co.uk/patrolsafe/licence/status/{ORDER_REFERENCE}?checkout=success',
@@ -167,10 +172,16 @@ export class CommercialConfigService {
     }
     if (stripe.commercialMode === 'PRODUCTION_LIVE') {
       const vatApproved = this.parseBool(this.config.get<string>('COMMERCIAL_VAT_CONFIGURATION_APPROVED'));
-      if (!stripe.ukBusinessOnly || !vatApproved || !stripe.invoiceCreationEnabled || !stripe.taxRateId?.startsWith('txr_')) {
+      if (
+        stripe.apiVersion !== COMMERCIAL_STRIPE_PRODUCTION_API_VERSION
+        || !stripe.ukBusinessOnly
+        || !vatApproved
+        || !stripe.invoiceCreationEnabled
+        || !stripe.taxRateId?.startsWith('txr_')
+      ) {
         throw new ApiException(
           ERROR_CODES.COMMERCIAL_STRIPE_NOT_CONFIGURED,
-          'Production commercial tax, UK scope, and invoice configuration are not approved.',
+          'Production commercial Stripe API, tax, UK scope, and invoice configuration are not approved.',
           503,
         );
       }

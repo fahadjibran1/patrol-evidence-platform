@@ -461,8 +461,17 @@ describe('commercial Phase 2 Stripe payment foundation', () => {
     expect(order.holdReason).toBe('payment_currency_mismatch');
   });
 
-  it('keeps failed and expired Checkout non-paid and safely ignores an unknown event', async () => {
+  it('keeps all supported failed, canceled, and expired events non-paid and safely ignores an unknown event', async () => {
     const { created, result } = await createCheckout();
+    provider.event = event('evt_phase2_async_failed', 'checkout.session.async_payment_failed', {
+      orderId: created.publicOrderId,
+      sessionId: result.providerSessionId,
+    }, { paymentStatus: 'unpaid' });
+    await webhooks.ingest(Buffer.from('{event:async-failed}'), 'valid-test-signature');
+    await worker.processPending();
+    expect((await context.prisma.commercialOrder.findUniqueOrThrow({ where: { publicOrderId: created.publicOrderId } })).state)
+      .toBe(CommercialOrderState.PAYMENT_PENDING);
+
     provider.event = event('evt_phase2_failed', 'payment_intent.payment_failed', {
       orderId: created.publicOrderId,
       sessionId: result.providerSessionId,
@@ -471,6 +480,36 @@ describe('commercial Phase 2 Stripe payment foundation', () => {
     await worker.processPending();
     expect((await context.prisma.commercialOrder.findUniqueOrThrow({ where: { publicOrderId: created.publicOrderId } })).state)
       .toBe(CommercialOrderState.PAYMENT_PENDING);
+
+    const canceledPaymentId = 'pi_phase2_canceled';
+    provider.sessions.set(result.providerSessionId, {
+      ...provider.sessions.get(result.providerSessionId)!,
+      status: 'complete',
+      paymentStatus: 'unpaid',
+      paymentIntentId: canceledPaymentId,
+      providerCustomerId: 'cus_phase2',
+    });
+    provider.payments.set(canceledPaymentId, {
+      paymentIntentId: canceledPaymentId,
+      livemode: false,
+      status: 'canceled',
+      amount: 29900,
+      amountReceived: 0,
+      amountRefunded: 0,
+      currency: 'GBP',
+      providerCustomerId: 'cus_phase2',
+      publicOrderId: created.publicOrderId,
+    });
+    provider.event = event('evt_phase2_canceled', 'payment_intent.canceled', {
+      orderId: created.publicOrderId,
+      sessionId: result.providerSessionId,
+      paymentId: canceledPaymentId,
+    }, { objectId: canceledPaymentId, objectType: 'payment_intent', paymentStatus: null, status: 'canceled' });
+    await webhooks.ingest(Buffer.from('{event:canceled}'), 'valid-test-signature');
+    await worker.processPending();
+    expect((await context.prisma.commercialPayment.findUniqueOrThrow({
+      where: { provider_providerReference: { provider: 'STRIPE', providerReference: canceledPaymentId } },
+    })).status).toBe(CommercialPaymentStatus.FAILED);
 
     provider.sessions.set(result.providerSessionId, {
       ...provider.sessions.get(result.providerSessionId)!,

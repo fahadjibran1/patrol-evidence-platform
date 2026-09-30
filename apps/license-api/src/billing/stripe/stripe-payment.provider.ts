@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import Stripe from 'stripe';
+import StripeAcacia from 'stripe-acacia';
 import { BillingInterval } from '@prisma/client';
 import { ApiException } from '@/common/exceptions/api.exception';
 import { ERROR_CODES } from '@/common/constants/error-codes';
@@ -35,7 +36,7 @@ export class StripePaymentProvider implements PaymentProviderPort {
   private getStripe(): Stripe {
     const cfg = this.stripeConfig.assertReadyForCheckout();
     if (!this.client) {
-      this.client = new Stripe(cfg.secretKey!, {
+      this.client = new StripeAcacia(cfg.secretKey!, {
         apiVersion: cfg.apiVersion as Stripe.LatestApiVersion,
         typescript: true,
       });
@@ -268,7 +269,10 @@ export class StripePaymentProvider implements PaymentProviderPort {
   }
 
   async retrieveInvoice(invoiceId: string): Promise<ProviderInvoiceResult> {
-    const invoice = await this.getStripe().invoices.retrieve(invoiceId);
+    const invoice = await this.getStripe().invoices.retrieve(invoiceId) as Stripe.Invoice & {
+      payment_intent: string | Stripe.PaymentIntent | null;
+      subscription: string | Stripe.Subscription | null;
+    };
     const paymentIntentId = typeof invoice.payment_intent === 'string'
       ? invoice.payment_intent
       : invoice.payment_intent?.id ?? null;
@@ -330,16 +334,22 @@ export class StripePaymentProvider implements PaymentProviderPort {
   }
 
   private mapSubscription(sub: Stripe.Subscription): ProviderSubscriptionResult {
+    const acaciaSubscription = sub as Stripe.Subscription & {
+      current_period_start: number | null;
+      current_period_end: number | null;
+    };
     const priceId = sub.items.data[0]?.price?.id ?? null;
     return {
       providerSubscriptionId: sub.id,
       providerCustomerId: typeof sub.customer === 'string' ? sub.customer : sub.customer.id,
       status: sub.status,
       livemode: Boolean(sub.livemode),
-      currentPeriodStart: sub.current_period_start
-        ? new Date(sub.current_period_start * 1000)
+      currentPeriodStart: acaciaSubscription.current_period_start
+        ? new Date(acaciaSubscription.current_period_start * 1000)
         : null,
-      currentPeriodEnd: sub.current_period_end ? new Date(sub.current_period_end * 1000) : null,
+      currentPeriodEnd: acaciaSubscription.current_period_end
+        ? new Date(acaciaSubscription.current_period_end * 1000)
+        : null,
       cancelAtPeriodEnd: Boolean(sub.cancel_at_period_end),
       cancelledAt: sub.canceled_at ? new Date(sub.canceled_at * 1000) : null,
       latestInvoiceId: typeof sub.latest_invoice === 'string'
@@ -354,7 +364,7 @@ export class StripePaymentProvider implements PaymentProviderPort {
     if (!cfg.webhookSecret || !cfg.secretKey) {
       throw new ApiException(ERROR_CODES.STRIPE_WEBHOOK_INVALID, 'Stripe webhook not configured', 503);
     }
-    const stripe = new Stripe(cfg.secretKey, {
+    const stripe = new StripeAcacia(cfg.secretKey, {
       apiVersion: cfg.apiVersion as Stripe.LatestApiVersion,
     });
     let event: Stripe.Event;

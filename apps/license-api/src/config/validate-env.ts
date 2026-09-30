@@ -13,6 +13,7 @@ import {
   configuredCommercialMode,
   effectiveCommercialMode,
 } from '../commercial-foundation/commercial-mode';
+import { COMMERCIAL_STRIPE_PRODUCTION_API_VERSION } from '../commercial-foundation/commercial.constants';
 
 class EnvVars {
   @IsOptional()
@@ -335,8 +336,8 @@ function validateProductionCommercialContract(config: EnvVars): void {
   if (config.COMMERCIAL_ARTIFACT_STORE !== 'database') {
     throw new Error('[validate-env] Production licence artifacts require the encrypted database store.');
   }
-  if (!config.COMMERCIAL_STRIPE_API_VERSION) {
-    throw new Error('[validate-env] Production Stripe API version must be explicitly pinned.');
+  if (config.COMMERCIAL_STRIPE_API_VERSION !== COMMERCIAL_STRIPE_PRODUCTION_API_VERSION) {
+    throw new Error(`[validate-env] Production Stripe API version must be ${COMMERCIAL_STRIPE_PRODUCTION_API_VERSION}.`);
   }
   if (!isTruthy(config.COMMERCIAL_OUTBOX_WORKER_ENABLED)) {
     throw new Error('[validate-env] Production durable commercial outbox processing must be enabled.');
