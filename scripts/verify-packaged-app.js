@@ -147,6 +147,24 @@ ensureExists(mainEntry, 'Electron main entry');
 ensureExists(preloadEntry, 'Electron preload');
 ensureExists(runtimePathsModule, 'Packaged runtime path resolver');
 
+const packagedEnvironmentFiles = [];
+const environmentScanStack = [appRoot];
+while (environmentScanStack.length > 0) {
+  const current = environmentScanStack.pop();
+  if (!current || !fs.existsSync(current)) continue;
+  const stat = fs.statSync(current);
+  if (stat.isDirectory()) {
+    for (const entry of fs.readdirSync(current)) environmentScanStack.push(path.join(current, entry));
+    continue;
+  }
+  if (/^\.env(?:\..+)?$/i.test(path.basename(current))) packagedEnvironmentFiles.push(current);
+}
+if (packagedEnvironmentFiles.length > 0) {
+  fail(`Environment file(s) found in packaged output:\n${packagedEnvironmentFiles.join('\n')}`);
+} else {
+  pass('No environment files found in packaged output');
+}
+
 if (fs.existsSync(productionConfigPath)) {
   const forbiddenProductionPaths = [
     path.join(appRoot, 'desktop', 'commercial-staging-runtime.js'),

@@ -76,6 +76,8 @@ describe('packaged commercial production runtime contract', () => {
     expect(forge).toContain("commercialProductionBuild ? [/^\\/desktop\\/commercial-staging-runtime\\.js$/]");
     expect(main).not.toContain("require('./commercial-staging-runtime')");
     expect(verifier).toContain('Production package contains no staging commercial runtime, trust resource, origin, or key ID');
+    expect(verifier).toContain('No environment files found in packaged output');
+    expect(forge).toContain('removeEnvironmentFilesRecursively(buildPath)');
     expect(verifier).toContain('https://patrolsafe-commercial-staging.onrender.com');
     expect(verifier).toContain('test-phase6-online-key');
   });

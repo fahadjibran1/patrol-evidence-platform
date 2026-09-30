@@ -192,9 +192,7 @@ const packagerIgnore = [
   /^\/web\/tsconfig(\..+)?$/,
   /^\/web\/vite\.config(\..+)?$/,
   /^\/web\/vitest\.config(\..+)?$/,
-  /^\/\.env$/,
-  /^\/\.env\..+$/,
-  /^\/\.env\.example$/,
+  /\/\.env(?:\..+)?$/,
   /^\/\.license-keys($|\/)/,
   /\.private\.pem$/,
   /license-private/i,
@@ -254,6 +252,20 @@ function shouldIgnorePackagePath(filePath) {
 function removeIfPresent(targetPath) {
   if (fs.existsSync(targetPath)) {
     fs.rmSync(targetPath, { recursive: true, force: true });
+  }
+}
+
+function removeEnvironmentFilesRecursively(rootPath) {
+  if (!fs.existsSync(rootPath)) return;
+  for (const entry of fs.readdirSync(rootPath, { withFileTypes: true })) {
+    const entryPath = path.join(rootPath, entry.name);
+    if (entry.isDirectory()) {
+      removeEnvironmentFilesRecursively(entryPath);
+      continue;
+    }
+    if (/^\.env(?:\..+)?$/i.test(entry.name)) {
+      removeIfPresent(entryPath);
+    }
   }
 }
 
@@ -350,6 +362,10 @@ function pruneCopiedApp(buildPath, _electronVersion, _platform, _arch, callback)
       'tsconfig.build.json',
       'tsconfig.json',
     ].forEach((fileName) => removeIfPresent(path.join(buildPath, fileName)));
+
+    // Environment files are documentation/build inputs, never desktop runtime inputs.
+    // Prune them at every depth, including files copied inside runtime dependencies.
+    removeEnvironmentFilesRecursively(buildPath);
 
     const runtimePrune = pruneDesktopRuntimeWorkspacePayload(buildPath);
     console.log(
