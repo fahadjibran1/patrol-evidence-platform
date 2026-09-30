@@ -17,7 +17,6 @@ export const COMMERCIAL_PURCHASE_RETRY_DELAY_MS = 750;
 const TRANSIENT_HTTP_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
 const PURCHASE_REFERENCE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const ORDER_ID_PATTERN = /^ord_[0-9a-f-]{36}$/i;
-const AUTHORISED_COMMERCIAL_STAGING_ORIGIN = 'https://patrolsafe-commercial-staging.onrender.com';
 
 export type CustomerPurchaseStatus =
   | 'AWAITING_PAYMENT'
@@ -279,13 +278,25 @@ export class CommercialPurchaseClientService {
 
   private isAuthorisedStagingCandidate(serviceOrigin: URL, purchaseOrigin: URL): boolean {
     if (
+      process.env.PATROLSAFE_COMMERCIAL_PRODUCTION_BUILD === 'true'
+      ||
       process.env.PATROLSAFE_COMMERCIAL_STAGING !== 'true'
       || process.env.PATROLSAFE_COMMERCIAL_STAGING_BUILD !== 'true'
     ) {
       return false;
     }
-    return serviceOrigin.origin === AUTHORISED_COMMERCIAL_STAGING_ORIGIN
-      && purchaseOrigin.origin === AUTHORISED_COMMERCIAL_STAGING_ORIGIN;
+    const configuredOrigin = process.env.PATROLSAFE_COMMERCIAL_STAGING_ORIGIN?.trim();
+    if (!configuredOrigin) return false;
+    let stagingOrigin: URL;
+    try {
+      stagingOrigin = new URL(configuredOrigin);
+    } catch {
+      return false;
+    }
+    return stagingOrigin.protocol === 'https:'
+      && stagingOrigin.origin === configuredOrigin
+      && serviceOrigin.origin === stagingOrigin.origin
+      && purchaseOrigin.origin === stagingOrigin.origin;
   }
 
   private parseOrigin(name: string, requireHttps: boolean, allowLoopbackHttp: boolean): URL {

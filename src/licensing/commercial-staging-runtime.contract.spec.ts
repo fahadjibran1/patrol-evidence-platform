@@ -53,6 +53,8 @@ describe('private commercial staging candidate runtime', () => {
     expect(loaded?.environment).toMatchObject({
       PATROLSAFE_COMMERCIAL_STAGING: 'true',
       PATROLSAFE_COMMERCIAL_STAGING_BUILD: 'true',
+      PATROLSAFE_COMMERCIAL_STAGING_ORIGIN: 'https://patrolsafe-commercial-staging.onrender.com',
+      PATROLSAFE_COMMERCIAL_STAGING_KEY_ID: 'test-phase6-online-key',
       PATROLSAFE_COMMERCIAL_SERVICE_ORIGIN: 'https://patrolsafe-commercial-staging.onrender.com',
       PATROLSAFE_COMMERCIAL_PURCHASE_ORIGIN: 'https://patrolsafe-commercial-staging.onrender.com',
       LICENSE_ONLINE_PUBLIC_KEY_ID: 'test-phase6-online-key',

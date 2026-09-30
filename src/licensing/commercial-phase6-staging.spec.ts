@@ -19,6 +19,7 @@ describe('Phase 6 staging licence import and restart', () => {
     process.env.PATROL_LICENSE_TEST_MODE = 'true';
     process.env.PATROLSAFE_COMMERCIAL_STAGING = 'true';
     process.env.PATROLSAFE_COMMERCIAL_STAGING_BUILD = 'true';
+    process.env.PATROLSAFE_COMMERCIAL_STAGING_KEY_ID = 'test-phase6-online-key';
     process.env.DESKTOP_CONFIG_PATH = join(dataRoot, 'workspace-config.json');
     writeFileSync(process.env.DESKTOP_CONFIG_PATH, JSON.stringify({ companyName: 'Phase Six Patrols Ltd' }), 'utf8');
     const legacy = generateKeyPairSync('ed25519');

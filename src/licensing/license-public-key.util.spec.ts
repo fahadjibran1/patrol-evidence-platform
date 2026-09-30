@@ -28,6 +28,7 @@ describe('license-public-key.util', () => {
     LICENSE_ONLINE_PUBLIC_KEY_ID: process.env.LICENSE_ONLINE_PUBLIC_KEY_ID,
     PATROLSAFE_COMMERCIAL_STAGING: process.env.PATROLSAFE_COMMERCIAL_STAGING,
     PATROLSAFE_COMMERCIAL_STAGING_BUILD: process.env.PATROLSAFE_COMMERCIAL_STAGING_BUILD,
+    PATROLSAFE_COMMERCIAL_STAGING_KEY_ID: process.env.PATROLSAFE_COMMERCIAL_STAGING_KEY_ID,
     PATROL_DESKTOP_PACKAGED: process.env.PATROL_DESKTOP_PACKAGED,
     PATROL_RESOURCES_PATH: process.env.PATROL_RESOURCES_PATH,
     PATROL_APP_PATH: process.env.PATROL_APP_PATH,
@@ -50,6 +51,7 @@ describe('license-public-key.util', () => {
     delete process.env.LICENSE_ONLINE_PUBLIC_KEY_ID;
     delete process.env.PATROLSAFE_COMMERCIAL_STAGING;
     delete process.env.PATROLSAFE_COMMERCIAL_STAGING_BUILD;
+    delete process.env.PATROLSAFE_COMMERCIAL_STAGING_KEY_ID;
     delete process.env.PATROL_DESKTOP_PACKAGED;
     delete process.env.PATROL_RESOURCES_PATH;
     delete process.env.PATROL_APP_PATH;
@@ -136,6 +138,7 @@ describe('license-public-key.util', () => {
     expect(() => loadLicensePublicKeyRing()).toThrow(/not authorised/i);
     process.env.PATROLSAFE_COMMERCIAL_STAGING = 'true';
     process.env.PATROLSAFE_COMMERCIAL_STAGING_BUILD = 'true';
+    process.env.PATROLSAFE_COMMERCIAL_STAGING_KEY_ID = 'test-phase6-online-key';
     expect(loadLicensePublicKeyRing().map((entry) => entry.keyId)).toContain('test-phase6-online-key');
   });
 

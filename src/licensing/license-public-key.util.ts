@@ -8,7 +8,6 @@ const PUBLIC_KEY_FILE_NAMES = ['license-public.pem', 'license-public.key'];
 const PRIVATE_KEY_MARKERS = [/PRIVATE KEY/i, /BEGIN ED25519 PRIVATE KEY/i];
 export const LEGACY_PRODUCTION_SIGNING_KEY_ID = 'vesoft-offline-v1';
 export const ONLINE_PRODUCTION_SIGNING_KEY_ID = 'vesoft-online-v1';
-export const STAGING_ONLINE_SIGNING_KEY_ID = 'test-phase6-online-key';
 export const ONLINE_PRODUCTION_PUBLIC_KEY_SHA256 =
   'CEAA988A6B2AD61DA4323450B51FA56A18AF804881601DCF3F5FF03E78485F30';
 
@@ -175,9 +174,15 @@ export function loadLicensePublicKeyRing(): CommercialLicenceTrustEntry[] {
   const onlinePem = resolveOnlineLicensePublicKeyPem();
   if (onlinePem) {
     const keyId = process.env.LICENSE_ONLINE_PUBLIC_KEY_ID?.trim() || ONLINE_PRODUCTION_SIGNING_KEY_ID;
-    const staging = process.env.PATROLSAFE_COMMERCIAL_STAGING === 'true'
+    const staging = process.env.PATROLSAFE_COMMERCIAL_PRODUCTION_BUILD !== 'true'
+      && process.env.PATROLSAFE_COMMERCIAL_STAGING === 'true'
       && process.env.PATROLSAFE_COMMERCIAL_STAGING_BUILD === 'true';
-    const expectedKeyId = staging ? STAGING_ONLINE_SIGNING_KEY_ID : ONLINE_PRODUCTION_SIGNING_KEY_ID;
+    const expectedKeyId = staging
+      ? process.env.PATROLSAFE_COMMERCIAL_STAGING_KEY_ID?.trim()
+      : ONLINE_PRODUCTION_SIGNING_KEY_ID;
+    if (!expectedKeyId) {
+      throw new Error('The online licence key identity is not authorised for this build.');
+    }
     if (keyId !== expectedKeyId) {
       throw new Error('The online licence key identity is not authorised for this build.');
     }

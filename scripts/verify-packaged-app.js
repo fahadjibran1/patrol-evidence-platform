@@ -164,6 +164,7 @@ if (fs.existsSync(productionConfigPath)) {
     'test-phase6-online-key',
   ];
   const textExtensions = new Set(['.html', '.js', '.json', '.pem', '.txt']);
+  let productionIsolationValid = true;
   const stack = [appRoot, resourcesPath];
   const visited = new Set();
   while (stack.length > 0) {
@@ -178,10 +179,13 @@ if (fs.existsSync(productionConfigPath)) {
     if (!textExtensions.has(path.extname(current).toLowerCase())) continue;
     const contents = fs.readFileSync(current, 'utf8');
     if (forbiddenProductionValues.some((value) => contents.includes(value))) {
+      productionIsolationValid = false;
       fail(`Production package contains a staging commercial identifier: ${current}`);
     }
   }
-  pass('Production package contains no staging commercial runtime, trust resource, origin, or key ID');
+  if (productionIsolationValid) {
+    pass('Production package contains no staging commercial runtime, trust resource, origin, or key ID');
+  }
 }
 
 console.log('Backend entry candidates:');

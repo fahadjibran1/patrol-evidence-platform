@@ -245,6 +245,7 @@ describe('CommercialPurchaseClientService', () => {
     process.env.NODE_ENV = 'production';
     process.env.PATROLSAFE_COMMERCIAL_STAGING = 'true';
     process.env.PATROLSAFE_COMMERCIAL_STAGING_BUILD = 'true';
+    process.env.PATROLSAFE_COMMERCIAL_STAGING_ORIGIN = 'https://patrolsafe-commercial-staging.onrender.com';
     process.env.PATROLSAFE_COMMERCIAL_SERVICE_ORIGIN = 'https://patrolsafe-commercial-staging.onrender.com';
     process.env.PATROLSAFE_COMMERCIAL_PURCHASE_ORIGIN = 'https://patrolsafe-commercial-staging.onrender.com';
     const requestId = '5c97ec6e-77af-4fbe-8928-6ba4931eb213';
@@ -258,16 +259,31 @@ describe('CommercialPurchaseClientService', () => {
   it.each([
     ['missing staging marker', { PATROLSAFE_COMMERCIAL_STAGING: undefined }],
     ['missing staging build marker', { PATROLSAFE_COMMERCIAL_STAGING_BUILD: undefined }],
+    ['missing authorised staging origin', { PATROLSAFE_COMMERCIAL_STAGING_ORIGIN: undefined }],
     ['alternate Render service', { PATROLSAFE_COMMERCIAL_SERVICE_ORIGIN: 'https://other.onrender.com' }],
     ['alternate Render purchase site', { PATROLSAFE_COMMERCIAL_PURCHASE_ORIGIN: 'https://other.onrender.com' }],
   ])('rejects the private staging origin when %s', async (_label, overrides) => {
     process.env.NODE_ENV = 'production';
     process.env.PATROLSAFE_COMMERCIAL_STAGING = 'true';
     process.env.PATROLSAFE_COMMERCIAL_STAGING_BUILD = 'true';
+    process.env.PATROLSAFE_COMMERCIAL_STAGING_ORIGIN = 'https://patrolsafe-commercial-staging.onrender.com';
     process.env.PATROLSAFE_COMMERCIAL_SERVICE_ORIGIN = 'https://patrolsafe-commercial-staging.onrender.com';
     process.env.PATROLSAFE_COMMERCIAL_PURCHASE_ORIGIN = 'https://patrolsafe-commercial-staging.onrender.com';
     Object.assign(process.env, overrides);
     for (const [key, value] of Object.entries(overrides)) if (value === undefined) delete process.env[key];
+
+    await expect(service().start({ requestId: '5c97ec6e-77af-4fbe-8928-6ba4931eb213', clientNonce: 'n'.repeat(32) })).rejects.toThrow(/not configured/i);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('cannot switch a production build to the staging origin through environment flags', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.PATROLSAFE_COMMERCIAL_PRODUCTION_BUILD = 'true';
+    process.env.PATROLSAFE_COMMERCIAL_STAGING = 'true';
+    process.env.PATROLSAFE_COMMERCIAL_STAGING_BUILD = 'true';
+    process.env.PATROLSAFE_COMMERCIAL_STAGING_ORIGIN = 'https://patrolsafe-commercial-staging.onrender.com';
+    process.env.PATROLSAFE_COMMERCIAL_SERVICE_ORIGIN = 'https://patrolsafe-commercial-staging.onrender.com';
+    process.env.PATROLSAFE_COMMERCIAL_PURCHASE_ORIGIN = 'https://patrolsafe-commercial-staging.onrender.com';
 
     await expect(service().start({ requestId: '5c97ec6e-77af-4fbe-8928-6ba4931eb213', clientNonce: 'n'.repeat(32) })).rejects.toThrow(/not configured/i);
     expect(fetchMock).not.toHaveBeenCalled();
