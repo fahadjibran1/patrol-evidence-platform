@@ -25,30 +25,60 @@ describe('S4 commercial staging pages', () => {
   beforeEach(() => { sessionStorage.clear(); vi.restoreAllMocks(); });
 
   it('shows only customer-safe server-owned commercial terms', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => response({ publicOrderId: order, product: 'PatrolSafe Annual Licence', plan: 'annual', companyName: 'Staging Patrol Ltd', amountMinor: 29900, currency: 'GBP', maxDevices: 1, taxPolicy: 'NOT_YET_PRODUCTION_AUTHORIZED', expiresAt: '2026-09-23T12:00:00Z' })));
+    vi.stubGlobal('fetch', vi.fn(async () => response({ publicOrderId: order, product: 'PatrolSafe Annual Licence', plan: 'annual', companyName: 'Example Patrol Ltd', amountMinor: 29900, currency: 'GBP', maxDevices: 1, taxPolicy: 'UK_STANDARD_VAT_INCLUSIVE', termsVersion: 'terms-2026-01', privacyVersion: 'privacy-2026-01', termsUrl: 'https://sfour.co.uk/terms', privacyUrl: 'https://sfour.co.uk/privacy', supportUrl: 'https://sfour.co.uk/support', expiresAt: '2026-09-23T12:00:00Z' })));
     render(<MemoryRouter initialEntries={[`/patrolsafe/buy/${reference}`]}><Routes><Route path='/patrolsafe/buy/:reference' element={<CommercialPurchasePage />} /></Routes></MemoryRouter>);
-    expect(await screen.findByText('Staging Patrol Ltd')).toBeInTheDocument();
-    expect(screen.getByText(/£299/)).toBeInTheDocument();
-    expect(screen.getByText('total (VAT included)')).toBeInTheDocument();
+    expect(await screen.findByText('Example Patrol Ltd')).toBeInTheDocument();
+    expect(screen.getAllByText(/£299/)).toHaveLength(2);
+    expect(screen.getByText('including VAT')).toBeInTheDocument();
     expect(screen.queryByText(/VAT where applicable/i)).not.toBeInTheDocument();
-    expect(screen.getByText('1 Windows workstation')).toBeInTheDocument();
+    expect(screen.getByText('One Windows workstation')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'PatrolSafe Support' })).toHaveAttribute('href', 'https://sfour.co.uk/support');
+    expect(screen.queryByText(/staging|no live payment|UAT/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/fingerprint|installation id|signing/i)).not.toBeInTheDocument();
+  });
+
+  it('keeps non-production staging usable while production remains fail-closed on legal links', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => response({
+      publicOrderId: order,
+      product: 'PatrolSafe Annual Licence',
+      plan: 'annual',
+      companyName: 'Example Patrol Ltd',
+      amountMinor: 29900,
+      currency: 'GBP',
+      maxDevices: 1,
+      taxPolicy: 'UK_STANDARD_VAT_INCLUSIVE',
+      termsVersion: 'staging-terms-2026-01',
+      privacyVersion: 'staging-privacy-2026-01',
+      termsUrl: null,
+      privacyUrl: null,
+      supportUrl: null,
+      expiresAt: '2026-09-23T12:00:00Z',
+    })));
+    render(<MemoryRouter initialEntries={[`/patrolsafe/buy/${reference}`]}><Routes><Route path='/patrolsafe/buy/:reference' element={<CommercialPurchasePage />} /></Routes></MemoryRouter>);
+    expect(await screen.findByText('Example Patrol Ltd')).toBeInTheDocument();
+    expect(screen.getByLabelText(/accept the applicable/i)).toBeInTheDocument();
+    expect(screen.queryByText(/legal documents cannot be displayed/i)).not.toBeInTheDocument();
   });
 
   it('submits contact data without price authority or reference persistence', async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo, init?: RequestInit) => {
-      if (!init?.method) return response({ publicOrderId: order, product: 'PatrolSafe Annual Licence', plan: 'annual', companyName: 'Staging Patrol Ltd', amountMinor: 29900, currency: 'GBP', maxDevices: 1, taxPolicy: 'NOT_YET_PRODUCTION_AUTHORIZED', expiresAt: '2026-09-23T12:00:00Z' });
+      if (!init?.method) return response({ publicOrderId: order, product: 'PatrolSafe Annual Licence', plan: 'annual', companyName: 'Example Patrol Ltd', amountMinor: 29900, currency: 'GBP', maxDevices: 1, taxPolicy: 'UK_STANDARD_VAT_INCLUSIVE', termsVersion: 'terms-2026-01', privacyVersion: 'privacy-2026-01', termsUrl: 'https://sfour.co.uk/terms', privacyUrl: 'https://sfour.co.uk/privacy', expiresAt: '2026-09-23T12:00:00Z' });
       return response({ publicOrderId: order, checkoutUrl: 'https://checkout.stripe.test/cs_test_1', amountMinor: 29900, currency: 'GBP', duplicate: false });
     });
     vi.stubGlobal('fetch', fetchMock);
     render(<MemoryRouter initialEntries={[`/patrolsafe/buy/${reference}`]}><Routes><Route path='/patrolsafe/buy/:reference' element={<CommercialPurchasePage />} /></Routes></MemoryRouter>);
-    await screen.findByText('Staging Patrol Ltd');
+    await screen.findByText('Example Patrol Ltd');
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'buyer@staging.test' } });
-    fireEvent.click(screen.getByLabelText(/acknowledge/));
+    fireEvent.click(screen.getByLabelText(/accept the/i));
     fireEvent.click(screen.getByRole('button', { name: 'Continue to secure checkout' }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     const body = JSON.parse(String(fetchMock.mock.calls[1][1]?.body));
-    expect(body).toEqual({ customerEmail: 'buyer@staging.test' });
+    expect(body).toEqual({
+      customerEmail: 'buyer@staging.test',
+      legalAccepted: true,
+      acceptedTermsVersion: 'terms-2026-01',
+      acceptedPrivacyVersion: 'privacy-2026-01',
+    });
     expect(body).not.toHaveProperty('amount');
     expect(body).not.toHaveProperty('currency');
     expect(JSON.stringify(sessionStorage)).not.toContain(reference);

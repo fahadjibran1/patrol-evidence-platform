@@ -2,7 +2,15 @@ import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Request } from 'express';
 import { AuthService } from './auth.service';
-import { LoginDto, LogoutDto, RefreshDto } from './dto/auth.dto';
+import {
+  LoginDto,
+  LogoutDto,
+  MfaChallengeDto,
+  MfaEnrollmentConfirmDto,
+  MfaLoginVerifyDto,
+  RefreshDto,
+} from './dto/auth.dto';
+import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
 import { CurrentAdmin } from '@/common/decorators/current-admin.decorator';
 import { AuthenticatedAdmin } from './interfaces/authenticated-admin.interface';
@@ -15,6 +23,33 @@ export class AuthController {
   @Post('login')
   login(@Body() dto: LoginDto, @Req() req: Request) {
     return this.authService.login(dto, {
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent') ?? undefined,
+    });
+  }
+
+  @Post('mfa/enrolment/start')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  startMfaEnrollment(@Body() dto: MfaChallengeDto, @Req() req: Request) {
+    return this.authService.startMfaEnrollment(dto.challengeToken, {
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent') ?? undefined,
+    });
+  }
+
+  @Post('mfa/enrolment/confirm')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  confirmMfaEnrollment(@Body() dto: MfaEnrollmentConfirmDto, @Req() req: Request) {
+    return this.authService.confirmMfaEnrollment(dto.challengeToken, dto.code, {
+      ipAddress: req.ip,
+      userAgent: req.get('user-agent') ?? undefined,
+    });
+  }
+
+  @Post('mfa/verify')
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  verifyMfaLogin(@Body() dto: MfaLoginVerifyDto, @Req() req: Request) {
+    return this.authService.verifyMfaLogin(dto.challengeToken, { code: dto.code, recoveryCode: dto.recoveryCode }, {
       ipAddress: req.ip,
       userAgent: req.get('user-agent') ?? undefined,
     });

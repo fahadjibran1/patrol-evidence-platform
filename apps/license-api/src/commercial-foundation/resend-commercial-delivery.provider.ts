@@ -10,6 +10,32 @@ export class ResendCommercialDeliveryProvider implements CommercialDeliveryProvi
 
   constructor(private readonly config: ConfigService) {}
 
+  configurationPreflight(): Readonly<{
+    enabled: boolean;
+    apiKeyFormatValid: boolean;
+    senderFormatValid: boolean;
+    webhookSecretFormatValid: boolean;
+    passed: boolean;
+  }> {
+    const enabled = this.config.get<string>('COMMERCIAL_RESEND_ENABLED') === 'true';
+    const apiKeyFormatValid = /^re_[A-Za-z0-9_-]{8,}$/.test(
+      this.config.get<string>('COMMERCIAL_RESEND_API_KEY')?.trim() ?? '',
+    );
+    const senderFormatValid = /^.+<[^<>@\s]+@[^<>@\s]+>$/.test(
+      this.config.get<string>('COMMERCIAL_RESEND_FROM')?.trim() ?? '',
+    );
+    const webhookSecretFormatValid = /^whsec_[A-Za-z0-9+/=_-]{16,}$/.test(
+      this.config.get<string>('COMMERCIAL_RESEND_WEBHOOK_SECRET')?.trim() ?? '',
+    );
+    return Object.freeze({
+      enabled,
+      apiKeyFormatValid,
+      senderFormatValid,
+      webhookSecretFormatValid,
+      passed: enabled && apiKeyFormatValid && senderFormatValid && webhookSecretFormatValid,
+    });
+  }
+
   async send(command: Readonly<SendCommercialLicenceEmailCommand>): Promise<{ messageId: string; acceptedAt: Date }> {
     const configuration = this.sendConfiguration();
     const template = renderCommercialLicenceEmail(command);

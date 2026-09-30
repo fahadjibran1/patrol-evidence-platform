@@ -59,19 +59,26 @@ export class ProductionFileEd25519SigningProvider implements CommercialSigningPr
     return this.publicKey!;
   }
 
-  async preflight(keyPathPolicy = COMMERCIAL_PRODUCTION_SIGNING_KEY_PATH): Promise<ProductionSignerPreflightResult> {
+  async preflight(
+    keyPathPolicy = COMMERCIAL_PRODUCTION_SIGNING_KEY_PATH,
+    options: Readonly<{ allowDisabledProductionPreflight?: boolean }> = {},
+  ): Promise<ProductionSignerPreflightResult> {
     const provider = this.config.get<string>('COMMERCIAL_PRODUCTION_SIGNING_PROVIDER')?.trim() ?? '';
     const configuredPath = this.config.get<string>('COMMERCIAL_PRODUCTION_SIGNING_PRIVATE_KEY_FILE')?.trim() ?? '';
     const expectedFingerprint = this.config.get<string>('COMMERCIAL_PRODUCTION_SIGNING_PUBLIC_KEY_SHA256')
       ?.trim().toUpperCase() ?? '';
     const result: ProductionSignerPreflightResult = {
       modeValid: this.config.get<string>('NODE_ENV') === 'production'
-        && effectiveCommercialMode({
+        && (effectiveCommercialMode({
           COMMERCIAL_MODE: this.config.get<string>('COMMERCIAL_MODE'),
           COMMERCIAL_STRIPE_ENABLED: this.config.get<string>('COMMERCIAL_STRIPE_ENABLED'),
           NODE_ENV: this.config.get<string>('NODE_ENV'),
           PATROLSAFE_COMMERCIAL_STAGING: this.config.get<string>('PATROLSAFE_COMMERCIAL_STAGING'),
-        }) === 'PRODUCTION_LIVE',
+        }) === 'PRODUCTION_LIVE'
+          || (options.allowDisabledProductionPreflight === true
+            && this.config.get<string>('COMMERCIAL_MODE') === 'DISABLED'
+            && this.config.get<string>('COMMERCIAL_STRIPE_ENABLED') === 'false'
+            && this.config.get<string>('PATROLSAFE_COMMERCIAL_STAGING') !== 'true')),
       providerValid: provider === COMMERCIAL_PRODUCTION_SIGNING_PROVIDER_ID,
       keyIdValid: this.keyId === COMMERCIAL_PRODUCTION_SIGNING_KEY_ID,
       keyPathValid: configuredPath === keyPathPolicy,

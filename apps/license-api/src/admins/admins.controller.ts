@@ -8,7 +8,7 @@ import { Roles } from '@/common/decorators/roles.decorator';
 import { CurrentAdmin } from '@/common/decorators/current-admin.decorator';
 import { AuthenticatedAdmin } from '@/auth/interfaces/authenticated-admin.interface';
 import { PaginationQueryDto, paginate, resolvePagination } from '@/common/dto/pagination.dto';
-import { CreateAdminDto, ResetAdminPasswordDto, UpdateAdminDto } from './dto/admin.dto';
+import { CreateAdminDto, ResetAdminMfaDto, ResetAdminPasswordDto, UpdateAdminDto } from './dto/admin.dto';
 
 @ApiTags('admins')
 @ApiBearerAuth()
@@ -44,6 +44,16 @@ export class AdminsController {
     @Body() dto: ResetAdminPasswordDto,
   ) {
     return this.adminsService.resetPassword(admin, id, dto);
+  }
+
+  @Post(':id/reset-mfa')
+  @Roles(AdminRole.SUPER_ADMIN)
+  resetMfa(
+    @CurrentAdmin() admin: AuthenticatedAdmin,
+    @Param('id') id: string,
+    @Body() dto: ResetAdminMfaDto,
+  ) {
+    return this.adminsService.resetMfa(admin, id, dto);
   }
 
   @Post(':id/deactivate')

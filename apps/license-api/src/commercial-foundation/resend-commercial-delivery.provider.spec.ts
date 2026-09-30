@@ -9,6 +9,18 @@ describe('Resend commercial delivery provider', () => {
 
   afterEach(() => jest.restoreAllMocks());
 
+  it('validates configuration without sending mail or making a network request', () => {
+    const fetchMock = jest.spyOn(global, 'fetch');
+    expect(provider.configurationPreflight()).toEqual({
+      enabled: true,
+      apiKeyFormatValid: true,
+      senderFormatValid: true,
+      webhookSecretFormatValid: true,
+      passed: true,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('sends the safe link template with a deterministic provider idempotency key', async () => {
     const fetchMock = jest.spyOn(global, 'fetch').mockResolvedValue(new Response(JSON.stringify({ id: 'email_phase4_test' }), { status: 200, headers: { 'content-type': 'application/json' } }));
     const result = await provider.send({ attemptId: 'attempt-1', idempotencyKey: 'delivery-attempt-1', recipient: 'owner@example.test', companyName: 'Example Patrols', startsAt: '2026-09-22', expiresAt: '2027-09-21', downloadUrl: 'https://licensing.test/download/token', linkExpiresAt: '2026-09-23T12:00:00.000Z' });

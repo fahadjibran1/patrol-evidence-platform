@@ -20,6 +20,7 @@ import type {
   CreateCommercialCheckoutCommand,
   VerifiedCommercialProviderEvent,
 } from '@/commercial-foundation/commercial-payment-provider.port';
+
 import { CommercialPaymentReconciliationService } from '@/commercial-foundation/commercial-payment-reconciliation.service';
 import { CommercialPurchaseService } from '@/commercial-foundation/commercial-purchase.service';
 import { CommercialWebhookService } from '@/commercial-foundation/commercial-webhook.service';
@@ -30,6 +31,12 @@ import {
   resetIntegrationDatabase,
   type IntegrationContext,
 } from './integration-harness';
+
+const LEGAL_ACCEPTANCE = {
+  legalAccepted: true as const,
+  acceptedTermsVersion: 'pending-commercial-approval',
+  acceptedPrivacyVersion: 'pending-commercial-approval',
+};
 
 function purchaseRequest(overrides: Record<string, unknown> = {}) {
   return {
@@ -149,6 +156,7 @@ describe('commercial Phase 2 Stripe payment foundation', () => {
   async function createCheckout() {
     const created = await purchases.createPurchaseRequest(purchaseRequest());
     const result = await checkout.createFromOpaqueReference(created.purchaseReference, {
+      ...LEGAL_ACCEPTANCE,
       customerEmail: 'buyer@example.test',
       contactName: 'Pat Buyer',
     });
@@ -204,6 +212,7 @@ describe('commercial Phase 2 Stripe payment foundation', () => {
   it('creates one idempotent test Checkout using only server-owned commercial terms', async () => {
     const { created, result } = await createCheckout();
     const duplicate = await checkout.createFromOpaqueReference(created.purchaseReference, {
+      ...LEGAL_ACCEPTANCE,
       customerEmail: 'ignored@example.test',
       contactName: 'Ignored',
     });
@@ -228,7 +237,20 @@ describe('commercial Phase 2 Stripe payment foundation', () => {
       amountMinor: 29900,
       currency: 'GBP',
       checkoutGeneration: 1,
+      termsVersion: 'pending-commercial-approval',
+      privacyVersion: 'pending-commercial-approval',
+      legalAcceptedAt: expect.any(Date),
     }));
+  });
+
+  it('requires affirmative acceptance of the exact server-owned legal versions', async () => {
+    const created = await purchases.createPurchaseRequest(purchaseRequest());
+    await expect(checkout.createFromOpaqueReference(created.purchaseReference, {
+      ...LEGAL_ACCEPTANCE,
+      acceptedTermsVersion: 'obsolete-terms',
+      customerEmail: 'buyer@example.test',
+    })).rejects.toMatchObject({ code: ERROR_CODES.COMMERCIAL_CHECKOUT_NOT_ALLOWED });
+    expect(provider.createCalls).toHaveLength(0);
   });
 
   it('replaces an expired Checkout safely while retaining one active session', async () => {
@@ -240,11 +262,13 @@ describe('commercial Phase 2 Stripe payment foundation', () => {
     });
     provider.failCreate = true;
     await expect(checkout.createFromOpaqueReference(created.purchaseReference, {
+      ...LEGAL_ACCEPTANCE,
       customerEmail: 'buyer@example.test',
     })).rejects.toMatchObject({ code: ERROR_CODES.COMMERCIAL_CHECKOUT_FAILED });
     expect(await context.prisma.commercialCheckoutSession.count({ where: { isActive: true } })).toBe(1);
     provider.failCreate = false;
     const replacement = await checkout.createFromOpaqueReference(created.purchaseReference, {
+      ...LEGAL_ACCEPTANCE,
       customerEmail: 'buyer@example.test',
     });
     expect(replacement.providerSessionId).not.toBe(result.providerSessionId);
@@ -256,6 +280,7 @@ describe('commercial Phase 2 Stripe payment foundation', () => {
     const created = await purchases.createPurchaseRequest(purchaseRequest());
     provider.failCreate = true;
     await expect(checkout.createFromOpaqueReference(created.purchaseReference, {
+      ...LEGAL_ACCEPTANCE,
       customerEmail: 'buyer@example.test',
     })).rejects.toMatchObject({ code: ERROR_CODES.COMMERCIAL_CHECKOUT_FAILED });
     expect(await context.prisma.commercialCheckoutSession.count()).toBe(0);
@@ -267,10 +292,12 @@ describe('commercial Phase 2 Stripe payment foundation', () => {
     const transaction = jest.spyOn(context.prisma, '$transaction');
     transaction.mockRejectedValueOnce(new Error('injected commit failure'));
     await expect(checkout.createFromOpaqueReference(created.purchaseReference, {
+      ...LEGAL_ACCEPTANCE,
       customerEmail: 'buyer@example.test',
     })).rejects.toThrow('injected commit failure');
     transaction.mockRestore();
     const retry = await checkout.createFromOpaqueReference(created.purchaseReference, {
+      ...LEGAL_ACCEPTANCE,
       customerEmail: 'buyer@example.test',
     });
     expect(retry.providerSessionId).toBe('cs_test_1');
@@ -282,6 +309,7 @@ describe('commercial Phase 2 Stripe payment foundation', () => {
   it('rejects expired requests and invalid product/plan input before contacting Stripe', async () => {
     const expired = await purchases.createPurchaseRequest(purchaseRequest(), new Date('2026-01-01T00:00:00Z'));
     await expect(checkout.createFromOpaqueReference(expired.purchaseReference, {
+      ...LEGAL_ACCEPTANCE,
       customerEmail: 'buyer@example.test',
     }, new Date('2026-01-01T01:00:00Z'))).rejects.toMatchObject({
       code: ERROR_CODES.COMMERCIAL_REFERENCE_EXPIRED,

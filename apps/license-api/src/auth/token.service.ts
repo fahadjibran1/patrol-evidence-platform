@@ -10,12 +10,14 @@ interface AccessTokenPayload {
   role: AdminRole;
   displayName: string;
   type: 'access';
+  mfaVerified: boolean;
 }
 
 interface RefreshTokenPayload {
   sub: string;
   type: 'refresh';
   jti: string;
+  mfaVerified: boolean;
 }
 
 @Injectable()
@@ -25,21 +27,22 @@ export class TokenService {
     private readonly configService: ConfigService,
   ) {}
 
-  signAccess(admin: { id: string; email: string; role: AdminRole; displayName: string }): string {
+  signAccess(admin: { id: string; email: string; role: AdminRole; displayName: string }, mfaVerified = false): string {
     const payload: AccessTokenPayload = {
       sub: admin.id,
       email: admin.email,
       role: admin.role,
       displayName: admin.displayName,
       type: 'access',
+      mfaVerified,
     };
     return this.jwtService.sign(payload, {
       expiresIn: this.configService.get<string>('JWT_ACCESS_EXPIRES_IN') ?? '15m',
     });
   }
 
-  signRefresh(adminId: string, jti: string): string {
-    const payload: RefreshTokenPayload = { sub: adminId, type: 'refresh', jti };
+  signRefresh(adminId: string, jti: string, mfaVerified = false): string {
+    const payload: RefreshTokenPayload = { sub: adminId, type: 'refresh', jti, mfaVerified };
     return this.jwtService.sign(payload, {
       expiresIn: this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') ?? '7d',
     });
@@ -55,6 +58,7 @@ export class TokenService {
       email: payload.email,
       role: payload.role,
       displayName: payload.displayName,
+      mfaVerified: payload.mfaVerified === true,
     };
   }
 

@@ -19,6 +19,12 @@ import type { CommercialPaymentProvider, CreateCommercialCheckoutCommand, Commer
 import { parseSignedCommercialLicenceJson, verifyCommercialLicence } from '@patrol/license-core';
 import { closeIntegrationContext, createIntegrationContext, resetIntegrationDatabase, type IntegrationContext } from './integration-harness';
 
+const LEGAL_ACCEPTANCE = {
+  legalAccepted: true as const,
+  acceptedTermsVersion: 'pending-commercial-approval',
+  acceptedPrivacyVersion: 'pending-commercial-approval',
+};
+
 class Phase3Provider implements CommercialPaymentProvider {
   readonly name = 'STRIPE' as const;
   sessions = new Map<string, CommercialCheckoutSnapshot>();
@@ -110,7 +116,7 @@ describe('commercial Phase 3 operator approval and isolated issuer', () => {
     }));
     const checkout = new CommercialCheckoutService(context.prisma, context.module.get(AuditService), config, provider);
     const request = await purchases.createPurchaseRequest({ requestId: randomUUID(), schemaVersion: 2, product: 'Patrol Evidence Platform', plan: 'annual', installationId: randomUUID(), machineFingerprint: 'c'.repeat(64), companyName: 'Phase Three Patrols Ltd', appVersion: '1.0.3', buildId: 'phase3-test', clientNonce: `nonce_${randomUUID().replace(/-/g, '')}`, ...overrides });
-    const session = await checkout.createFromOpaqueReference(request.purchaseReference, { customerEmail: 'buyer@phase3.test', contactName: 'Test Buyer' });
+    const session = await checkout.createFromOpaqueReference(request.purchaseReference, { ...LEGAL_ACCEPTANCE, customerEmail: 'buyer@phase3.test', contactName: 'Test Buyer' });
     const paymentId = `pi_test_${randomUUID()}`;
     provider.sessions.set(session.providerSessionId, { ...provider.sessions.get(session.providerSessionId)!, status: 'complete', paymentStatus: 'paid', paymentIntentId: paymentId });
     provider.payments.set(paymentId, { paymentIntentId: paymentId, livemode: false, status: 'succeeded', amount: 29900, amountReceived: 29900, amountRefunded: 0, currency: 'GBP', providerCustomerId: 'cus_phase3', publicOrderId: request.publicOrderId });

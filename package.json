@@ -115,7 +115,7 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "sharp": "^0.35.4",
-    "typeorm": "^0.3.20",
+    "typeorm": "^0.3.31",
     "whatsapp-web.js": "1.34.7"
   },
   "devDependencies": {
@@ -150,7 +150,8 @@
   },
   "overrides": {
     "@nestjs/platform-express": {
-      "multer": "2.3.0"
+      "multer": "2.4.0",
+      "body-parser": "1.20.8"
     },
     "express": {
       "path-to-regexp": "0.1.13"
@@ -161,8 +162,12 @@
     "typeorm": {
       "glob": "10.5.0"
     },
+    "lodash": "4.18.1",
+    "qs": "6.16.0",
+    "fflate": "0.8.3",
+    "body-parser": "1.20.8",
     "minimatch@9.0.9": {
-      "brace-expansion": "2.1.4"
+      "brace-expansion": "2.1.7"
     }
   },
   "windowsBuild": "2026.9.25.835"

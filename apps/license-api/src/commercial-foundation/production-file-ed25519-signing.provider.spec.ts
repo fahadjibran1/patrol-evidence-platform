@@ -73,6 +73,17 @@ describe('production Ed25519 signing provider and preflight', () => {
     expect(verify(null, payload, await provider.verificationKey(), signature)).toBe(true);
   });
 
+  it('permits only the explicitly read-only disabled-mode preflight without enabling issuance', async () => {
+    const { keyPath, provider } = await fixture('ed25519', {
+      COMMERCIAL_MODE: 'DISABLED',
+      COMMERCIAL_STRIPE_ENABLED: 'false',
+      PATROLSAFE_COMMERCIAL_STAGING: 'false',
+    });
+    await expect(provider.preflight(keyPath)).resolves.toMatchObject({ modeValid: false, passed: false });
+    await expect(provider.preflight(keyPath, { allowDisabledProductionPreflight: true }))
+      .resolves.toMatchObject({ modeValid: true, passed: true });
+  });
+
   it.each([
     ['wrong provider', { COMMERCIAL_PRODUCTION_SIGNING_PROVIDER: 'test-file-ed25519' }, 'providerValid'],
     ['wrong key ID', { COMMERCIAL_PRODUCTION_SIGNING_KEY_ID: 'test-phase6-online-key' }, 'keyIdValid'],

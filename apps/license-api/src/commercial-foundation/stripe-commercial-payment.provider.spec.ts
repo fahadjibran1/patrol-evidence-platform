@@ -218,6 +218,59 @@ describe('StripeCommercialPaymentProvider webhook boundary', () => {
   });
 });
 
+describe('StripeCommercialPaymentProvider production read-only preflight', () => {
+  it('retrieves only the live Price/Product and TaxRate and never creates Checkout', async () => {
+    const values: Record<string, string> = {
+      NODE_ENV: 'production',
+      COMMERCIAL_MODE: 'DISABLED',
+      COMMERCIAL_STRIPE_ENABLED: 'false',
+      PATROLSAFE_COMMERCIAL_STAGING: 'false',
+      COMMERCIAL_STRIPE_SECRET_KEY: 'rk_live_read_only_not_real',
+      COMMERCIAL_STRIPE_WEBHOOK_SECRET: 'whsec_read_only_not_real',
+      COMMERCIAL_STRIPE_PRODUCT_ID: 'prod_live_read_only',
+      COMMERCIAL_STRIPE_PRICE_ID: 'price_live_read_only',
+      COMMERCIAL_STRIPE_PRICE_LOOKUP_KEY: 'patrolsafe_annual_gbp_v1',
+      COMMERCIAL_STRIPE_PRICE_TAX_BEHAVIOR: 'inclusive',
+      COMMERCIAL_STRIPE_API_VERSION: '2026-08-26.dahlia',
+      COMMERCIAL_UK_ONLY_ENABLED: 'true',
+      COMMERCIAL_VAT_CONFIGURATION_APPROVED: 'true',
+      COMMERCIAL_STRIPE_INVOICE_CREATION_ENABLED: 'true',
+      COMMERCIAL_STRIPE_TAX_RATE_ID: 'txr_live_read_only',
+    };
+    const config = new CommercialConfigService({
+      get: (key: string) => values[key],
+    } as ConfigService);
+    const provider = new StripeCommercialPaymentProvider(config);
+    const createCheckout = jest.fn();
+    const retrievePrice = jest.fn().mockResolvedValue({
+      id: 'price_live_read_only', active: true, livemode: true, type: 'one_time', recurring: null,
+      currency: 'gbp', unit_amount: 29900, tax_behavior: 'inclusive',
+      lookup_key: 'patrolsafe_annual_gbp_v1',
+      product: { id: 'prod_live_read_only', active: true, name: 'PatrolSafe Annual Licence' },
+    });
+    const retrieveTaxRate = jest.fn().mockResolvedValue({
+      id: 'txr_live_read_only', livemode: true, active: true, inclusive: true,
+      percentage: 20, country: 'GB',
+    });
+    (provider as unknown as { preflightClient: unknown }).preflightClient = {
+      prices: { retrieve: retrievePrice },
+      taxRates: { retrieve: retrieveTaxRate },
+      checkout: { sessions: { create: createCheckout } },
+    };
+
+    await expect(provider.productionReadOnlyPreflight()).resolves.toEqual(expect.objectContaining({
+      credentialAccepted: true,
+      priceValid: true,
+      productValid: true,
+      taxRateValid: true,
+      passed: true,
+    }));
+    expect(retrievePrice).toHaveBeenCalledWith('price_live_read_only', { expand: ['product'] });
+    expect(retrieveTaxRate).toHaveBeenCalledWith('txr_live_read_only');
+    expect(createCheckout).not.toHaveBeenCalled();
+  });
+});
+
 describe('StripeCommercialPaymentProvider Dahlia snapshot events', () => {
   const secret = 'whsec_dahlia_deterministic_test_secret';
   const config = new CommercialConfigService(new ConfigService({

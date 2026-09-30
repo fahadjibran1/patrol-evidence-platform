@@ -5,6 +5,7 @@ export interface AuthenticatedAdmin {
   email: string;
   role: AdminRole;
   displayName: string;
+  mfaVerified?: boolean;
 }
 
 export interface AuthTokens {

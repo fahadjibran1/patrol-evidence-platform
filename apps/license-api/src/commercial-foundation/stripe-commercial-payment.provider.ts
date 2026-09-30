@@ -16,11 +16,57 @@ export class StripeCommercialPaymentProvider implements CommercialPaymentProvide
   readonly name = 'STRIPE' as const;
   private readonly logger = new Logger(StripeCommercialPaymentProvider.name);
   private client: Stripe | null = null;
+  private preflightClient: Stripe | null = null;
 
   constructor(private readonly commercialConfig: CommercialConfigService) {}
 
   getMode(): 'TEST' | 'LIVE' | 'DISABLED' {
     return this.commercialConfig.getProviderMode();
+  }
+
+  async productionReadOnlyPreflight(): Promise<Readonly<{
+    credentialAccepted: boolean;
+    priceId: string;
+    productId: string;
+    priceValid: boolean;
+    productValid: boolean;
+    taxRateId: string;
+    taxRateValid: boolean;
+    apiVersion: string;
+    passed: boolean;
+  }>> {
+    const config = this.commercialConfig.getProductionReadOnlyPreflightStripeConfig();
+    const stripe = this.preflightClient ?? new Stripe(config.secretKey!, {
+      apiVersion: config.apiVersion as Stripe.LatestApiVersion,
+      typescript: true,
+    });
+    const price = await stripe.prices.retrieve(config.priceId!, { expand: ['product'] });
+    this.assertPriceBinding(price, config);
+    const taxRate = await stripe.taxRates.retrieve(config.taxRateId!);
+    const taxRateValid = taxRate.livemode
+      && taxRate.active
+      && taxRate.inclusive
+      && taxRate.percentage === 20
+      && taxRate.country?.toUpperCase() === 'GB';
+    if (!taxRateValid) {
+      throw new ApiException(
+        ERROR_CODES.COMMERCIAL_STRIPE_NOT_CONFIGURED,
+        'Configured production Stripe TaxRate does not match the approved UK inclusive VAT policy.',
+        503,
+      );
+    }
+    const product = typeof price.product === 'string' || 'deleted' in price.product ? null : price.product;
+    return Object.freeze({
+      credentialAccepted: true,
+      priceId: price.id,
+      productId: product?.id ?? 'UNAVAILABLE',
+      priceValid: true,
+      productValid: Boolean(product?.active && product.name === this.commercialConfig.getPolicy().displayName),
+      taxRateId: taxRate.id,
+      taxRateValid,
+      apiVersion: config.apiVersion,
+      passed: true,
+    });
   }
 
   async createCheckout(command: Readonly<CreateCommercialCheckoutCommand>): Promise<CommercialCheckoutSnapshot> {
@@ -40,33 +86,7 @@ export class StripeCommercialPaymentProvider implements CommercialPaymentProvide
     }
 
     const price = await stripe.prices.retrieve(config.priceId!, { expand: ['product'] });
-    const productId = typeof price.product === 'string' ? price.product : price.product.id;
-    const productActive = typeof price.product !== 'string'
-      && !('deleted' in price.product)
-      && price.product.active;
-    const productName = typeof price.product !== 'string' && !('deleted' in price.product)
-      ? price.product.name
-      : null;
-    if (
-      price.livemode !== config.expectedLivemode
-      || !price.active
-      || !productActive
-      || price.type !== 'one_time'
-      || price.recurring !== null
-      || price.currency.toUpperCase() !== policy.currency
-      || price.unit_amount !== policy.amountMinor
-      || price.tax_behavior !== config.priceTaxBehavior
-      || price.lookup_key !== config.priceLookupKey
-      || productId !== config.productId
-      || productName !== policy.displayName
-    ) {
-      throw new ApiException(
-        ERROR_CODES.COMMERCIAL_STRIPE_NOT_CONFIGURED,
-        'Configured Stripe Product/Price does not match the server-owned commercial policy or explicit mode.',
-        503,
-      );
-    }
-
+    this.assertPriceBinding(price, config);
     const lineItem: Stripe.Checkout.SessionCreateParams.LineItem = {
       quantity: 1,
       price: config.priceId!,
@@ -141,6 +161,36 @@ export class StripeCommercialPaymentProvider implements CommercialPaymentProvide
       });
     }
     return this.client;
+  }
+
+  private assertPriceBinding(price: Stripe.Price, config: ReturnType<CommercialConfigService['getStripeConfig']>): void {
+    const policy = this.commercialConfig.getPolicy();
+    const productId = typeof price.product === 'string' ? price.product : price.product.id;
+    const productActive = typeof price.product !== 'string'
+      && !('deleted' in price.product)
+      && price.product.active;
+    const productName = typeof price.product !== 'string' && !('deleted' in price.product)
+      ? price.product.name
+      : null;
+    if (
+      price.livemode !== config.expectedLivemode
+      || !price.active
+      || !productActive
+      || price.type !== 'one_time'
+      || price.recurring !== null
+      || price.currency.toUpperCase() !== policy.currency
+      || price.unit_amount !== policy.amountMinor
+      || price.tax_behavior !== config.priceTaxBehavior
+      || price.lookup_key !== config.priceLookupKey
+      || productId !== config.productId
+      || productName !== policy.displayName
+    ) {
+      throw new ApiException(
+        ERROR_CODES.COMMERCIAL_STRIPE_NOT_CONFIGURED,
+        'Configured Stripe Product/Price does not match the server-owned commercial policy or explicit mode.',
+        503,
+      );
+    }
   }
 
   private mapCheckout(session: Stripe.Checkout.Session): CommercialCheckoutSnapshot {

@@ -6,6 +6,8 @@ import { AuthController } from './auth.controller';
 import { TokenService } from './token.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
+import { AdminMfaCryptoService } from './admin-mfa-crypto.service';
+import { AdminMfaService } from './admin-mfa.service';
 
 @Global()
 @Module({
@@ -19,7 +21,7 @@ import { RolesGuard } from './guards/roles.guard';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, TokenService, JwtAuthGuard, RolesGuard],
-  exports: [AuthService, TokenService, JwtAuthGuard, RolesGuard],
+  providers: [AuthService, TokenService, AdminMfaCryptoService, AdminMfaService, JwtAuthGuard, RolesGuard],
+  exports: [AuthService, TokenService, AdminMfaService, JwtAuthGuard, RolesGuard],
 })
 export class AuthModule {}

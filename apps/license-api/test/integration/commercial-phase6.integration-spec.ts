@@ -27,6 +27,12 @@ import type { CommercialDeliveryProvider, CommercialDeliveryProviderEvent, SendC
 import type { CommercialCheckoutSnapshot, CommercialPaymentProvider, CommercialPaymentSnapshot, CreateCommercialCheckoutCommand, VerifiedCommercialProviderEvent } from '@/commercial-foundation/commercial-payment-provider.port';
 import { closeIntegrationContext, createIntegrationContext, resetIntegrationDatabase, type IntegrationContext } from './integration-harness';
 
+const LEGAL_ACCEPTANCE = {
+  legalAccepted: true as const,
+  acceptedTermsVersion: 'pending-commercial-approval',
+  acceptedPrivacyVersion: 'pending-commercial-approval',
+};
+
 class StagingStripeHarness implements CommercialPaymentProvider {
   readonly name = 'STRIPE' as const;
   readonly sessions = new Map<string, CommercialCheckoutSnapshot>();
@@ -132,7 +138,7 @@ describe('commercial Phase 6 deterministic end-to-end staging journey', () => {
   async function paidOrder(input: { previousLicenceId?: string; machine?: string; company?: string } = {}) {
     const machineFingerprint = input.machine ?? '6'.repeat(64);
     const created = await purchases.createPurchaseRequest({ requestId: randomUUID(), schemaVersion: 2, product: 'Patrol Evidence Platform', plan: 'annual', installationId: randomUUID(), machineFingerprint, companyName: input.company ?? 'Phase Six Patrols Ltd', appVersion: '1.0.3', buildId: 'phase6-local-e2e', clientNonce: `nonce_${randomUUID().replace(/-/g, '')}`, previousLicenceId: input.previousLicenceId });
-    const session = await checkout.createFromOpaqueReference(created.purchaseReference, { customerEmail: 'product-owner@phase6.test', contactName: 'Phase 6 Product Owner' });
+    const session = await checkout.createFromOpaqueReference(created.purchaseReference, { ...LEGAL_ACCEPTANCE, customerEmail: 'product-owner@phase6.test', contactName: 'Phase 6 Product Owner' });
     stripe.settle(session.providerSessionId, created.publicOrderId);
     await webhooks.ingest(Buffer.from('{"phase6":"paid"}'), 'phase6-valid-test-signature', randomUUID());
     for (let attempt = 0; attempt < 5; attempt += 1) {

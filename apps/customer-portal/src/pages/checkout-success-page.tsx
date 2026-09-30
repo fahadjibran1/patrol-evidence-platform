@@ -87,7 +87,7 @@ export function CheckoutSuccessPage(): JSX.Element {
     <div className="page-stack">
       <PageHeader
         title="Checkout"
-        subtitle="Payment confirmation is processed by our billing system after Stripe confirms payment."
+        subtitle="We're confirming your payment securely. This may take a moment."
       />
 
       {!sessionId ? (
@@ -100,15 +100,15 @@ export function CheckoutSuccessPage(): JSX.Element {
 
         {status && !confirmed ? (
           <InfoBanner
-            title="Payment confirmation is being processed"
-            message={`We are waiting for webhook reconciliation (${polls}/${MAX_POLLS}). Do not treat the Stripe redirect as proof of payment.`}
+            title="Confirming your payment"
+            message={`Your payment confirmation is still being processed (${polls}/${MAX_POLLS}). You may safely leave this page and check Billing again shortly.`}
           />
         ) : null}
 
         {status && confirmed ? (
           <InfoBanner
-            title="Subscription confirmed"
-            message="Internal billing records show payment and subscription updates. You can download your licence from the Licences page once it is issued."
+            title="Payment confirmed"
+            message="Your payment has been confirmed. You can view your billing details here and download your licence from the Licences page when it is ready."
           />
         ) : null}
 

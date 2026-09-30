@@ -52,6 +52,10 @@ services:
         sync: false
       - key: JWT_SECRET
         generateValue: true
+      - key: ADMIN_MFA_REQUIRED
+        value: "true"
+      - key: ADMIN_MFA_ENCRYPTION_KEY
+        sync: false
       - key: LICENCE_STORAGE_ENCRYPTION_KEY
         sync: false
       - key: LICENSE_LEGACY_ISSUANCE_ENABLED
@@ -83,6 +87,12 @@ services:
       - key: COMMERCIAL_TERMS_VERSION
         sync: false
       - key: COMMERCIAL_PRIVACY_VERSION
+        sync: false
+      - key: COMMERCIAL_TERMS_URL
+        sync: false
+      - key: COMMERCIAL_PRIVACY_URL
+        sync: false
+      - key: COMMERCIAL_SUPPORT_URL
         sync: false
       - key: COMMERCIAL_DELIVERY_TOKEN_SECRET
         generateValue: true

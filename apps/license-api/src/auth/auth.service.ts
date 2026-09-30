@@ -10,6 +10,7 @@ import { MetricsService } from '@/metrics/metrics.service';
 import { TokenService } from './token.service';
 import { LoginDto } from './dto/auth.dto';
 import { AuthenticatedAdmin, AuthTokens } from './interfaces/authenticated-admin.interface';
+import { AdminMfaService, type MfaRequestMeta } from './admin-mfa.service';
 
 interface RateLimitEntry {
   count: number;
@@ -27,13 +28,17 @@ export class AuthService {
     private readonly tokenService: TokenService,
     private readonly auditService: AuditService,
     private readonly configService: ConfigService,
+    private readonly mfaService: AdminMfaService,
     @Optional() private readonly metricsService?: MetricsService,
   ) {}
 
   async login(
     dto: LoginDto,
     meta?: { ipAddress?: string; userAgent?: string },
-  ): Promise<{ admin: AuthenticatedAdmin; tokens: AuthTokens }> {
+  ): Promise<
+    | { admin: AuthenticatedAdmin; tokens: AuthTokens }
+    | { mfaRequired: true; enrollmentRequired: boolean; challengeToken: string; expiresAt: string }
+  > {
     const key = `${meta?.ipAddress ?? 'unknown'}:${dto.email.trim().toLowerCase()}`;
     this.assertNotRateLimited(key);
 
@@ -59,12 +64,15 @@ export class AuthService {
     }
 
     this.loginAttempts.delete(key);
+    const mfaChallenge = await this.mfaService.beginLogin(admin, meta);
+    if (mfaChallenge) return mfaChallenge;
+
     await this.prisma.admin.update({
       where: { id: admin.id },
       data: { lastLoginAt: new Date() },
     });
 
-    const tokens = await this.issueTokens(admin.id);
+    const tokens = await this.issueTokens(admin.id, false);
     await this.auditService.record({
       actorAdminId: admin.id,
       action: 'auth.login_success',
@@ -83,6 +91,24 @@ export class AuthService {
       },
       tokens,
     };
+  }
+
+  async startMfaEnrollment(challengeToken: string, meta?: MfaRequestMeta) {
+    return this.mfaService.startEnrollment(challengeToken, meta);
+  }
+
+  async confirmMfaEnrollment(challengeToken: string, code: string, meta?: MfaRequestMeta) {
+    const result = await this.mfaService.confirmEnrollment(challengeToken, code, meta);
+    return { ...(await this.completeMfaLogin(result.adminId, meta)), recoveryCodes: result.recoveryCodes };
+  }
+
+  async verifyMfaLogin(
+    challengeToken: string,
+    input: { code?: string; recoveryCode?: string },
+    meta?: MfaRequestMeta,
+  ) {
+    const result = await this.mfaService.verifyLogin(challengeToken, input, meta);
+    return { ...(await this.completeMfaLogin(result.adminId, meta)), recoveryCodeUsed: result.usedRecoveryCode };
   }
 
   async logout(adminId: string, refreshToken?: string, meta?: { ipAddress?: string; userAgent?: string }): Promise<void> {
@@ -116,8 +142,9 @@ export class AuthService {
         throw new ApiException(ERROR_CODES.AUTH_ACCOUNT_INACTIVE, 'Administrator account is inactive', 403);
       }
 
+      this.mfaService.assertSessionAllowed(admin, payload.mfaVerified);
       await this.prisma.refreshToken.delete({ where: { id: stored.id } });
-      return this.issueTokens(admin.id);
+      return this.issueTokens(admin.id, payload.mfaVerified === true);
     } catch (error) {
       if (error instanceof ApiException) {
         throw error;
@@ -133,6 +160,7 @@ export class AuthService {
       if (!record?.isActive) {
         throw new ApiException(ERROR_CODES.AUTH_ACCOUNT_INACTIVE, 'Administrator account is inactive', 403);
       }
+      this.mfaService.assertSessionAllowed(record, admin.mfaVerified);
       return admin;
     } catch (error) {
       if (error instanceof ApiException) {
@@ -152,6 +180,7 @@ export class AuthService {
       email: admin.email,
       role: admin.role,
       displayName: admin.displayName,
+      mfaVerified: this.mfaService.isRequired() || admin.mfaEnabled,
     };
   }
 
@@ -167,10 +196,30 @@ export class AuthService {
     return bcrypt.hash(password, 12);
   }
 
-  private async issueTokens(adminId: string): Promise<AuthTokens> {
+  private async completeMfaLogin(adminId: string, meta?: MfaRequestMeta) {
+    const admin = await this.prisma.admin.update({
+      where: { id: adminId },
+      data: { lastLoginAt: new Date() },
+    });
+    const tokens = await this.issueTokens(admin.id, true);
+    await this.auditService.record({
+      actorAdminId: admin.id,
+      action: 'auth.login_success',
+      entityType: 'Admin',
+      entityId: admin.id,
+      metadata: { mfaVerified: true },
+      ...meta,
+    });
+    return {
+      admin: { sub: admin.id, email: admin.email, role: admin.role, displayName: admin.displayName, mfaVerified: true },
+      tokens,
+    };
+  }
+
+  private async issueTokens(adminId: string, mfaVerified: boolean): Promise<AuthTokens> {
     const admin = await this.prisma.admin.findUniqueOrThrow({ where: { id: adminId } });
     const jti = randomUUID();
-    const refreshToken = this.tokenService.signRefresh(adminId, jti);
+    const refreshToken = this.tokenService.signRefresh(adminId, jti, mfaVerified);
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
     await this.prisma.refreshToken.create({
@@ -182,7 +231,7 @@ export class AuthService {
     });
 
     return {
-      accessToken: this.tokenService.signAccess(admin),
+      accessToken: this.tokenService.signAccess(admin, mfaVerified),
       refreshToken,
       expiresIn: this.configService.get<string>('JWT_ACCESS_EXPIRES_IN') ?? '15m',
     };

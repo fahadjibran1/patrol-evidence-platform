@@ -8,6 +8,7 @@
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main.js",
     "start:worker": "node dist/worker.main.js",
+    "commercial:preflight": "node dist/commercial-preflight.main.js",
     "db:backup": "node scripts/db-backup.js",
     "db:restore": "node scripts/db-restore.js",
     "db:health": "node scripts/db-health.js",

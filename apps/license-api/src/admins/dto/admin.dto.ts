@@ -37,3 +37,9 @@ export class ResetAdminPasswordDto {
   @MinLength(8)
   password!: string;
 }
+
+export class ResetAdminMfaDto {
+  @IsString()
+  @MinLength(8)
+  password!: string;
+}

@@ -33,6 +33,9 @@ export interface CommercialPolicy {
   taxPolicy: string;
   termsVersion: string;
   privacyVersion: string;
+  termsUrl: string | null;
+  privacyUrl: string | null;
+  supportUrl: string | null;
   billingAddressCollection: 'required';
   taxIdCollectionEnabled: false;
   automaticTaxEnabled: false;
@@ -78,6 +81,9 @@ export class CommercialConfigService {
         : COMMERCIAL_TAX_POLICY,
       termsVersion: this.config.get<string>('COMMERCIAL_TERMS_VERSION') ?? 'pending-commercial-approval',
       privacyVersion: this.config.get<string>('COMMERCIAL_PRIVACY_VERSION') ?? 'pending-commercial-approval',
+      termsUrl: this.config.get<string>('COMMERCIAL_TERMS_URL')?.trim() || null,
+      privacyUrl: this.config.get<string>('COMMERCIAL_PRIVACY_URL')?.trim() || null,
+      supportUrl: this.config.get<string>('COMMERCIAL_SUPPORT_URL')?.trim() || null,
       billingAddressCollection: 'required',
       taxIdCollectionEnabled: false,
       automaticTaxEnabled: false,
@@ -187,6 +193,48 @@ export class CommercialConfigService {
       }
     }
     return stripe;
+  }
+
+  getProductionReadOnlyPreflightStripeConfig(): CommercialStripeConfig {
+    if (
+      this.config.get<string>('NODE_ENV') !== 'production'
+      || this.getConfiguredMode() !== 'DISABLED'
+      || this.parseBool(this.config.get<string>('COMMERCIAL_STRIPE_ENABLED'))
+    ) {
+      throw new ApiException(
+        ERROR_CODES.COMMERCIAL_STRIPE_NOT_CONFIGURED,
+        'Read-only production preflight requires production with commercial payments explicitly disabled.',
+        503,
+      );
+    }
+    const disabled = this.getStripeConfig();
+    const candidate: CommercialStripeConfig = {
+      ...disabled,
+      enabled: true,
+      commercialMode: 'PRODUCTION_LIVE',
+      providerMode: 'LIVE',
+      expectedLivemode: true,
+    };
+    if (
+      !/^rk_live_/.test(candidate.secretKey ?? '')
+      || !candidate.webhookSecret?.startsWith('whsec_')
+      || !candidate.productId?.startsWith('prod_')
+      || !candidate.priceId?.startsWith('price_')
+      || candidate.priceLookupKey !== 'patrolsafe_annual_gbp_v1'
+      || candidate.priceTaxBehavior !== 'inclusive'
+      || candidate.apiVersion !== COMMERCIAL_STRIPE_PRODUCTION_API_VERSION
+      || !candidate.ukBusinessOnly
+      || !this.parseBool(this.config.get<string>('COMMERCIAL_VAT_CONFIGURATION_APPROVED'))
+      || !candidate.invoiceCreationEnabled
+      || !candidate.taxRateId?.startsWith('txr_')
+    ) {
+      throw new ApiException(
+        ERROR_CODES.COMMERCIAL_STRIPE_NOT_CONFIGURED,
+        'Production Stripe preflight configuration is incomplete.',
+        503,
+      );
+    }
+    return candidate;
   }
 
   /** Compatibility assertion retained for the staging-only Phase 6 contract. */

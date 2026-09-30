@@ -313,6 +313,10 @@ model Admin {
   role         AdminRole @default(ADMIN)
   isActive     Boolean   @default(true)
   lastLoginAt  DateTime?
+  mfaEnabled   Boolean   @default(false)
+  mfaSecretEnc String?
+  mfaEnrolledAt DateTime?
+  mfaLastTotpCounter Int?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
@@ -329,6 +333,42 @@ model Admin {
   billingCreditsIssued    BillingCredit[]   @relation("BillingCreditIssuedBy")
   commercialStepUps       CommercialOperatorStepUp[]
   commercialApprovals     CommercialLicenceIssuance[] @relation("CommercialIssuanceApprovedBy")
+  mfaChallenges           AdminMfaChallenge[]
+  mfaRecoveryCodes        AdminMfaRecoveryCode[]
+}
+
+/// Short-lived, single-purpose MFA login or enrolment challenge. Only a digest
+/// of the bearer challenge is persisted; a pending TOTP secret is encrypted.
+model AdminMfaChallenge {
+  id                String   @id @default(uuid())
+  adminId           String
+  tokenHash         String   @unique
+  purpose           String
+  pendingSecretEnc  String?
+  secretPresentedAt DateTime?
+  attemptCount      Int      @default(0)
+  createdAt         DateTime @default(now())
+  expiresAt         DateTime
+  consumedAt        DateTime?
+  revokedAt         DateTime?
+
+  admin Admin @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([adminId, purpose, expiresAt])
+}
+
+/// One-time MFA recovery material. Recovery codes are stored only as keyed
+/// one-way digests and cannot be recovered from the database.
+model AdminMfaRecoveryCode {
+  id        String   @id @default(uuid())
+  adminId   String
+  codeHash  String   @unique
+  createdAt DateTime @default(now())
+  usedAt    DateTime?
+
+  admin Admin @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([adminId, usedAt])
 }
 
 /// One-time recent-password-verification credential for commercial approval actions.
@@ -1064,6 +1104,7 @@ model CommercialOrder {
   taxPolicy                 String?
   termsVersion              String?
   privacyVersion            String?
+  legalAcceptedAt           DateTime?
   providerCheckoutSessionId String?                 @unique
   providerPaymentIntentId   String?                 @unique
   providerCustomerId        String?

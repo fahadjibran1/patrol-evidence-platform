@@ -12,6 +12,11 @@ export interface CommercialPurchasePreview {
   currency: 'GBP';
   maxDevices: 1;
   taxPolicy: string;
+  termsVersion: string;
+  privacyVersion: string;
+  termsUrl: string | null;
+  privacyUrl: string | null;
+  supportUrl: string | null;
   expiresAt: string;
 }
 
@@ -88,6 +93,9 @@ export async function createCommercialCheckout(input: {
   reference: string;
   customerEmail: string;
   contactName?: string;
+  legalAccepted: true;
+  acceptedTermsVersion: string;
+  acceptedPrivacyVersion: string;
 }): Promise<CommercialCheckoutResponse> {
   const response = await fetch(`${getApiBaseUrl()}/commercial/checkout`, {
     method: 'POST',
@@ -95,7 +103,13 @@ export async function createCommercialCheckout(input: {
       Authorization: `Bearer ${validateOpaqueReference(input.reference)}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ customerEmail: input.customerEmail, contactName: input.contactName || undefined }),
+    body: JSON.stringify({
+      customerEmail: input.customerEmail,
+      contactName: input.contactName || undefined,
+      legalAccepted: input.legalAccepted,
+      acceptedTermsVersion: input.acceptedTermsVersion,
+      acceptedPrivacyVersion: input.acceptedPrivacyVersion,
+    }),
     redirect: 'error',
   });
   const result = await readJson<CommercialCheckoutResponse>(response);

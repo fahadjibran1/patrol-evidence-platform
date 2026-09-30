@@ -14,7 +14,7 @@ describe('production dependency security policy', () => {
 
   it('overrides Nest platform-express to the reviewed multer release', () => {
     const platformRequire = createRequire(require.resolve('@nestjs/platform-express/package.json'));
-    expect(packageVersion(platformRequire.resolve('multer/package.json'))).toBe('2.3.0');
+    expect(packageVersion(platformRequire.resolve('multer/package.json'))).toBe('2.4.0');
   });
 
   it('overrides only the Express legacy route matcher to its patched release', () => {

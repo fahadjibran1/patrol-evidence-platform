@@ -57,6 +57,16 @@ class EnvVars {
 
   @IsOptional()
   @IsString()
+  @Matches(/^(?:true|false)$/i)
+  ADMIN_MFA_REQUIRED?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^[0-9a-fA-F]{64}$/)
+  ADMIN_MFA_ENCRYPTION_KEY?: string;
+
+  @IsOptional()
+  @IsString()
   CUSTOMER_JWT_ACCESS_EXPIRES_IN?: string;
 
   @IsOptional()
@@ -252,6 +262,18 @@ class EnvVars {
 
   @IsOptional()
   @IsString()
+  COMMERCIAL_TERMS_URL?: string;
+
+  @IsOptional()
+  @IsString()
+  COMMERCIAL_PRIVACY_URL?: string;
+
+  @IsOptional()
+  @IsString()
+  COMMERCIAL_SUPPORT_URL?: string;
+
+  @IsOptional()
+  @IsString()
   COMMERCIAL_OUTBOX_WORKER_ENABLED?: string;
 
   @IsOptional()
@@ -354,6 +376,9 @@ function validateProductionCommercialContract(config: EnvVars): void {
     || !config.COMMERCIAL_PRIVACY_VERSION || /^pending/i.test(config.COMMERCIAL_PRIVACY_VERSION)) {
     throw new Error('[validate-env] Approved production Terms and Privacy versions are required.');
   }
+  assertProductionPublicUrl(config.COMMERCIAL_TERMS_URL, 'COMMERCIAL_TERMS_URL');
+  assertProductionPublicUrl(config.COMMERCIAL_PRIVACY_URL, 'COMMERCIAL_PRIVACY_URL');
+  assertProductionPublicUrl(config.COMMERCIAL_SUPPORT_URL, 'COMMERCIAL_SUPPORT_URL');
   if (config.COMMERCIAL_PRODUCTION_SIGNING_PROVIDER !== 'secret-file-ed25519-v1'
     || config.COMMERCIAL_PRODUCTION_SIGNING_KEY_ID !== 'vesoft-online-v1'
     || config.COMMERCIAL_PRODUCTION_SIGNING_PRIVATE_KEY_FILE !== '/etc/secrets/patrolsafe-production-ed25519-private.pem'
@@ -361,6 +386,17 @@ function validateProductionCommercialContract(config: EnvVars): void {
     || /^0{64}$/.test(config.COMMERCIAL_PRODUCTION_SIGNING_PUBLIC_KEY_SHA256 ?? '')
     || config.COMMERCIAL_PRODUCTION_SIGNING_PUBLIC_KEY_SHA256?.toUpperCase() === '688340412959FBC23E8C3F0CB17BC6CFC2EE121254ACE2256D66216B2A512582') {
     throw new Error('[validate-env] Production Ed25519 signing configuration is missing, invalid, or staging-contaminated.');
+  }
+}
+
+function assertProductionPublicUrl(value: string | undefined, name: string): void {
+  let parsed: URL;
+  try { parsed = new URL(value ?? ''); } catch { throw new Error(`[validate-env] ${name} must be a valid approved HTTPS URL.`); }
+  const host = parsed.hostname.toLowerCase();
+  if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.port
+    || (host !== 'sfour.co.uk' && !host.endsWith('.sfour.co.uk'))
+    || /staging/i.test(host) || host.endsWith('.onrender.com') || parsed.hash) {
+    throw new Error(`[validate-env] ${name} must be an approved production sfour.co.uk URL.`);
   }
 }
 
@@ -418,6 +454,13 @@ export function validateEnv(config: Record<string, unknown>): EnvVars {
     throw new Error(
       '[validate-env] Legacy licence issuance is enabled but LICENSE_SIGNING_KEY_ID is missing.',
     );
+  }
+
+  if (validated.NODE_ENV === 'production') {
+    if (!isTruthy(validated.ADMIN_MFA_REQUIRED)
+      || !/^[0-9a-fA-F]{64}$/.test(validated.ADMIN_MFA_ENCRYPTION_KEY ?? '')) {
+      throw new Error('[validate-env] Production operator MFA must be required and use a dedicated 32-byte encryption key.');
+    }
   }
 
   const stripeEnabled = isTruthy(validated.STRIPE_ENABLED);

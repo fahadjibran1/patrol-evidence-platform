@@ -6,7 +6,8 @@ import { AuditService } from '@/audit/audit.service';
 import { ApiException } from '@/common/exceptions/api.exception';
 import { ERROR_CODES } from '@/common/constants/error-codes';
 import { AuthenticatedAdmin } from '@/auth/interfaces/authenticated-admin.interface';
-import { CreateAdminDto, ResetAdminPasswordDto, UpdateAdminDto } from './dto/admin.dto';
+import { CreateAdminDto, ResetAdminMfaDto, ResetAdminPasswordDto, UpdateAdminDto } from './dto/admin.dto';
+import { AdminMfaService } from '@/auth/admin-mfa.service';
 
 @Injectable()
 export class AdminsService {
@@ -14,6 +15,7 @@ export class AdminsService {
     private readonly prisma: PrismaService,
     private readonly authService: AuthService,
     private readonly auditService: AuditService,
+    private readonly mfaService: AdminMfaService,
   ) {}
 
   async list(query: { page: number; pageSize: number }) {
@@ -126,6 +128,28 @@ export class AdminsService {
       entityId: id,
     });
 
+    return { success: true };
+  }
+
+  async resetMfa(actor: AuthenticatedAdmin, id: string, dto: ResetAdminMfaDto) {
+    const existing = await this.getAdminOrThrow(id);
+    if (actor.role !== AdminRole.SUPER_ADMIN || actor.mfaVerified !== true) {
+      throw new ApiException(ERROR_CODES.AUTH_MFA_REQUIRED, 'A multi-factor authenticated SUPER_ADMIN is required.', 403);
+    }
+    if (existing.id === actor.sub) {
+      throw new ApiException(ERROR_CODES.FORBIDDEN_ROLE, 'You cannot reset your own MFA enrolment.', 403);
+    }
+    if (!(await this.authService.verifyPassword(actor.sub, dto.password))) {
+      await this.auditService.record({
+        actorAdminId: actor.sub,
+        action: 'auth.mfa_reset_denied',
+        entityType: 'Admin',
+        entityId: id,
+        metadata: { reason: 'password_step_up_failed' },
+      });
+      throw new ApiException(ERROR_CODES.AUTH_INVALID_CREDENTIALS, 'Recent password verification failed.', 401);
+    }
+    await this.mfaService.reset(id, actor.sub);
     return { success: true };
   }
 

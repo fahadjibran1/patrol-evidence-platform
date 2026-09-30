@@ -6,6 +6,8 @@ import { App } from '../App';
 import { AuthProvider } from '../lib/auth';
 import { LoginPage } from '../pages/login-page';
 
+vi.mock('qrcode', () => ({ default: { toDataURL: vi.fn(async () => 'data:image/png;base64,safe-test-qr') } }));
+
 const fetchMock = vi.fn();
 
 beforeEach(() => {
@@ -52,6 +54,65 @@ function renderLogin(): void {
 }
 
 describe('LoginPage', () => {
+  it('enrols mandatory MFA, verifies the OTP, and presents recovery codes once', async () => {
+    fetchMock
+      .mockResolvedValueOnce(mockJsonResponse({
+        mfaRequired: true,
+        enrollmentRequired: true,
+        challengeToken: 'A'.repeat(43),
+        expiresAt: '2026-09-30T12:05:00.000Z',
+      }))
+      .mockResolvedValueOnce(mockJsonResponse({
+        secret: 'JBSWY3DPEHPK3PXP',
+        otpauthUri: 'otpauth://totp/PatrolSafe%20Operator:test',
+        issuer: 'PatrolSafe Operator',
+        accountName: 'admin@patrol.local',
+      }))
+      .mockResolvedValueOnce(mockJsonResponse({
+        ...apiLoginSuccessBody(),
+        recoveryCodes: ['AAAA-BBBB-CCCC-DDDD', 'EEEE-FFFF-GGGG-HHHH'],
+      }));
+    renderLogin();
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('Email'), 'admin@patrol.local');
+    await user.type(screen.getByLabelText('Password'), 'Password123!');
+    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+    expect(await screen.findByRole('heading', { name: 'Set up multi-factor authentication' })).toBeInTheDocument();
+    expect(sessionStorage.getItem('patrol-license-portal-auth')).toBeNull();
+    await user.type(screen.getByLabelText('Authenticator code'), '123456');
+    await user.click(screen.getByRole('button', { name: 'Enable MFA' }));
+    expect(await screen.findByText('AAAA-BBBB-CCCC-DDDD')).toBeInTheDocument();
+    expect(screen.getByText(/cannot be displayed again/i)).toBeInTheDocument();
+    expect(sessionStorage.getItem('patrol-license-portal-auth')).toContain('access-token');
+  });
+
+  it('requires a second factor for an enrolled operator and supports one-time recovery input', async () => {
+    fetchMock
+      .mockResolvedValueOnce(mockJsonResponse({
+        mfaRequired: true,
+        enrollmentRequired: false,
+        challengeToken: 'B'.repeat(43),
+        expiresAt: '2026-09-30T12:05:00.000Z',
+      }))
+      .mockResolvedValueOnce(mockJsonResponse(apiLoginSuccessBody()));
+    render(
+      <MemoryRouter initialEntries={['/login']}>
+        <AuthProvider><Routes><Route path="/login" element={<LoginPage />} /><Route path="/" element={<div>Dashboard ready</div>} /></Routes></AuthProvider>
+      </MemoryRouter>,
+    );
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText('Email'), 'admin@patrol.local');
+    await user.type(screen.getByLabelText('Password'), 'Password123!');
+    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+    expect(await screen.findByRole('heading', { name: 'Multi-factor verification' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Use a recovery code' }));
+    await user.type(screen.getByLabelText('Recovery code'), 'AAAA-BBBB-CCCC-DDDD');
+    await user.click(screen.getByRole('button', { name: 'Verify and sign in' }));
+    expect(await screen.findByText('Dashboard ready')).toBeInTheDocument();
+    expect(fetchMock.mock.calls[1][0]).toBe('/admin/auth/mfa/verify');
+    expect(fetchMock.mock.calls[1][1]?.body).toContain('recoveryCode');
+  });
+
   it('submits credentials, stores the session from { admin, tokens }, and redirects to /', async () => {
     fetchMock.mockResolvedValueOnce(mockJsonResponse(apiLoginSuccessBody()));
 

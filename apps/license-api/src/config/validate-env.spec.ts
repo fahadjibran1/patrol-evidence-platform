@@ -6,6 +6,8 @@ const base = {
   PATROLSAFE_COMMERCIAL_STAGING: 'true',
   LICENSE_DATABASE_URL: 'postgresql://phase6a.test/staging',
   JWT_SECRET: 'x'.repeat(32),
+  ADMIN_MFA_REQUIRED: 'true',
+  ADMIN_MFA_ENCRYPTION_KEY: 'A'.repeat(64),
   LICENCE_STORAGE_ENCRYPTION_KEY: 'a'.repeat(64),
   LICENSE_SIGNING_KEY_ID: 'test-phase6-online-key',
 };
@@ -85,6 +87,8 @@ describe('commercial staging environment validation', () => {
     expect(() => validateEnv({
       ...base,
       NODE_ENV: 'production',
+      ADMIN_MFA_REQUIRED: 'true',
+      ADMIN_MFA_ENCRYPTION_KEY: 'A'.repeat(64),
       COMMERCIAL_LEAN_STAGING_PORTALS: 'true',
       PATROLSAFE_COMMERCIAL_STAGING: 'true',
     })).toThrow('forbidden in production');
@@ -128,6 +132,42 @@ describe('commercial staging environment validation', () => {
       LICENSE_LEGACY_ISSUANCE_ENABLED: 'false',
       COMMERCIAL_MODE: 'DISABLED',
     }));
+  });
+
+  it('requires production MFA even while commercial mode is disabled', () => {
+    expect(() => validateEnv({
+      ...base,
+      NODE_ENV: 'production',
+      PATROLSAFE_COMMERCIAL_STAGING: undefined,
+      COMMERCIAL_MODE: 'DISABLED',
+      COMMERCIAL_STRIPE_ENABLED: 'false',
+      LICENSE_LEGACY_ISSUANCE_ENABLED: 'false',
+      ADMIN_MFA_REQUIRED: 'false',
+    })).toThrow('Production operator MFA must be required');
+    expect(() => validateEnv({
+      ...base,
+      NODE_ENV: 'production',
+      PATROLSAFE_COMMERCIAL_STAGING: undefined,
+      COMMERCIAL_MODE: 'DISABLED',
+      COMMERCIAL_STRIPE_ENABLED: 'false',
+      LICENSE_LEGACY_ISSUANCE_ENABLED: 'false',
+      ADMIN_MFA_ENCRYPTION_KEY: 'short',
+    })).toThrow('ADMIN_MFA_ENCRYPTION_KEY');
+  });
+
+  it('allows legal document values to remain absent while commercial mode is disabled', () => {
+    expect(validateEnv({
+      ...base,
+      NODE_ENV: 'production',
+      PATROLSAFE_COMMERCIAL_STAGING: undefined,
+      COMMERCIAL_MODE: 'DISABLED',
+      COMMERCIAL_STRIPE_ENABLED: 'false',
+      LICENSE_LEGACY_ISSUANCE_ENABLED: 'false',
+      COMMERCIAL_TERMS_VERSION: undefined,
+      COMMERCIAL_PRIVACY_VERSION: undefined,
+      COMMERCIAL_TERMS_URL: undefined,
+      COMMERCIAL_PRIVACY_URL: undefined,
+    })).toEqual(expect.objectContaining({ COMMERCIAL_MODE: 'DISABLED' }));
   });
 
   it('requires the legacy signing key ID whenever legacy issuance is enabled', () => {
@@ -176,6 +216,9 @@ describe('commercial staging environment validation', () => {
       COMMERCIAL_DELIVERY_TOKEN_SECRET: 'd'.repeat(32),
       COMMERCIAL_TERMS_VERSION: '2026-09-29',
       COMMERCIAL_PRIVACY_VERSION: '2026-09-29',
+      COMMERCIAL_TERMS_URL: 'https://www.sfour.co.uk/legal/patrolsafe-terms',
+      COMMERCIAL_PRIVACY_URL: 'https://www.sfour.co.uk/legal/privacy',
+      COMMERCIAL_SUPPORT_URL: 'https://www.sfour.co.uk/support',
       COMMERCIAL_PRODUCTION_SIGNING_PROVIDER: 'secret-file-ed25519-v1',
       COMMERCIAL_PRODUCTION_SIGNING_KEY_ID: 'vesoft-online-v1',
       COMMERCIAL_PRODUCTION_SIGNING_PRIVATE_KEY_FILE: '/etc/secrets/patrolsafe-production-ed25519-private.pem',
@@ -188,6 +231,15 @@ describe('commercial staging environment validation', () => {
     expect(validateEnv(productionLive())).toEqual(expect.objectContaining({
       COMMERCIAL_PRODUCTION_SIGNING_KEY_ID: 'vesoft-online-v1',
     }));
+  });
+
+  it.each([
+    ['missing terms version', { COMMERCIAL_TERMS_VERSION: undefined }, 'Approved production Terms and Privacy versions'],
+    ['pending privacy version', { COMMERCIAL_PRIVACY_VERSION: 'pending' }, 'Approved production Terms and Privacy versions'],
+    ['non-HTTPS terms URL', { COMMERCIAL_TERMS_URL: 'http://www.sfour.co.uk/legal/patrolsafe-terms' }, 'COMMERCIAL_TERMS_URL'],
+    ['staging privacy URL', { COMMERCIAL_PRIVACY_URL: 'https://patrolsafe-commercial-staging.onrender.com/privacy' }, 'COMMERCIAL_PRIVACY_URL'],
+  ])('rejects incomplete production legal acceptance configuration: %s', (_label, overrides, message) => {
+    expect(() => validateEnv(productionLive(overrides))).toThrow(message);
   });
 
   it('rejects production Stripe API versions other than the supported Dahlia snapshot contract', () => {

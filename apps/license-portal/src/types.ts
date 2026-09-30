@@ -67,6 +67,20 @@ export interface LoginResponse {
   tokens: AuthTokensPayload;
 }
 
+export interface MfaChallengeResponse {
+  mfaRequired: true;
+  enrollmentRequired: boolean;
+  challengeToken: string;
+  expiresAt: string;
+}
+
+export interface MfaEnrollmentDetails {
+  secret: string;
+  otpauthUri: string;
+  issuer: string;
+  accountName: string;
+}
+
 /** Shape returned by POST /admin/auth/refresh */
 export interface RefreshResponse {
   accessToken: string;

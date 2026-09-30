@@ -47,6 +47,9 @@ export interface CommercialCheckoutResult {
 export interface CommercialCheckoutContact {
   customerEmail: string;
   contactName?: string;
+  legalAccepted: true;
+  acceptedTermsVersion: string;
+  acceptedPrivacyVersion: string;
 }
 
 @Injectable()
@@ -86,6 +89,11 @@ export class CommercialCheckoutService {
       currency: policy.currency,
       maxDevices: policy.maxDevices,
       taxPolicy: policy.taxPolicy,
+      termsVersion: policy.termsVersion,
+      privacyVersion: policy.privacyVersion,
+      termsUrl: policy.termsUrl,
+      privacyUrl: policy.privacyUrl,
+      supportUrl: policy.supportUrl,
       expiresAt: stored.expiresAt.toISOString(),
     };
   }
@@ -149,6 +157,18 @@ export class CommercialCheckoutService {
     const order = request.orders[0];
     if (!order) throw new ApiException(ERROR_CODES.COMMERCIAL_ORDER_NOT_FOUND, 'Commercial order was not found.', 404);
     this.assertEligible(request, order, now);
+    const policy = this.config.getPolicy();
+    if (
+      contact.legalAccepted !== true
+      || contact.acceptedTermsVersion !== policy.termsVersion
+      || contact.acceptedPrivacyVersion !== policy.privacyVersion
+    ) {
+      throw new ApiException(
+        ERROR_CODES.COMMERCIAL_CHECKOUT_NOT_ALLOWED,
+        'The current Terms and Privacy Notice must be accepted before Checkout.',
+        409,
+      );
+    }
     const stripeConfig = this.config.assertStripeReady();
     const runtimeProviderMode = this.provider.getMode();
     if (runtimeProviderMode === 'DISABLED') {
@@ -203,7 +223,6 @@ export class CommercialCheckoutService {
       throw new ApiException(ERROR_CODES.COMMERCIAL_CHECKOUT_NOT_ALLOWED, 'A valid billing email is required.', 409);
     }
 
-    const policy = this.config.getPolicy();
     const generation = order.checkoutGeneration + 1;
     const correlationId = randomUUID();
     let providerSnapshot: CommercialCheckoutSnapshot;
@@ -309,6 +328,7 @@ export class CommercialCheckoutService {
             taxPolicy: policy.taxPolicy,
             termsVersion: policy.termsVersion,
             privacyVersion: policy.privacyVersion,
+            legalAcceptedAt: now,
             providerMode,
             providerCheckoutSessionId: providerSnapshot.providerSessionId,
             providerPaymentIntentId: providerSnapshot.paymentIntentId,
@@ -346,6 +366,8 @@ export class CommercialCheckoutService {
             generation,
             amountMinor: policy.amountMinor,
             currency: policy.currency,
+            termsVersion: policy.termsVersion,
+            privacyVersion: policy.privacyVersion,
           },
         });
         if (replacingExpiredCheckout) {

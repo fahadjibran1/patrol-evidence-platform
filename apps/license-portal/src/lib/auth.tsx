@@ -11,7 +11,13 @@ import {
 import { apiRequest } from './api';
 import { normalizeAdmin, parseLoginResponse, safeResponseKeys } from './auth-response';
 import { STORAGE_KEY } from './dates';
-import type { AdminUser, LoginResponse, RefreshResponse } from '../types';
+import type {
+  AdminUser,
+  LoginResponse,
+  MfaChallengeResponse,
+  MfaEnrollmentDetails,
+  RefreshResponse,
+} from '../types';
 
 interface StoredAuth {
   accessToken: string;
@@ -24,7 +30,10 @@ interface AuthContextValue {
   accessToken: string | null;
   refreshToken: string | null;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<LoginResponse>;
+  login: (email: string, password: string) => Promise<LoginResponse | MfaChallengeResponse>;
+  startMfaEnrollment: (challengeToken: string) => Promise<MfaEnrollmentDetails>;
+  confirmMfaEnrollment: (challengeToken: string, code: string) => Promise<{ login: LoginResponse; recoveryCodes: string[] }>;
+  verifyMfaLogin: (challengeToken: string, input: { code?: string; recoveryCode?: string }) => Promise<LoginResponse>;
   logout: () => Promise<void>;
   refreshSession: () => Promise<void>;
 }
@@ -167,6 +176,21 @@ export function AuthProvider({ children }: PropsWithChildren): JSX.Element {
           body: JSON.stringify({ email, password }),
         });
 
+        if (
+          raw
+          && typeof raw === 'object'
+          && (raw as { mfaRequired?: unknown }).mfaRequired === true
+          && typeof (raw as { challengeToken?: unknown }).challengeToken === 'string'
+        ) {
+          const challenge = raw as MfaChallengeResponse;
+          return {
+            mfaRequired: true,
+            enrollmentRequired: challenge.enrollmentRequired === true,
+            challengeToken: challenge.challengeToken,
+            expiresAt: challenge.expiresAt,
+          };
+        }
+
         logLoginDiagnostics('response received', {
           keys: safeResponseKeys(raw),
           hasAdmin: Boolean((raw as { admin?: unknown } | null)?.admin),
@@ -211,6 +235,44 @@ export function AuthProvider({ children }: PropsWithChildren): JSX.Element {
             refreshToken: parsed.refreshToken,
             expiresIn: parsed.expiresIn,
           },
+        };
+      },
+      async startMfaEnrollment(challengeToken: string) {
+        return apiRequest<MfaEnrollmentDetails>('/admin/auth/mfa/enrolment/start', {
+          method: 'POST',
+          body: JSON.stringify({ challengeToken }),
+        });
+      },
+      async confirmMfaEnrollment(challengeToken: string, code: string) {
+        const raw = await apiRequest<unknown>('/admin/auth/mfa/enrolment/confirm', {
+          method: 'POST',
+          body: JSON.stringify({ challengeToken, code }),
+        });
+        const parsed = parseLoginResponse(raw);
+        const recoveryCodes = Array.isArray((raw as { recoveryCodes?: unknown }).recoveryCodes)
+          ? (raw as { recoveryCodes: unknown[] }).recoveryCodes.filter((value): value is string => typeof value === 'string')
+          : [];
+        sessionGenerationRef.current += 1;
+        persist({ accessToken: parsed.accessToken, refreshToken: parsed.refreshToken, admin: parsed.admin });
+        return {
+          login: {
+            admin: { sub: parsed.admin.id, email: parsed.admin.email, role: parsed.admin.role, displayName: parsed.admin.displayName },
+            tokens: { accessToken: parsed.accessToken, refreshToken: parsed.refreshToken, expiresIn: parsed.expiresIn },
+          },
+          recoveryCodes,
+        };
+      },
+      async verifyMfaLogin(challengeToken: string, input: { code?: string; recoveryCode?: string }) {
+        const raw = await apiRequest<unknown>('/admin/auth/mfa/verify', {
+          method: 'POST',
+          body: JSON.stringify({ challengeToken, ...input }),
+        });
+        const parsed = parseLoginResponse(raw);
+        sessionGenerationRef.current += 1;
+        persist({ accessToken: parsed.accessToken, refreshToken: parsed.refreshToken, admin: parsed.admin });
+        return {
+          admin: { sub: parsed.admin.id, email: parsed.admin.email, role: parsed.admin.role, displayName: parsed.admin.displayName },
+          tokens: { accessToken: parsed.accessToken, refreshToken: parsed.refreshToken, expiresIn: parsed.expiresIn },
         };
       },
       async logout() {
